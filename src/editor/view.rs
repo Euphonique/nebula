@@ -38,6 +38,14 @@ struct PointerState {
     click_count: u32,
     /// Word or line range the drag started from (for double/triple click drags).
     origin: Option<(usize, usize)>,
+    /// Alt+drag: block selection from this cell.
+    block: Option<BlockStart>,
+}
+
+#[derive(Clone, Copy)]
+struct BlockStart {
+    line: usize,
+    col: usize,
 }
 
 pub fn editor_id(doc_id: u64) -> Id {
@@ -130,7 +138,20 @@ impl EditorView<'_> {
                     let col = ((p.x - text_x0) / m.char_w).round().max(0.0) as usize;
                     hit_rows.pos_at(doc, row, col, tab)
                 };
-                handle_pointer(ui, &response, doc, id, &hit, visible, &m, tab);
+                // Line and display column under the pointer, also beyond the line end (block selection).
+                let cell_rows = rows.clone();
+                let hit_ref = &hit;
+                let shown = move |line: usize| !cell_rows.is_hidden(line);
+                let cell = move |doc: &Document, p: Pos2| -> (usize, usize) {
+                    let pos = hit_ref(doc, p);
+                    let line = doc.char_to_line(pos);
+                    let col = match wrap {
+                        Some(_) => doc.column_of(pos, tab),
+                        None => ((p.x - text_x0) / m.char_w).round().max(0.0) as usize,
+                    };
+                    (line, col)
+                };
+                handle_pointer(ui, &response, doc, id, &hit, &cell, &shown, visible, &m, tab);
 
                 response.context_menu(|ui| {
                     if ui.button("Ausschneiden").clicked() {
@@ -239,12 +260,15 @@ impl EditorView<'_> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_pointer(
     ui: &Ui,
     response: &egui::Response,
     doc: &mut Document,
     id: Id,
     hit: &dyn Fn(&Document, Pos2) -> usize,
+    cell: &dyn Fn(&Document, Pos2) -> (usize, usize),
+    shown: &dyn Fn(usize) -> bool,
     visible: Rect,
     m: &Metrics,
     tab: usize,
@@ -276,6 +300,7 @@ fn handle_pointer(
         state.last_click_pos = at;
         state.dragging = true;
         state.origin = None;
+        state.block = None;
 
         if in_gutter && p.x < visible.left() + 20.0 {
             // Fold marker.
@@ -303,6 +328,9 @@ fn handle_pointer(
             doc.set_selection(Selection::cursor(at));
             doc.view.definition_request = Some(at);
         } else if mods.alt {
+            // Alt+click adds a cursor; dragging turns it into a block selection.
+            let (line, col) = cell(doc, p);
+            state.block = Some(BlockStart { line, col });
             doc.selections.push(Selection::cursor(at));
             doc.primary = doc.selections.len() - 1;
             doc.normalize_selections();
@@ -325,6 +353,39 @@ fn handle_pointer(
             }
         }
         doc.view.scroll_to_cursor = false;
+    } else if state.dragging && down && state.block.is_some() {
+        if let Some(p) = pos {
+            let start = state.block.unwrap();
+            let (line, col) = cell(doc, p);
+            if (line, col) != (start.line, start.col) {
+                // One selection per line between the start and the pointer.
+                let mut sels: Vec<Selection> = Vec::new();
+                let lines: Vec<usize> = if line >= start.line {
+                    (start.line..=line).collect()
+                } else {
+                    (line..=start.line).rev().collect()
+                };
+                for l in lines.into_iter().filter(|&l| shown(l)) {
+                    let anchor = doc.pos_at_column(l, start.col, tab);
+                    let head = doc.pos_at_column(l, col, tab);
+                    // Lines that end left of the block only get a selection if the block is a plain column of cursors.
+                    if start.col != col && doc.column_of(anchor, tab) < start.col.min(col) {
+                        continue;
+                    }
+                    sels.push(Selection::new(anchor, head));
+                }
+                if !sels.is_empty() {
+                    doc.selections = sels;
+                    doc.primary = doc.selections.len() - 1;
+                    doc.normalize_selections();
+                }
+            }
+            if !visible.shrink(4.0).contains(p) {
+                let r = Rect::from_center_size(p, vec2(m.char_w * 2.0, m.row_h));
+                ui.scroll_to_rect(r, None);
+                ui.ctx().request_repaint();
+            }
+        }
     } else if state.dragging && down {
         if let Some(p) = pos {
             let at = hit(doc, p);
@@ -563,6 +624,7 @@ fn handle_key(
         Key::Backspace => cmd::backspace(doc, ctrl, settings),
         Key::Delete => cmd::delete_forward(doc, ctrl),
         Key::K if ctrl && shift => cmd::delete_lines(doc),
+        Key::I if alt && shift && !ctrl => cmd::cursors_at_line_ends(doc),
         Key::ArrowLeft => cmd::move_horizontal(doc, false, ctrl, shift),
         Key::ArrowRight => cmd::move_horizontal(doc, true, ctrl, shift),
         Key::ArrowUp if alt && !ctrl => cmd::move_lines(doc, true),

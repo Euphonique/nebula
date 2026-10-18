@@ -1241,4 +1241,33 @@ mod whitespace_tests {
         d.undo();
         assert_eq!(d.rope.to_string(), "a\n    b\nc\n");
     }
+
+    #[test]
+    fn cursors_at_ends() {
+        let mut d = Document::new(DocSource::Untitled(1), "ab\ncde\nf\n");
+        d.set_selection(Selection::new(1, 9));
+        cursors_at_line_ends(&mut d);
+        let heads: Vec<usize> = d.selections.iter().map(|s| s.head).collect();
+        assert_eq!(heads, vec![2, 6, 8]);
+    }
+}
+
+/// Splits selections into one cursor at the end of every line they cover.
+pub fn cursors_at_line_ends(doc: &mut Document) {
+    let mut sels = Vec::new();
+    for s in &doc.selections {
+        let r = s.range();
+        let first = doc.char_to_line(r.start);
+        let mut last = doc.char_to_line(r.end);
+        // A selection ending at a line start does not include that line.
+        if last > first && doc.line_to_char(last) == r.end {
+            last -= 1;
+        }
+        for line in first..=last {
+            sels.push(Selection::cursor(doc.line_end(line)));
+        }
+    }
+    doc.selections = sels;
+    doc.primary = doc.selections.len() - 1;
+    doc.normalize_selections();
 }

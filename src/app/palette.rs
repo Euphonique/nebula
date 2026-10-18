@@ -49,6 +49,7 @@ pub enum Command {
     LineEndingLf,
     LineEndingCrLf,
     TrimWhitespace,
+    CursorsAtLineEnds,
     IndentToSpaces,
     IndentToTabs,
     FoldToggle,
@@ -113,6 +114,7 @@ impl Command {
             (LineEndingLf, "Zeilenenden: LF (Unix)", ""),
             (LineEndingCrLf, "Zeilenenden: CRLF (Windows)", ""),
             (TrimWhitespace, "Text: Leerzeichen am Zeilenende entfernen", ""),
+            (CursorsAtLineEnds, "Auswahl: Cursor an alle Zeilenenden", "Alt+Umschalt+I"),
             (IndentToSpaces, "Text: Einrückung in Leerzeichen umwandeln", ""),
             (IndentToTabs, "Text: Einrückung in Tabs umwandeln", ""),
         ]
@@ -318,6 +320,7 @@ impl NebulaApp {
             Command::DuplicateLine => with_doc(self, cmd::duplicate_lines),
             Command::DeleteLine => with_doc(self, cmd::delete_lines),
             Command::SelectAllOccurrences => with_doc(self, cmd::select_all_occurrences),
+            Command::CursorsAtLineEnds => with_doc(self, cmd::cursors_at_line_ends),
             Command::TrimWhitespace => with_doc(self, |d| cmd::tidy_whitespace(d, true, false)),
             Command::IndentToSpaces | Command::IndentToTabs => {
                 if let Some(i) = self.active {
