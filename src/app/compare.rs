@@ -83,42 +83,47 @@ impl NebulaApp {
             }
             Compare::Ready(rows) => rows.clone(),
         };
-        if rows.is_empty() {
-            ui.label("Keine Unterschiede im Inhalt.");
-            return;
-        }
-        let red = Color32::from_rgba_unmultiplied(230, 80, 80, 40);
-        let green = Color32::from_rgba_unmultiplied(80, 190, 110, 40);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("− Version {place}")).color(self.theme.danger).small());
-            ui.add_space(12.0);
-            ui.label(RichText::new("+ deine Version").color(self.theme.success).small());
-        });
-        let font = FontId::monospace(12.0);
-        egui::Frame::new().fill(self.theme.background).corner_radius(6.0).inner_margin(6.0).show(ui, |ui| {
-            let row_h = ui.fonts_mut(|f| f.row_height(&font));
-            let height = (rows.len() as f32 * row_h).min(380.0);
-            egui::ScrollArea::both().max_height(380.0).min_scrolled_height(height).auto_shrink([false, true]).show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                for row in rows.iter() {
-                    let (num, sign, text, bg, color) = match row {
-                        DiffLine::Context(_, n, t) => (n + 1, " ", t.as_str(), Color32::TRANSPARENT, self.theme.text_muted),
-                        DiffLine::Removed(n, t) => (n + 1, "−", t.as_str(), red, self.theme.danger),
-                        DiffLine::Added(n, t) => (n + 1, "+", t.as_str(), green, self.theme.success),
-                        DiffLine::Skip(n) => {
-                            ui.label(RichText::new(format!("    ⋯ {n} unveränderte Zeilen")).font(font.clone()).color(self.theme.text_faint));
-                            continue;
-                        }
-                    };
-                    let mut job = egui::text::LayoutJob::default();
-                    job.append(&format!("{num:>5} {sign} "), 0.0, egui::TextFormat::simple(font.clone(), color));
-                    job.append(&text.replace('\t', "    "), 0.0, egui::TextFormat::simple(font.clone(), ui.visuals().text_color()));
-                    egui::Frame::new().fill(bg).show(ui, |ui| {
-                        ui.set_min_width(ui.available_width());
-                        ui.add(egui::Label::new(job).extend());
-                    });
-                }
-            });
-        });
+        diff_view(ui, &self.theme, &rows, &format!("Version {place}"), "deine Version", 380.0);
     }
+}
+
+/// Unified diff rows with a legend: `old` lines in red (−), `new` in green (+).
+pub(super) fn diff_view(ui: &mut egui::Ui, theme: &crate::theme::Theme, rows: &[DiffLine], old: &str, new: &str, max_height: f32) {
+    if rows.is_empty() {
+        ui.label("Keine Unterschiede im Inhalt.");
+        return;
+    }
+    let red = Color32::from_rgba_unmultiplied(230, 80, 80, 40);
+    let green = Color32::from_rgba_unmultiplied(80, 190, 110, 40);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(format!("− {old}")).color(theme.danger).small());
+        ui.add_space(12.0);
+        ui.label(RichText::new(format!("+ {new}")).color(theme.success).small());
+    });
+    let font = FontId::monospace(12.0);
+    egui::Frame::new().fill(theme.background).corner_radius(6.0).inner_margin(6.0).show(ui, |ui| {
+        let row_h = ui.fonts_mut(|f| f.row_height(&font));
+        let height = (rows.len() as f32 * row_h).min(max_height);
+        egui::ScrollArea::both().max_height(max_height).min_scrolled_height(height).auto_shrink([false, true]).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for row in rows.iter() {
+                let (num, sign, text, bg, color) = match row {
+                    DiffLine::Context(_, n, t) => (n + 1, " ", t.as_str(), Color32::TRANSPARENT, theme.text_muted),
+                    DiffLine::Removed(n, t) => (n + 1, "−", t.as_str(), red, theme.danger),
+                    DiffLine::Added(n, t) => (n + 1, "+", t.as_str(), green, theme.success),
+                    DiffLine::Skip(n) => {
+                        ui.label(RichText::new(format!("    ⋯ {n} unveränderte Zeilen")).font(font.clone()).color(theme.text_faint));
+                        continue;
+                    }
+                };
+                let mut job = egui::text::LayoutJob::default();
+                job.append(&format!("{num:>5} {sign} "), 0.0, egui::TextFormat::simple(font.clone(), color));
+                job.append(&text.replace('\t', "    "), 0.0, egui::TextFormat::simple(font.clone(), ui.visuals().text_color()));
+                egui::Frame::new().fill(bg).show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.add(egui::Label::new(job).extend());
+                });
+            }
+        });
+    });
 }

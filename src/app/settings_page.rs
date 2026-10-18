@@ -144,6 +144,41 @@ impl NebulaApp {
         ui.checkbox(&mut e.trim_trailing_whitespace, "Leerzeichen am Zeilenende entfernen (nicht in Markdown)");
         ui.checkbox(&mut e.insert_final_newline, "Zeilenumbruch am Dateiende sicherstellen");
         ui.label(RichText::new("Eine .editorconfig im Projekt hat Vorrang vor diesen Einstellungen (Einrückung, Leerzeichen, Dateiende).").small().color(self.theme.text_faint));
+        section(ui, "Automatisch speichern");
+        {
+            use crate::settings::AutoSave;
+            let label = |a: AutoSave| match a {
+                AutoSave::Off => "Aus",
+                AutoSave::Delay => "Nach einer Tipppause",
+                AutoSave::FocusChange => "Beim Wechsel von Tab oder Fenster",
+            };
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_salt("autosave").selected_text(label(e.autosave)).width(240.0).show_ui(ui, |ui| {
+                    for a in [AutoSave::Off, AutoSave::Delay, AutoSave::FocusChange] {
+                        ui.selectable_value(&mut e.autosave, a, label(a));
+                    }
+                });
+                if e.autosave == AutoSave::Delay {
+                    ui.add(egui::DragValue::new(&mut e.autosave_delay).range(0.5..=60.0).speed(0.1).suffix(" s"));
+                }
+            });
+            ui.add_enabled(e.autosave != AutoSave::Off, egui::Checkbox::new(&mut e.autosave_remote, "Auch Serverdateien (jedes Speichern lädt hoch)"));
+            ui.label(
+                RichText::new("Automatisches Speichern entfernt keine Leerzeichen am Zeilenende und lässt Formatierer aus; das passiert beim Speichern mit Strg+S.")
+                    .small()
+                    .color(self.theme.text_faint),
+            );
+        }
+        section(ui, "Lokaler Verlauf");
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut e.local_history, "Frühere Fassungen von Dateien aufbewahren");
+            ui.add_enabled(e.local_history, egui::DragValue::new(&mut e.history_max).range(1..=500).suffix(" je Datei"));
+        });
+        ui.label(
+            RichText::new("Beim Öffnen und bei jedem Speichern, auch für Serverdateien. Ansehen und wiederherstellen über das Tab-Menü „Lokaler Verlauf…“.")
+                .small()
+                .color(self.theme.text_faint),
+        );
         section(ui, "Eingabehilfen");
         ui.checkbox(&mut e.auto_pair, "Klammern und Anführungszeichen automatisch schließen");
         ui.checkbox(&mut e.auto_close_tags, "HTML-Tags automatisch schließen");

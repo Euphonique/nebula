@@ -38,6 +38,7 @@ mod keys;
 mod right_panel;
 mod nav;
 mod jumpbar;
+mod history;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -97,6 +98,8 @@ struct PendingSave {
     doc_id: u64,
     point: u64,
     close_after: bool,
+    /// What was uploaded, for the local history.
+    data: Arc<Vec<u8>>,
 }
 
 pub struct NebulaApp {
@@ -140,6 +143,9 @@ pub struct NebulaApp {
     jump_nav: Option<crate::ui::sidebar::DirRef>,
     /// Scroll the jump bar popup to the current entry.
     jump_reveal: bool,
+    autosave: history::AutosaveState,
+    /// The open "Lokaler Verlauf" window.
+    history_view: Option<history::HistoryView>,
     preview: crate::preview::Preview,
     preview_state: preview::PreviewState,
     ext: extensions::ExtUi,
@@ -200,6 +206,8 @@ impl NebulaApp {
             outline_cache: None,
             jump_nav: None,
             jump_reveal: false,
+            autosave: Default::default(),
+            history_view: None,
             preview: Default::default(),
             preview_state: Default::default(),
             ext: extensions::ExtUi::new(&cc.egui_ctx, &settings.disabled_extensions),
@@ -312,6 +320,7 @@ impl NebulaApp {
                 self.error(format!("{} ist keine Textdatei.", path.display()));
             }
             Ok(bytes) => {
+                self.record_history(&DocSource::Local(path.clone()), &bytes, crate::history::Kind::Opened);
                 let mut doc = Document::from_bytes(DocSource::Local(path.clone()), &bytes);
                 doc.disk_stamp = DiskStamp::of(&path);
                 doc.config = crate::editorconfig::for_file(&path);
@@ -371,8 +380,10 @@ impl NebulaApp {
 
     /// `force` overwrites the server file even if it changed in the meantime.
     fn save_doc_with(&mut self, index: usize, close_after: bool, force: bool) -> bool {
+        // Autosave leaves whitespace alone: trimming would fight the typing.
         if let Some(doc) = self.docs.get(index)
             && !matches!(doc.source, DocSource::Untitled(_))
+            && !self.autosave.running
         {
             let e = self.settings.editor_for_doc(doc);
             crate::editor::commands::tidy_whitespace(&mut self.docs[index], e.trim_trailing_whitespace, e.insert_final_newline);
@@ -389,8 +400,10 @@ impl NebulaApp {
                 let doc = &mut self.docs[index];
                 let doc_id = doc.id;
                 let bytes = doc.to_bytes();
-                match std::fs::write(&path, bytes) {
+                match std::fs::write(&path, &bytes) {
                     Ok(()) => {
+                        self.record_history(&DocSource::Local(path.clone()), &bytes, crate::history::Kind::Saved);
+                        let doc = &mut self.docs[index];
                         doc.mark_saved();
                         doc.disk_stamp = DiskStamp::of(&path);
                         doc.disk_missing = 0;
@@ -420,8 +433,8 @@ impl NebulaApp {
                 let doc_id = doc.id;
                 let expected = if force { None } else { doc.remote_stamp };
                 self.ensure_tree(&site);
-                let tag = self.remote.send(&site, Request::Write { path, data, expected });
-                self.pending_saves.insert(tag, PendingSave { doc_id, point, close_after });
+                let tag = self.remote.send(&site, Request::Write { path, data: data.clone(), expected });
+                self.pending_saves.insert(tag, PendingSave { doc_id, point, close_after, data });
                 true
             }
         }
@@ -558,7 +571,13 @@ impl NebulaApp {
                     }
                     if let Some((doc_id, encoding)) = self.pending_reloads.remove(&ev.tag) {
                         if let Some(i) = self.doc_index(doc_id) {
-                            let mut doc = Document::from_bytes_as(self.docs[i].source.clone(), &data, encoding);
+                            let source = self.docs[i].source.clone();
+                            if self.docs[i].is_dirty() {
+                                let mine = self.docs[i].to_bytes();
+                                self.record_history(&source, &mine, crate::history::Kind::Discarded);
+                            }
+                            self.record_history(&source, &data, crate::history::Kind::Opened);
+                            let mut doc = Document::from_bytes_as(source, &data, encoding);
                             doc.id = doc_id;
                             doc.remote_stamp = stamp;
                             self.docs[i] = doc;
@@ -571,7 +590,9 @@ impl NebulaApp {
                         self.error(format!("{path} ist keine Textdatei."));
                         continue;
                     }
-                    let mut doc = Document::from_bytes(DocSource::Remote { site_id, path }, &data);
+                    let source = DocSource::Remote { site_id, path };
+                    self.record_history(&source, &data, crate::history::Kind::Opened);
+                    let mut doc = Document::from_bytes(source, &data);
                     doc.remote_stamp = stamp;
                     self.add_doc(doc);
                     if let Some(i) = self.active {
@@ -609,6 +630,11 @@ impl NebulaApp {
                     }
                 }
                 Reply::Written { path, bytes, stamp } => {
+                    if let Some(save) = self.pending_saves.get(&ev.tag) {
+                        let source = DocSource::Remote { site_id: ev.site_id.clone(), path: path.clone() };
+                        let data = save.data.clone();
+                        self.record_history(&source, &data, crate::history::Kind::Saved);
+                    }
                     if let Some(save) = self.pending_saves.remove(&ev.tag)
                         && let Some(i) = self.doc_index(save.doc_id)
                     {
@@ -1126,6 +1152,13 @@ impl NebulaApp {
                     ui.close();
                     if let Some(i) = self.active {
                         self.duplicate_doc(i);
+                    }
+                }
+                let saved = self.active.and_then(|i| self.docs.get(i)).is_some_and(|d| !matches!(d.source, DocSource::Untitled(_)));
+                if ui.add_enabled(saved, egui::Button::new("Lokaler Verlauf…")).clicked() {
+                    ui.close();
+                    if let Some(i) = self.active {
+                        self.open_history(i);
                     }
                 }
                 ui.separator();
@@ -2760,6 +2793,10 @@ impl eframe::App for NebulaApp {
             self.ext_prompts(&ctx);
         }
         self.dialogs(&ctx);
+        if self.dialog.is_none() {
+            self.history_window(&ctx);
+        }
+        self.autosave_tick(&ctx);
         self.toasts(&ctx);
         self.ext_notices(&ctx);
         self.place_preview(&ctx, frame, preview_rect);

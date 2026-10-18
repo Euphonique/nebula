@@ -149,6 +149,9 @@ impl NebulaApp {
                 continue;
             }
             if !doc.is_dirty() {
+                let source = doc.source.clone();
+                self.record_history(&source, &bytes, crate::history::Kind::Opened);
+                let doc = &mut self.docs[i];
                 doc.reload_bytes(&bytes);
                 doc.disk_stamp = Some(now);
                 let name = doc.title();
@@ -167,6 +170,12 @@ impl NebulaApp {
         let DocSource::Local(path) = self.docs[i].source.clone() else { return };
         match std::fs::read(&path) {
             Ok(bytes) => {
+                // Keep the own changes that the reload throws away.
+                if self.docs[i].is_dirty() {
+                    let mine = self.docs[i].to_bytes();
+                    self.record_history(&DocSource::Local(path.clone()), &mine, crate::history::Kind::Discarded);
+                }
+                self.record_history(&DocSource::Local(path.clone()), &bytes, crate::history::Kind::Opened);
                 let doc = &mut self.docs[i];
                 doc.reload_bytes(&bytes);
                 doc.disk_stamp = DiskStamp::of(&path);

@@ -36,6 +36,25 @@ pub struct EditorSettings {
     pub trim_trailing_whitespace: bool,
     /// End the file with a line break when saving.
     pub insert_final_newline: bool,
+    pub autosave: AutoSave,
+    /// Seconds without typing before [`AutoSave::Delay`] saves.
+    pub autosave_delay: f32,
+    /// Autosave server files too (each save is an upload).
+    pub autosave_remote: bool,
+    /// Keep earlier versions of files (see `history.rs`).
+    pub local_history: bool,
+    /// Versions kept per file.
+    pub history_max: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AutoSave {
+    #[default]
+    Off,
+    /// After a pause in typing.
+    Delay,
+    /// When switching tabs or leaving the window.
+    FocusChange,
 }
 
 impl Default for EditorSettings {
@@ -53,6 +72,11 @@ impl Default for EditorSettings {
             word_wrap: false,
             trim_trailing_whitespace: false,
             insert_final_newline: false,
+            autosave: AutoSave::Off,
+            autosave_delay: 2.0,
+            autosave_remote: false,
+            local_history: true,
+            history_max: 30,
         }
     }
 }

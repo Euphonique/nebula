@@ -5,6 +5,7 @@ mod editor;
 mod editorconfig;
 mod diff;
 mod highlight;
+mod history;
 mod icon;
 mod ext;
 mod lang;

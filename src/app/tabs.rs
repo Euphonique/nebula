@@ -19,6 +19,7 @@ pub(super) enum TabCmd {
     CloseAll,
     CopyPath,
     Reveal,
+    History,
 }
 
 /// Context menu of a tab.
@@ -42,6 +43,7 @@ pub(super) fn tab_menu(ui: &mut egui::Ui, doc: &Document, i: usize, count: usize
     item(ui, "Alle schließen", "", true, TabCmd::CloseAll);
     if !matches!(doc.source, DocSource::Untitled(_)) {
         ui.separator();
+        item(ui, "Lokaler Verlauf…", "", true, TabCmd::History);
         item(ui, "Pfad kopieren", "", true, TabCmd::CopyPath);
         if matches!(doc.source, DocSource::Local(_)) {
             item(ui, "Im Explorer zeigen", "", true, TabCmd::Reveal);
@@ -77,6 +79,7 @@ impl NebulaApp {
                     let _ = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
                 }
             }
+            TabCmd::History => self.open_history(i),
         }
     }
 

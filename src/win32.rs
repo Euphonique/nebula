@@ -483,3 +483,26 @@ pub fn drag_files_out(paths: &[std::path::PathBuf]) -> bool {
         hr == 0x0004_0100 /* DRAGDROP_S_DROP */ && effect != 0
     }
 }
+
+/// Calendar date and time in the local time zone.
+pub struct LocalTime {
+    pub year: u16,
+    pub month: u16,
+    pub day: u16,
+    pub hour: u16,
+    pub minute: u16,
+}
+
+/// Unix milliseconds as local time (Windows rules for the time zone and DST).
+pub fn local_time(unix_ms: u64) -> LocalTime {
+    use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows_sys::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
+    // FILETIME counts 100 ns steps since 1601.
+    let ticks = unix_ms * 10_000 + 116_444_736_000_000_000;
+    let ft = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
+    // SAFETY: plain value conversions into stack structs.
+    let (mut utc, mut local): (SYSTEMTIME, SYSTEMTIME) = unsafe { (std::mem::zeroed(), std::mem::zeroed()) };
+    let ok = unsafe { FileTimeToSystemTime(&ft, &mut utc) != 0 && SystemTimeToTzSpecificLocalTime(std::ptr::null(), &utc, &mut local) != 0 };
+    let t = if ok { local } else { utc };
+    LocalTime { year: t.wYear, month: t.wMonth, day: t.wDay, hour: t.wHour, minute: t.wMinute }
+}

@@ -53,6 +53,7 @@ pub enum Command {
     ToggleWordWrap,
     ToggleSplit,
     Print,
+    LocalHistory,
     DuplicateDoc,
     CloseOthers,
     CloseAll,
@@ -109,6 +110,7 @@ impl Command {
             (CloseAll, "Datei: Alle Tabs schließen"),
             (DuplicateDoc, "Datei: Duplizieren"),
             (Print, "Datei: Drucken…"),
+            (LocalHistory, "Datei: Lokaler Verlauf…"),
             (Find, "Suchen: In Datei suchen"),
             (Replace, "Suchen: Ersetzen"),
             (FindInProject, "Suchen: Im Projekt suchen"),
@@ -376,6 +378,11 @@ impl NebulaApp {
                 }
             }
             Command::Print => self.print_active(ctx),
+            Command::LocalHistory => {
+                if let Some(i) = self.active {
+                    self.open_history(i);
+                }
+            }
             Command::DuplicateDoc => {
                 if let Some(i) = self.active {
                     self.duplicate_doc(i);
