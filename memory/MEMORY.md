@@ -1,0 +1,2 @@
+- [Nebula: Stand und nächste Schritte](nebula-progress.md) — Runde 1+2 und Extras fertig; als Nächstes Runde 3 aus todo.md, KI später
+- [Nebula: Arbeitsweise und Test-Tricks](nebula-workflow.md) — Commit pro Aufgabe, Screenshot-Tests, Edit-Tool statt perl, F-Tasten mit Alternative
