@@ -64,26 +64,26 @@ impl NebulaApp {
         ui.painter().line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, theme.separator));
         let cy = header.center().y;
 
-        // Tabs on the left.
-        let mut x = header.left() + 8.0;
-        for (tab, label) in [(RightTab::Preview, "Vorschau"), (RightTab::Outline, "Gliederung")] {
+        // Tabs on the left, as icons like the mode switcher of the sidebar.
+        let mut tabs = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(Rect::from_min_max(pos2(header.left() + 8.0, header.top() + 2.0), pos2(header.right() - 40.0, header.bottom() - 2.0)))
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        tabs.spacing_mut().item_spacing.x = 2.0;
+        let tip = |name: &str, key: String| if key.is_empty() { name.to_string() } else { format!("{name} ({key})") };
+        let preview_tip = tip("Vorschau", self.shortcut_label(super::palette::Command::TogglePreview));
+        let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 2] =
+            [(RightTab::Preview, preview_tip, icons::eye), (RightTab::Outline, "Gliederung".into(), icons::outline)];
+        for (tab, hover, paint) in entries {
             let selected = self.settings.right_tab == tab;
-            let g = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(12.5), theme.foreground);
-            let r = Rect::from_min_size(pos2(x, cy - 11.0), vec2(g.size().x + 16.0, 22.0));
-            let resp = ui.interact(r, egui::Id::unique(("right-tab", label)), Sense::click());
-            if selected {
-                ui.painter().rect_filled(r, 6.0, theme.hover.gamma_multiply(2.2));
-            } else if resp.hovered() {
-                ui.painter().rect_filled(r, 6.0, theme.hover);
-            }
-            let color = if selected || resp.hovered() { theme.foreground } else { theme.text_muted };
-            ui.painter().galley(pos2(r.left() + 8.0, cy - g.size().y / 2.0), g, color);
-            if resp.clicked() {
+            if icons::icon_button(&mut tabs, &theme, vec2(34.0, 26.0), selected, paint).on_hover_text(hover).clicked() {
                 self.settings.right_tab = tab;
                 self.sync_preview_flag();
             }
-            x = r.right() + 4.0;
         }
+        // Where the preview's address bar may start.
+        let x = tabs.min_rect().right() + 4.0;
 
         // Close button on the right.
         let close = Rect::from_center_size(pos2(header.right() - 18.0, cy), vec2(26.0, 24.0));
@@ -109,7 +109,12 @@ impl NebulaApp {
     /// Clickable list of the symbols in the active document.
     fn outline(&mut self, ui: &mut egui::Ui, body: Rect) {
         let theme = self.theme.clone();
-        let Some(i) = self.active else { return };
+        let Some(i) = self.active else {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(8.0, 26.0))), |ui| {
+                ui.vertical_centered(|ui| ui.label(RichText::new("Keine Datei geöffnet").color(theme.text_faint)));
+            });
+            return;
+        };
         let list = self.doc_symbols(i);
         let doc = &self.docs[i];
         let cursor_line = doc.char_to_line(doc.primary_selection().head);

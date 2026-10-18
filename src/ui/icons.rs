@@ -183,6 +183,34 @@ pub fn search(painter: &Painter, c: Pos2, color: Color32) {
     painter.line_segment([c + vec2(2.0, 2.0), c + vec2(5.0, 5.0)], Stroke::new(1.5, color));
 }
 
+/// Eye ("preview").
+pub fn eye(painter: &Painter, c: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    // Two arcs form the lid shape.
+    let lid = |sign: f32| -> Vec<Pos2> {
+        (0..=16)
+            .map(|i| {
+                let t = i as f32 / 16.0;
+                let x = -7.0 + 14.0 * t;
+                c + vec2(x, sign * 4.6 * (1.0 - (x / 7.0).powi(2)))
+            })
+            .collect()
+    };
+    painter.add(Shape::line(lid(-1.0), stroke));
+    painter.add(Shape::line(lid(1.0), stroke));
+    painter.circle_stroke(c, 2.3, stroke);
+}
+
+/// Indented list with bullets ("outline").
+pub fn outline(painter: &Painter, c: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    for (indent, dy) in [(0.0, -4.5), (3.5, 0.0), (3.5, 4.5)] {
+        let x = c.x - 6.5 + indent;
+        painter.circle_filled(pos2(x, c.y + dy), 1.2, color);
+        painter.line_segment([pos2(x + 3.0, c.y + dy), pos2(c.x + 6.5, c.y + dy)], stroke);
+    }
+}
+
 pub fn plus(painter: &Painter, c: Pos2, color: Color32) {
     let stroke = Stroke::new(1.4, color);
     painter.line_segment([c + vec2(-5.0, 0.0), c + vec2(5.0, 0.0)], stroke);

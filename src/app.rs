@@ -128,7 +128,7 @@ pub struct NebulaApp {
     last_title: String,
     icon_texture: Option<egui::TextureHandle>,
     /// The "nebula" lettering, rasterized for the current pixel size.
-    wordmark_tex: Option<(usize, egui::TextureHandle)>,
+    wordmark_tex: Vec<(usize, egui::TextureHandle)>,
     backdrop_state: Option<(bool, bool)>,
     settings_ui: SettingsUi,
     /// Cursor positions for remote files reopened from the last session.
@@ -199,7 +199,7 @@ impl NebulaApp {
             focus_editor: true,
             last_title: String::new(),
             icon_texture: None,
-            wordmark_tex: None,
+            wordmark_tex: Vec::new(),
             backdrop_state: None,
             settings_ui: SettingsUi::default(),
             pending_cursors: HashMap::new(),
@@ -1864,15 +1864,9 @@ impl NebulaApp {
             Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
             Color32::WHITE,
         );
+        crate::ui::wordmark::paint(&painter, &mut self.wordmark_tex, left.center() + vec2(0.0, 44.0), left.left(), 30.0, theme.foreground);
         painter.text(
-            left.center() + vec2(0.0, 44.0),
-            Align2::CENTER_CENTER,
-            APP_NAME,
-            FontId::new(28.0, crate::theme::bold_family()),
-            theme.foreground,
-        );
-        painter.text(
-            left.center() + vec2(0.0, 74.0),
+            left.center() + vec2(0.0, 80.0),
             Align2::CENTER_CENTER,
             format!("Version {}", env!("CARGO_PKG_VERSION")),
             FontId::proportional(12.5),
@@ -2772,6 +2766,7 @@ impl eframe::App for NebulaApp {
             // Below the (translucent) title bar everything sits on the document color.
             ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, self.theme.background);
             if self.docs.is_empty() {
+                preview_rect = self.right_panel(ui);
                 self.terminal_panel(ui);
                 self.welcome(ui);
                 return;

@@ -105,15 +105,24 @@ fn rasterize(height: usize) -> (usize, Vec<u8>) {
 
 /// Draws the wordmark centered at `center`, `height` points tall, but not
 /// left of `min_left` (keeps it clear of the logo in narrow sidebars).
-pub fn paint(painter: &egui::Painter, cache: &mut Option<(usize, TextureHandle)>, center: Pos2, min_left: f32, height: f32, color: Color32) {
+/// `cache` keeps one texture per pixel height (title bar, welcome page).
+pub fn paint(painter: &egui::Painter, cache: &mut Vec<(usize, TextureHandle)>, center: Pos2, min_left: f32, height: f32, color: Color32) {
     let ppp = painter.ctx().pixels_per_point();
     let px = (height * ppp).round().max(4.0) as usize;
-    if cache.as_ref().is_none_or(|(h, _)| *h != px) {
-        let (w, mask) = rasterize(px);
-        let image = egui::ColorImage::from_rgba_unmultiplied([w, px], &mask.iter().flat_map(|a| [255, 255, 255, *a]).collect::<Vec<_>>());
-        *cache = Some((px, painter.ctx().load_texture("wordmark", image, egui::TextureOptions::LINEAR)));
-    }
-    let (_, tex) = cache.as_ref().unwrap();
+    let tex = match cache.iter().find(|(h, _)| *h == px) {
+        Some((_, tex)) => tex.clone(),
+        None => {
+            let (w, mask) = rasterize(px);
+            let image = egui::ColorImage::from_rgba_unmultiplied([w, px], &mask.iter().flat_map(|a| [255, 255, 255, *a]).collect::<Vec<_>>());
+            let tex = painter.ctx().load_texture("wordmark", image, egui::TextureOptions::LINEAR);
+            // Old sizes (after a change of display scale) are dropped.
+            if cache.len() >= 4 {
+                let _ = cache.remove(0);
+            }
+            cache.push((px, tex.clone()));
+            tex
+        }
+    };
     let size = vec2(tex.size()[0] as f32, tex.size()[1] as f32) / ppp;
     // Snap to whole pixels so the letters stay crisp.
     let mut min = center - size / 2.0;
