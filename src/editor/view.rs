@@ -14,6 +14,7 @@ use eframe::egui::{
 
 use super::commands as cmd;
 use super::complete;
+use super::tags;
 use super::folding::{self, Rows};
 use super::document::{Document, Selection};
 use crate::highlight::Span;
@@ -454,7 +455,11 @@ fn handle_keyboard(
     let tab = settings.tab_size;
     let events = ui.input(|i| i.events.clone());
     let mut copied = None;
+    // Renaming one tag of a pair renames its partner too.
+    let mut link = None;
     for event in events {
+        sync_tag_partner(doc, link.take());
+        link = tag_link(doc);
         // What the completion popup should do after this event.
         let mut refresh = false;
         match event {
@@ -516,7 +521,35 @@ fn handle_keyboard(
         }
         doc.view.completion = if refresh { complete::compute(doc) } else { None };
     }
+    sync_tag_partner(doc, link);
     copied
+}
+
+/// Tag pair at the cursor before an edit: (pair, cursor, version, length).
+type TagLink = ((Range<usize>, Range<usize>), usize, u64, usize);
+
+fn tag_link(doc: &Document) -> Option<TagLink> {
+    if !tags::supported(doc.language) || doc.selections.len() != 1 {
+        return None;
+    }
+    let sel = doc.primary_selection();
+    let head = sel.head;
+    // Only typing inside a name keeps the pair; a selection must lie within it.
+    let pair = tags::pair_at(doc, head)?;
+    let r = sel.range();
+    let inside = |n: &Range<usize>| n.start <= r.start && r.end <= n.end;
+    (inside(&pair.0) || inside(&pair.1)).then_some((pair, head, doc.version, doc.len_chars()))
+}
+
+fn sync_tag_partner(doc: &mut Document, link: Option<TagLink>) {
+    let Some((pair, head, version, len)) = link else { return };
+    if doc.version == version {
+        return;
+    }
+    let delta = doc.len_chars() as isize - len as isize;
+    if let Some(change) = tags::sync_partner(doc, &pair, head, delta) {
+        doc.apply_linked(change);
+    }
 }
 
 /// Keys that navigate the completion popup. Returns true if consumed.
@@ -760,6 +793,14 @@ fn paint(
     let painter = ui.painter_at(visible);
     let tab = settings.tab_size;
     let fold_ranges = folding::fold_ranges(doc, tab);
+    // Matching tag names at the cursor (cached per version and cursor).
+    let head = doc.primary_selection().head;
+    let tag_key = (doc.version, head);
+    if !tags::supported(doc.language) || doc.selections.len() != 1 {
+        doc.view.tag_pair = None;
+    } else if doc.view.tag_pair.as_ref().is_none_or(|(k, _)| *k != tag_key) {
+        doc.view.tag_pair = Some((tag_key, tags::pair_at(doc, head)));
+    }
     let doc: &Document = doc;
     let row_count = rows.count();
     let first_row = (((visible.top() - origin.y) / m.row_h).floor().max(0.0) as usize).min(row_count);
@@ -826,8 +867,15 @@ fn paint(
         paint_range(r.clone(), color, false);
     }
 
+    // Matching opening and closing tag.
+    if let Some((_, Some((open, close)))) = &doc.view.tag_pair {
+        paint_range(open.clone(), theme.bracket_match, false);
+        paint_range(close.clone(), theme.bracket_match, false);
+    }
+
     // Other occurrences of the word at the cursor (or of a selected word), in view.
-    if doc.selections.len() == 1 {
+    let in_tag = matches!(&doc.view.tag_pair, Some((_, Some(_))));
+    if doc.selections.len() == 1 && !in_tag {
         let word = if primary.is_empty() {
             cmd::word_at(doc, primary.head)
         } else {

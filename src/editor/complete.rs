@@ -496,6 +496,12 @@ fn compute_builtin(doc: &mut Document) -> Option<Completion> {
     if prefix.is_empty() || prefix.starts_with('-') && prefix.len() < 2 {
         return None;
     }
+    // The whole word at the cursor (it is no suggestion for itself).
+    let mut end = pos;
+    while doc.char_at(end).is_some_and(|c| is_prefix_char(c) || c == '$') {
+        end += 1;
+    }
+    let current = doc.slice(start..end);
     let lower = prefix.to_lowercase();
     let before = doc.slice(start.saturating_sub(20_000)..start);
     let language = language_at(doc, &before);
@@ -564,6 +570,7 @@ fn compute_builtin(doc: &mut Document) -> Option<Completion> {
             if word.chars().count() > prefix.chars().count()
                 && word.len() >= 3
                 && word != prefix
+                && word != current
                 && word.to_lowercase().starts_with(&lower)
                 && !known.contains(&word.to_lowercase())
                 && seen.insert(word)

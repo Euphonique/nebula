@@ -261,6 +261,8 @@ pub struct ViewState {
     pub git_base: Option<Arc<String>>,
     /// Git marker per line (0 none, 1 added, 2 modified, 3 lines deleted above) for a document version.
     pub git_marks: Option<(u64, Arc<Vec<u8>>)>,
+    /// Matching tag names around the cursor for (version, cursor).
+    pub tag_pair: Option<((u64, usize), Option<(Range<usize>, Range<usize>)>)>,
 }
 
 /// A problem shown in the editor (squiggle and gutter marker).
@@ -813,6 +815,19 @@ impl Document {
         self.apply(vec![Change::new(prefix..end, inserted)], Some(after), EditKind::Other);
         self.break_undo_group();
         self.view.scroll_to_cursor = false;
+    }
+
+    /// Applies a change that belongs to the previous edit (e.g. the partner
+    /// tag of a renamed tag), so one undo reverts both.
+    pub fn apply_linked(&mut self, change: Change) {
+        let before = self.undo.len();
+        self.apply(vec![change], None, EditKind::Other);
+        if self.undo.len() == before + 1 && before > 0 {
+            let tx = self.undo.pop().unwrap();
+            let prev = self.undo.last_mut().unwrap();
+            prev.changes.extend(tx.changes);
+            prev.after = tx.after;
+        }
     }
 
     /// Prevents the next edit from being merged into the previous undo step.
