@@ -11,7 +11,8 @@ use crate::editor::symbols::{self, Symbol};
 use crate::settings::RightTab;
 use crate::ui::icons;
 
-const HEADER_H: f32 = 30.0;
+/// Header with the tab buttons; same height as the sidebar's mode row.
+const HEADER_H: f32 = 40.0;
 
 #[derive(Default)]
 pub(super) struct RightPanelState {
@@ -40,7 +41,7 @@ impl NebulaApp {
             .resizable(false)
             .exact_size(width)
             .show_separator_line(false)
-            .frame(egui::Frame::new().fill(self.theme.background))
+            .frame(egui::Frame::new().fill(self.theme.sidebar_bg))
             .show(ui, |ui| self.right_panel_contents(ui));
         let r = resp.response.rect;
         let handle = Rect::from_min_max(pos2(r.left() - 3.0, r.top()), pos2(r.left() + 3.0, r.bottom()));
@@ -59,15 +60,14 @@ impl NebulaApp {
         let theme = self.theme.clone();
         let full = ui.available_rect_before_wrap();
         let header = Rect::from_min_size(full.min, vec2(full.width(), HEADER_H));
-        let body = Rect::from_min_max(pos2(full.left(), header.bottom() + 1.0), full.max);
-        ui.painter().rect_filled(header, 0.0, theme.jumpbar_bg);
-        ui.painter().line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, theme.separator));
-        let cy = header.center().y;
+        let body = Rect::from_min_max(pos2(full.left(), header.bottom()), full.max);
+        // The button row, with the same margins as in the sidebar.
+        let row = Rect::from_min_size(header.min + vec2(10.0, 10.0), vec2(header.width() - 20.0, 26.0));
 
         // Tabs on the left, as icons like the mode switcher of the sidebar.
         let mut tabs = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(Rect::from_min_max(pos2(header.left() + 8.0, header.top() + 2.0), pos2(header.right() - 40.0, header.bottom() - 2.0)))
+                .max_rect(row)
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         tabs.spacing_mut().item_spacing.x = 2.0;
@@ -85,20 +85,8 @@ impl NebulaApp {
         // Where the preview's address bar may start.
         let x = tabs.min_rect().right() + 4.0;
 
-        // Close button on the right.
-        let close = Rect::from_center_size(pos2(header.right() - 18.0, cy), vec2(26.0, 24.0));
-        let close_resp = ui.interact(close, egui::Id::unique("right-close"), Sense::click()).on_hover_text("Panel schließen");
-        if close_resp.hovered() {
-            ui.painter().rect_filled(close, 6.0, theme.hover);
-        }
-        icons::close(ui.painter(), close.center(), 8.0, if close_resp.hovered() { theme.foreground } else { theme.text_muted });
-        if close_resp.clicked() {
-            self.toggle_right_panel();
-            return None;
-        }
-
         match self.settings.right_tab {
-            RightTab::Preview => self.preview_pane(ui, header, body, header.right() - 46.0, x + 6.0),
+            RightTab::Preview => self.preview_pane(ui, row, body, row.right() - 13.0, x + 6.0),
             RightTab::Outline => {
                 self.outline(ui, body);
                 None
@@ -121,7 +109,7 @@ impl NebulaApp {
         let current = symbols::current(&list, cursor_line);
 
         let mut jump = None;
-        ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(8.0, 6.0))), |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(10.0, 4.0))), |ui| {
             ui.add(egui::TextEdit::singleline(&mut self.right_state.filter).hint_text("Symbole filtern…").desired_width(f32::INFINITY));
             ui.add_space(4.0);
             if list.is_empty() {

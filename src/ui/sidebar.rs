@@ -430,11 +430,11 @@ impl Sidebar {
         let full = ui.max_rect();
         self.git.poll(self.root.as_deref(), ui.ctx());
         let dragging = egui::DragAndDrop::has_payload_of_type::<DragItems>(ui.ctx());
-        // Mode switcher and actions, level with the jump bar of the editor.
+        // Mode switcher and actions, with the same margin above as at the sides.
         let (header, _) = ui.allocate_exact_size(vec2(ui.available_width(), HEADER_H), Sense::hover());
         let mut child = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(header.shrink2(vec2(10.0, 2.0)))
+                .max_rect(Rect::from_min_size(header.min + vec2(10.0, 10.0), vec2(header.width() - 20.0, 26.0)))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         {
@@ -1187,8 +1187,8 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-/// Height of the mode switcher row; matches the jump bar above the editor.
-const HEADER_H: f32 = 30.0;
+/// Height of the mode switcher row: 10 pt margin above the buttons, like at the sides.
+const HEADER_H: f32 = 40.0;
 const ROW_H: f32 = 24.0;
 const INDENT: f32 = 14.0;
 

@@ -408,12 +408,10 @@ impl NebulaApp {
         }
 
         if let Some(err) = &self.preview.error {
-            ui.painter().rect_filled(body, 0.0, theme.background);
             ui.painter().text(body.center(), Align2::CENTER_CENTER, err, FontId::proportional(12.5), theme.text_muted);
             return None;
         }
         if self.preview_state.page.is_none() {
-            ui.painter().rect_filled(body, 0.0, theme.background);
             ui.painter().text(
                 body.center(),
                 Align2::CENTER_CENTER,

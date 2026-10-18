@@ -2760,13 +2760,13 @@ impl eframe::App for NebulaApp {
             self.drag_out_of_window(&ctx);
         }
 
-        let mut preview_rect = None;
+        // Preview or outline on the right, below the title bar like the sidebar.
+        let preview_rect = self.right_panel(ui);
         egui::CentralPanel::no_frame().show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             // Below the (translucent) title bar everything sits on the document color.
             ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, self.theme.background);
             if self.docs.is_empty() {
-                preview_rect = self.right_panel(ui);
                 self.terminal_panel(ui);
                 self.welcome(ui);
                 return;
@@ -2776,8 +2776,6 @@ impl eframe::App for NebulaApp {
                 .show_separator_line(false)
                 .frame(egui::Frame::new().fill(self.theme.jumpbar_bg).inner_margin(egui::Margin::symmetric(12, 0)))
                 .show(ui, |ui| self.status_bar(ui));
-            // Preview or outline on the right, from the tabs down to the status bar.
-            preview_rect = self.right_panel(ui);
             self.terminal_panel(ui);
             self.jump_bar(ui);
             if self.find.visible {
