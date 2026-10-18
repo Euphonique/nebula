@@ -32,6 +32,7 @@ mod terminal;
 mod watch;
 mod backup;
 mod gitdiff;
+mod compare;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -140,6 +141,8 @@ pub struct NebulaApp {
     backups: backup::Backups,
     /// Committed versions of open files for the Git markers.
     git_bases: gitdiff::GitBases,
+    /// Differences shown in the conflict dialog (document id).
+    compare: Option<(u64, compare::Compare)>,
 }
 
 impl NebulaApp {
@@ -185,6 +188,7 @@ impl NebulaApp {
             disk: Default::default(),
             backups: Default::default(),
             git_bases: Default::default(),
+            compare: None,
             settings,
         };
         app.restore_session();
@@ -522,6 +526,9 @@ impl NebulaApp {
                         self.preview_read_done(ev.tag, &path, Some(data));
                         continue;
                     }
+                    if self.compare_read_done(ev.tag, Ok(&data)) {
+                        continue;
+                    }
                     if let Some((doc_id, encoding)) = self.pending_reloads.remove(&ev.tag) {
                         if let Some(i) = self.doc_index(doc_id) {
                             let mut doc = Document::from_bytes_as(self.docs[i].source.clone(), &data, encoding);
@@ -602,6 +609,9 @@ impl NebulaApp {
                     if self.preview_state.pending.contains_key(&ev.tag) {
                         let p = if let Request::Read(p) = &request { p.clone() } else { String::new() };
                         self.preview_read_done(ev.tag, &p, None);
+                        continue;
+                    }
+                    if self.compare_read_done(ev.tag, Err(message.clone())) {
                         continue;
                     }
                     match &request {
@@ -2358,8 +2368,10 @@ impl NebulaApp {
                 let local = index.is_some_and(|i| matches!(self.docs[i].source, DocSource::Local(_)));
                 let (place, theirs) = if local { ("auf der Festplatte", "Version von der Festplatte laden") } else { ("auf dem Server", "Server-Version laden") };
                 let mut choice = None;
+                let mut compare = false;
+                let comparing = self.compare.as_ref().is_some_and(|(id, _)| *id == doc_id);
                 modal(ctx, egui::Id::unique("conflict")).show(ctx, |ui| {
-                    ui.set_width(440.0);
+                    ui.set_width(if comparing { 760.0 } else { 440.0 });
                     ui.heading(format!("Datei {place} geändert"));
                     let text = if saving {
                         format!("„{name}“ wurde {place} verändert, seit du sie geöffnet hast. Beim Speichern würden diese Änderungen überschrieben.")
@@ -2382,10 +2394,18 @@ impl NebulaApp {
                         if saving && ui.button("Abbrechen").clicked() {
                             choice = Some(2);
                         }
+                        if !comparing && ui.button("Unterschiede anzeigen").clicked() {
+                            compare = true;
+                        }
                     });
+                    self.compare_view(ui, doc_id, place);
                 });
+                if compare {
+                    self.start_compare(doc_id);
+                }
                 if let Some(c) = choice {
                     keep = false;
+                    self.compare = None;
                     match c {
                         0 => {
                             if let Some(i) = self.doc_index(doc_id) {
