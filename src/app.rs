@@ -1821,7 +1821,7 @@ impl NebulaApp {
         let icon = self
             .icon_texture
             .get_or_insert_with(|| {
-                let size = 160;
+                let size = 320;
                 let image = egui::ColorImage::from_rgba_unmultiplied(
                     [size, size],
                     &crate::icon::render_icon(size as u32),
@@ -1841,7 +1841,7 @@ impl NebulaApp {
         let left = Rect::from_min_size(card.min, vec2(card.width() * 0.42, card.height()));
         painter.image(
             icon.id(),
-            Rect::from_center_size(left.center() - vec2(0.0, 40.0), vec2(112.0, 112.0)),
+            Rect::from_center_size(left.center() - vec2(0.0, 40.0), vec2(150.0, 150.0)),
             Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
             Color32::WHITE,
         );

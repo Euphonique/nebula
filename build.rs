@@ -2,6 +2,7 @@ include!("src/icon.rs");
 
 fn main() {
     println!("cargo:rerun-if-changed=src/icon.rs");
+    println!("cargo:rerun-if-changed=assets/nebula_logo.png");
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let ico = out.join("nebula.ico");
     std::fs::write(&ico, encode_ico(&[16, 24, 32, 48, 64, 256])).unwrap();

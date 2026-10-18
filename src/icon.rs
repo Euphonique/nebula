@@ -1,72 +1,95 @@
-// App icon rasterizer. Shared with build.rs via `include!`, so it must not
-// depend on any crate.
+// App icon from `assets/nebula_logo.png`. Shared with build.rs via
+// `include!`, so it may only use crates that are build-dependencies too.
 
-/// Renders the app icon as straight (non-premultiplied) RGBA.
-pub fn render_icon(size: u32) -> Vec<u8> {
-    let s = size as f32;
-    let mut out = vec![0u8; (size * size * 4) as usize];
-    let smooth = |edge0: f32, edge1: f32, x: f32| {
-        let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-        t * t * (3.0 - 2.0 * t)
+const LOGO: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/nebula_logo.png"));
+
+/// The logo as straight RGBA: (pixels, width, height).
+fn decode_logo() -> (Vec<u8>, usize, usize) {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(LOGO));
+    decoder.set_transformations(png::Transformations::normalize_to_color8() | png::Transformations::ALPHA);
+    let mut reader = decoder.read_info().expect("logo png");
+    let mut buf = vec![0; reader.output_buffer_size().expect("logo size")];
+    let info = reader.next_frame(&mut buf).expect("logo frame");
+    let (w, h) = (info.width as usize, info.height as usize);
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => buf[..w * h * 4].to_vec(),
+        png::ColorType::GrayscaleAlpha => buf[..w * h * 2].chunks(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
+        _ => panic!("logo must have an alpha channel"),
     };
-    let aa = 1.2 / s; // ~one pixel in normalized units
+    (rgba, w, h)
+}
+
+/// Smallest square around the visible pixels, so small icons use all their room.
+fn content_square(rgba: &[u8], w: usize, h: usize) -> (usize, usize, usize) {
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
+    for y in 0..h {
+        for x in 0..w {
+            if rgba[(y * w + x) * 4 + 3] > 8 {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x);
+                y1 = y1.max(y);
+            }
+        }
+    }
+    if x0 > x1 {
+        return (0, 0, w.min(h));
+    }
+    // A little air around the edges.
+    let side = ((x1 - x0).max(y1 - y0) + 1) * 102 / 100;
+    let side = side.min(w).min(h);
+    let cx = (x0 + x1) / 2;
+    let cy = (y0 + y1) / 2;
+    let left = cx.saturating_sub(side / 2).min(w - side);
+    let top = cy.saturating_sub(side / 2).min(h - side);
+    (left, top, side)
+}
+
+/// Renders the app icon at `size` x `size` as straight (non-premultiplied) RGBA.
+pub fn render_icon(size: u32) -> Vec<u8> {
+    // Decoded once: the window icon, the welcome page and the .ico all need it.
+    static LOGO_RGBA: std::sync::OnceLock<(Vec<u8>, usize, usize, (usize, usize, usize))> = std::sync::OnceLock::new();
+    let (src, w, h, (left, top, side)) = LOGO_RGBA.get_or_init(|| {
+        let (rgba, w, h) = decode_logo();
+        let square = content_square(&rgba, w, h);
+        (rgba, w, h, square)
+    });
+    let (src, w, h, left, top, side) = (src.as_slice(), *w, *h, *left, *top, *side);
+    let size = size as usize;
+    let mut out = vec![0u8; size * size * 4];
+    let scale = side as f32 / size as f32;
     for y in 0..size {
         for x in 0..size {
-            // Normalized coordinates in [-1, 1].
-            let u = (x as f32 + 0.5) / s * 2.0 - 1.0;
-            let v = (y as f32 + 0.5) / s * 2.0 - 1.0;
-
-            // Rounded square (squircle-ish) mask.
-            let half = 0.9;
-            let r = 0.42;
-            let qx = (u.abs() - (half - r)).max(0.0);
-            let qy = (v.abs() - (half - r)).max(0.0);
-            let d = (qx * qx + qy * qy).sqrt() - r;
-            let mask = 1.0 - smooth(-aa, aa, d);
-            if mask <= 0.0 {
-                continue;
+            // Average the source pixels under this one (premultiplied, so
+            // transparent pixels do not darken the edges).
+            let sx0 = left as f32 + x as f32 * scale;
+            let sy0 = top as f32 + y as f32 * scale;
+            let (ix0, iy0) = (sx0.floor() as usize, sy0.floor() as usize);
+            let ix1 = ((sx0 + scale).ceil() as usize).min(w).max(ix0 + 1);
+            let iy1 = ((sy0 + scale).ceil() as usize).min(h).max(iy0 + 1);
+            let mut acc = [0.0f32; 4];
+            let mut weight = 0.0f32;
+            for sy in iy0..iy1 {
+                let wy = (sy as f32 + 1.0).min(sy0 + scale) - (sy as f32).max(sy0);
+                for sx in ix0..ix1 {
+                    let wx = (sx as f32 + 1.0).min(sx0 + scale) - (sx as f32).max(sx0);
+                    let wgt = wx.max(0.0) * wy.max(0.0);
+                    let i = (sy * w + sx) * 4;
+                    let a = src[i + 3] as f32 / 255.0;
+                    acc[0] += src[i] as f32 * a * wgt;
+                    acc[1] += src[i + 1] as f32 * a * wgt;
+                    acc[2] += src[i + 2] as f32 * a * wgt;
+                    acc[3] += a * wgt;
+                    weight += wgt;
+                }
             }
-
-            // Diagonal gradient: deep indigo to teal.
-            let t = ((u + v) * 0.5 + 1.0) / 2.0;
-            let top = [96.0, 70.0, 230.0];
-            let bottom = [20.0, 170.0, 200.0];
-            let mut c = [
-                top[0] + (bottom[0] - top[0]) * t,
-                top[1] + (bottom[1] - top[1]) * t,
-                top[2] + (bottom[2] - top[2]) * t,
-            ];
-
-            // Soft nebula glow around the center.
-            let dist = (u * u + v * v).sqrt();
-            let glow = (1.0 - dist / 0.75).clamp(0.0, 1.0).powf(2.0) * 0.45;
-            for ch in &mut c {
-                *ch += (255.0 - *ch) * glow;
+            let o = (y * size + x) * 4;
+            if acc[3] > 0.0 {
+                out[o] = (acc[0] / acc[3]).round().clamp(0.0, 255.0) as u8;
+                out[o + 1] = (acc[1] / acc[3]).round().clamp(0.0, 255.0) as u8;
+                out[o + 2] = (acc[2] / acc[3]).round().clamp(0.0, 255.0) as u8;
+                out[o + 3] = (acc[3] / weight.max(f32::EPSILON) * 255.0).round().clamp(0.0, 255.0) as u8;
             }
-
-            // Tilted orbit ring.
-            let (ca, sa) = (0.5f32.cos(), 0.5f32.sin());
-            let ou = u * ca + v * sa;
-            let ov = -u * sa + v * ca;
-            let ring = ((ou / 0.66).powi(2) + (ov / 0.26).powi(2)).sqrt();
-            let ring_w = 0.055;
-            let ring_a = 1.0 - smooth(ring_w - aa * 3.0, ring_w + aa * 3.0, (ring - 1.0).abs() * 0.3);
-            for ch in &mut c {
-                *ch += (255.0 - *ch) * ring_a * 0.85;
-            }
-
-            // Four-pointed star in the middle.
-            let star = (u.abs() * v.abs()).sqrt() * 2.2 + dist * 0.55;
-            let star_a = 1.0 - smooth(0.16 - aa * 4.0, 0.16 + aa * 4.0, star);
-            for ch in &mut c {
-                *ch += (255.0 - *ch) * star_a;
-            }
-
-            let i = ((y * size + x) * 4) as usize;
-            out[i] = c[0].clamp(0.0, 255.0) as u8;
-            out[i + 1] = c[1].clamp(0.0, 255.0) as u8;
-            out[i + 2] = c[2].clamp(0.0, 255.0) as u8;
-            out[i + 3] = (mask * 255.0) as u8;
         }
     }
     out

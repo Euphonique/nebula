@@ -74,4 +74,5 @@ tempfile = "3.27.0"
 unftp-sbe-fs = "0.4.0"
 
 [build-dependencies]
+png = "0.18"
 winresource = "0.1.34"
