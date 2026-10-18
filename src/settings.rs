@@ -36,6 +36,10 @@ pub struct EditorSettings {
     pub trim_trailing_whitespace: bool,
     /// End the file with a line break when saving.
     pub insert_final_newline: bool,
+    /// Editor font family ("" = Cascadia Mono / Consolas).
+    pub font_family: String,
+    /// Line height as a multiple of the font's height.
+    pub line_height: f32,
     pub autosave: AutoSave,
     /// Seconds without typing before [`AutoSave::Delay`] saves.
     pub autosave_delay: f32,
@@ -72,6 +76,8 @@ impl Default for EditorSettings {
             word_wrap: false,
             trim_trailing_whitespace: false,
             insert_final_newline: false,
+            font_family: String::new(),
+            line_height: 1.45,
             autosave: AutoSave::Off,
             autosave_delay: 2.0,
             autosave_remote: false,

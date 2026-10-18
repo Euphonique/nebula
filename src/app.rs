@@ -120,6 +120,8 @@ pub struct NebulaApp {
     show_sidebar: bool,
     /// Zen mode: only the editor, full screen.
     zen: bool,
+    /// Editor font currently loaded (reloaded when the setting changes).
+    applied_font: String,
     dialog: Option<Dialog>,
     toasts: Vec<Toast>,
     host_keys: VecDeque<(String, HostKeyPrompt)>,
@@ -184,6 +186,7 @@ impl NebulaApp {
         settings.apply_languages();
         let theme = Theme::for_settings(&settings);
         theme.apply(&cc.egui_ctx);
+        crate::fonts::apply(&cc.egui_ctx, &settings.editor.font_family);
         let root = settings.last_folder.clone().filter(|p| p.is_dir());
         let mut app = Self {
             sidebar: Sidebar::new(root),
@@ -197,6 +200,7 @@ impl NebulaApp {
             find: FindState::default(),
             show_sidebar: true,
             zen: false,
+            applied_font: settings.editor.font_family.clone(),
             dialog: None,
             toasts: Vec::new(),
             host_keys: VecDeque::new(),
@@ -2763,6 +2767,12 @@ impl eframe::App for NebulaApp {
             }
         }
         self.update_highlights();
+
+        // The editor font was changed in the settings.
+        if self.applied_font != self.settings.editor.font_family {
+            self.applied_font = self.settings.editor.font_family.clone();
+            crate::fonts::apply(&ctx, &self.applied_font);
+        }
 
         // Zen mode: Esc leaves it (unless the search bar or a dialog wants Esc).
         if self.zen && self.dialog.is_none() && !self.find.visible && ctx.input(|i| i.key_pressed(Key::Escape)) {

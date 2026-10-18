@@ -29,6 +29,9 @@ pub struct SettingsUi {
     ext_text: String,
     completion_text: String,
     syntax_filter: String,
+    /// Search text in the font picker.
+    font_filter: String,
+    font_picker_open: bool,
     /// `theme::themes_generation()` when `themes` was loaded.
     themes_gen: u64,
     /// Extension shown on the extensions page.
@@ -85,7 +88,7 @@ impl NebulaApp {
                     egui::ScrollArea::vertical().id_salt("settings-page").auto_shrink([false, false]).show(ui, |ui| {
                         ui.set_width(620.0);
                         match state.page {
-                            Page::Editor => self.editor_page(ui),
+                            Page::Editor => self.editor_page(ui, &mut state),
                             Page::Design => self.design_page(ui, &mut state),
                             Page::Languages => self.languages_page(ui, &mut state),
                             Page::Keys => self.keys_page(ui, &mut state.keys),
@@ -110,12 +113,50 @@ impl NebulaApp {
         open
     }
 
-    fn editor_page(&mut self, ui: &mut Ui) {
+    fn editor_page(&mut self, ui: &mut Ui, state: &mut SettingsUi) {
         let e = &mut self.settings.editor;
         section(ui, "Darstellung");
         egui::Grid::new("editor-grid").num_columns(2).spacing([16.0, 10.0]).show(ui, |ui| {
+            ui.label("Schriftart");
+            let current = if e.font_family.is_empty() { "Standard (Cascadia Mono)".to_string() } else { e.font_family.clone() };
+            // Opens in place: a popup outside the modal settings window gets no keyboard input.
+            ui.vertical(|ui| {
+                let open = &mut state.font_picker_open;
+                if ui.add(egui::Button::new(format!("{current}  {}", if *open { "▴" } else { "▾" })).min_size(egui::vec2(260.0, 0.0))).clicked() {
+                    *open = !*open;
+                    state.font_filter.clear();
+                }
+                if !*open {
+                    return;
+                }
+                let filter = ui.add(egui::TextEdit::singleline(&mut state.font_filter).hint_text("Schrift suchen…").desired_width(260.0));
+                if !filter.has_focus() && state.font_filter.is_empty() {
+                    filter.request_focus();
+                }
+                let q = state.font_filter.to_lowercase();
+                let mut chosen = None;
+                egui::ScrollArea::vertical().id_salt("font-list").max_height(220.0).show(ui, |ui| {
+                    ui.set_width(260.0);
+                    if q.is_empty() && ui.selectable_label(e.font_family.is_empty(), "Standard (Cascadia Mono)").clicked() {
+                        chosen = Some(String::new());
+                    }
+                    for family in crate::fonts::installed().keys().filter(|f| f.to_lowercase().contains(&q)) {
+                        if ui.selectable_label(&e.font_family == family, family).clicked() {
+                            chosen = Some(family.clone());
+                        }
+                    }
+                });
+                if let Some(family) = chosen {
+                    e.font_family = family;
+                    state.font_picker_open = false;
+                }
+            });
+            ui.end_row();
             ui.label("Schriftgröße");
             ui.add(egui::Slider::new(&mut e.font_size, 8.0..=32.0).step_by(0.5));
+            ui.end_row();
+            ui.label("Zeilenhöhe");
+            ui.add(egui::Slider::new(&mut e.line_height, 1.0..=2.5).step_by(0.05).fixed_decimals(2));
             ui.end_row();
             ui.label("");
             ui.checkbox(&mut e.highlight_current_line, "Aktuelle Zeile hervorheben");

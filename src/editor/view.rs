@@ -92,7 +92,7 @@ impl EditorView<'_> {
         let font = FontId::monospace(settings.font_size);
         let (glyph_h, char_w) =
             ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, 'M')));
-        let row_h = (glyph_h * 1.45).round();
+        let row_h = (glyph_h * settings.line_height.clamp(1.0, 2.5)).round();
         let digits = doc.len_lines().to_string().len().max(3) as f32;
         let m = Metrics {
             row_h,

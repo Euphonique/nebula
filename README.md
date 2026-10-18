@@ -48,6 +48,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Externe Änderungen: Wird eine geöffnete Datei von einem anderen Programm geändert (z. B. Git), lädt Nebula sie neu (rückgängig machbar); bei eigenen ungespeicherten Änderungen wird nachgefragt, mit Unterschiede-Ansicht. Gelöschte Dateien werden gemeldet, die Seitenleiste aktualisiert sich selbst.
 - Geteilte Ansicht (Knopf in der Titelleiste, Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
 - Zen-Modus (Strg+Alt+Enter oder F11, Esc beendet): nur der Editor, Vollbild, mittige Textspalte
+- Editorschrift frei wählbar (alle installierten Schriften, mit Suche) und Zeilenhöhe einstellbar (Einstellungen → Editor)
 - Gehe zu Symbol (Strg+R) als Schnellsuche und Navigationsverlauf: Alt+←/→ springt zu früheren Cursorpositionen, auch über Dateien hinweg
 - Passendes HTML-Tag wird hervorgehoben, beim Umbenennen ändert sich das schließende Tag mit; gleiche Wörter wie das unter dem Cursor werden dezent markiert
 - Gliederung im rechten Panel: Funktionen, Klassen, CSS-Regeln, Überschriften und Elemente mit ID der aktuellen Datei, filterbar; ein Klick springt hin, das Symbol am Cursor ist markiert
