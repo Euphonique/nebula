@@ -290,8 +290,51 @@ impl EditorView<'_> {
                     show_completion(ui, doc, theme, anchor, id);
                 }
             });
-        let _ = scroll;
+        overview_ruler(ui, doc, theme, matches, scroll.inner_rect, tab, wrap);
         out
+    }
+}
+
+/// Marks along the right edge for the whole document: find matches,
+/// problems, Git changes, bookmarks and cursors.
+fn overview_ruler(ui: &Ui, doc: &mut Document, theme: &Theme, matches: &[Range<usize>], area: Rect, tab: usize, wrap: Option<usize>) {
+    let rows = folding::rows(doc, tab, wrap);
+    let total = rows.count().max(1) as f32;
+    // Only worth it when the document is longer than the view.
+    let painter = ui.painter_at(area);
+    let x1 = area.right() - 1.0;
+    let mut used = std::collections::HashSet::new();
+    let mut mark = |line: usize, x0: f32, color: Color32, h: f32| {
+        let y = area.top() + rows.row_of_line(line) as f32 / total * area.height();
+        let key = (x0 as i32, y as i32, color.to_array());
+        if used.insert(key) {
+            painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + h)), 1.0, color);
+        }
+    };
+    let w = area.right();
+    if let Some((_, marks)) = &doc.view.git_marks {
+        let marks = marks.clone();
+        for (line, &m) in marks.iter().enumerate() {
+            let color = match m {
+                1 => theme.success,
+                2 => theme.modified,
+                3 => theme.danger,
+                _ => continue,
+            };
+            mark(line, w - 12.0, color.gamma_multiply(0.8), 3.0);
+        }
+    }
+    for b in doc.view.bookmarks.clone() {
+        mark(b, w - 12.0, theme.accent, 3.0);
+    }
+    for m in matches.iter().take(20_000) {
+        mark(doc.char_to_line(m.start), w - 8.0, theme.find_match.gamma_multiply(2.5), 2.0);
+    }
+    for d in &doc.view.diagnostics.clone() {
+        mark(doc.char_to_line(d.range.start), w - 5.0, severity_color(theme, d.severity), 3.0);
+    }
+    for s in doc.selections.clone() {
+        mark(doc.char_to_line(s.head), w - 12.0, theme.foreground.gamma_multiply(0.7), 2.0);
     }
 }
 
