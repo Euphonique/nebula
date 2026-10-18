@@ -62,6 +62,7 @@ pub enum Command {
     ToggleTerminal,
     /// SSH terminal for the server at this index.
     Terminal(usize),
+    SwitchProject(usize),
 }
 
 impl Command {
@@ -165,6 +166,10 @@ impl NebulaApp {
         }
         for (n, s) in self.sites.sites.iter().enumerate() {
             all.push((Command::Terminal(n), format!("Terminal: SSH-Terminal für {}", s.display_name()), ""));
+        }
+        for (n, p) in self.settings.recent_folders.iter().enumerate().skip(1) {
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            all.push((Command::SwitchProject(n), format!("Projekt wechseln: {name}  ({})", p.display()), ""));
         }
         let mut items: Vec<(Command, String, &'static str, i32)> = all
             .into_iter()
@@ -290,6 +295,11 @@ impl NebulaApp {
             Command::Terminal(n) => {
                 if let Some(id) = self.sites.sites.get(n).map(|s| s.id.clone()) {
                     self.open_terminal(ctx, &id);
+                }
+            }
+            Command::SwitchProject(n) => {
+                if let Some(p) = self.settings.recent_folders.get(n).cloned() {
+                    self.handle_sidebar_action(ctx, crate::ui::sidebar::SidebarAction::SwitchFolder(p));
                 }
             }
             Command::Print => self.print_active(ctx),

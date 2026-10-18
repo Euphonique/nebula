@@ -3,7 +3,9 @@
 use super::NebulaApp;
 use crate::editor::DocSource;
 use crate::editor::document::Selection;
-use crate::settings::SessionEntry;
+use std::path::PathBuf;
+
+use crate::settings::{ProjectTabs, SessionEntry};
 
 impl NebulaApp {
     pub(super) fn store_session(&mut self) {
@@ -72,5 +74,63 @@ impl NebulaApp {
             doc.set_selection(Selection::cursor(pos));
             doc.view.center_line = Some(doc.char_to_line(pos));
         }
+    }
+
+    /// Opens a project folder. Switching projects closes the unchanged files
+    /// of the previous one and reopens the files last open in the new one.
+    pub(super) fn open_folder(&mut self, path: PathBuf) {
+        let path = crate::ui::sidebar::normalize_path(&path);
+        if self.sidebar.root.as_ref() == Some(&path) {
+            return;
+        }
+        if let Some(old) = self.sidebar.root.clone() {
+            let in_old = |d: &crate::editor::Document| matches!(&d.source, DocSource::Local(p) if p.starts_with(&old));
+            let mut tabs = ProjectTabs::default();
+            for (i, d) in self.docs.iter().enumerate().filter(|(_, d)| in_old(d)) {
+                if self.active == Some(i) {
+                    tabs.active = Some(tabs.entries.len());
+                }
+                let DocSource::Local(p) = &d.source else { continue };
+                tabs.entries.push(SessionEntry { local: Some(p.clone()), cursor: d.primary_selection().head, ..Default::default() });
+            }
+            self.settings.project_tabs.insert(old.to_string_lossy().into_owned(), tabs);
+            let active_id = self.active.map(|i| self.docs[i].id);
+            self.docs.retain(|d| !in_old(d) || d.is_dirty());
+            self.active = active_id.and_then(|id| self.doc_index(id)).or((!self.docs.is_empty()).then_some(0));
+        }
+        self.settings.last_folder = Some(path.clone());
+        self.remember_folder(&path);
+        self.sidebar.set_root(path.clone());
+        if let Some(tabs) = self.settings.project_tabs.get(&*path.to_string_lossy()).cloned() {
+            let mut active_id = None;
+            for (n, e) in tabs.entries.iter().enumerate() {
+                let Some(p) = e.local.as_ref().filter(|p| p.is_file()) else { continue };
+                self.open_local(p);
+                if let Some(i) = self.active {
+                    let doc = &mut self.docs[i];
+                    let pos = e.cursor.min(doc.len_chars());
+                    doc.set_selection(Selection::cursor(pos));
+                    doc.view.center_line = Some(doc.char_to_line(pos));
+                    if tabs.active == Some(n) {
+                        active_id = Some(doc.id);
+                    }
+                }
+            }
+            if let Some(i) = active_id.and_then(|id| self.doc_index(id)) {
+                self.activate(i);
+            }
+        }
+        let _ = self.settings.save();
+    }
+
+    /// Puts a folder at the top of the recent projects.
+    pub(super) fn remember_folder(&mut self, path: &std::path::Path) {
+        let folders = &mut self.settings.recent_folders;
+        folders.retain(|p| p != path);
+        folders.insert(0, path.to_path_buf());
+        folders.truncate(12);
+        let keep: Vec<String> = folders.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        self.settings.project_tabs.retain(|k, _| keep.contains(k));
+        self.sidebar.recent_folders = self.settings.recent_folders.clone();
     }
 }

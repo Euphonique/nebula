@@ -184,6 +184,9 @@ impl NebulaApp {
             settings,
         };
         app.restore_session();
+        if let Some(root) = app.sidebar.root.clone() {
+            app.remember_folder(&root);
+        }
         app.restore_backups();
         for path in open_paths {
             if path.is_dir() {
@@ -306,12 +309,6 @@ impl NebulaApp {
         self.ensure_tree(&site);
         let tag = self.remote.send(&site, Request::Read(path.to_string()));
         self.pending_opens.insert(tag, (site_id.to_string(), path.to_string()));
-    }
-
-    fn open_folder(&mut self, path: PathBuf) {
-        self.settings.last_folder = Some(path.clone());
-        self.sidebar.set_root(path);
-        let _ = self.settings.save();
     }
 
     fn pick_and_open_file(&mut self) {
@@ -718,6 +715,15 @@ impl NebulaApp {
         match action {
             SidebarAction::OpenLocal(p) => self.open_local(&p),
             SidebarAction::OpenFolder => self.pick_and_open_folder(),
+            SidebarAction::SwitchFolder(path) => {
+                if path.is_dir() {
+                    self.open_folder(path);
+                } else {
+                    self.settings.recent_folders.retain(|p| p != &path);
+                    self.sidebar.recent_folders = self.settings.recent_folders.clone();
+                    self.error(format!("{} existiert nicht mehr.", path.display()));
+                }
+            }
             SidebarAction::OpenRemote { site_id, path } => self.open_remote(&site_id, &path),
             SidebarAction::Connect(site_id) => {
                 if let Some(site) = self.sites.get(&site_id).cloned() {
@@ -1098,6 +1104,17 @@ impl NebulaApp {
                     ui.close();
                     self.open_quick_open();
                 }
+                let folders = self.settings.recent_folders.clone();
+                ui.add_enabled_ui(!folders.is_empty(), |ui| {
+                    ui.menu_button("Zuletzt geöffnete Projekte", |ui| {
+                        for p in folders {
+                            if ui.button(p.display().to_string()).clicked() {
+                                ui.close();
+                                self.handle_sidebar_action(ui.ctx(), SidebarAction::SwitchFolder(p));
+                            }
+                        }
+                    });
+                });
                 let recent = self.settings.recent_files.clone();
                 ui.add_enabled_ui(!recent.is_empty(), |ui| {
                     ui.menu_button("Zuletzt geöffnet", |ui| {
@@ -1972,6 +1989,22 @@ impl NebulaApp {
                     if let Some(site) = self.sites.get(&id).cloned() {
                         self.ensure_tree(&site);
                     }
+                }
+            }
+        }
+        let current = self.sidebar.root.clone();
+        let folders: Vec<PathBuf> = self.settings.recent_folders.iter().filter(|p| Some(*p) != current.as_ref()).take(5).cloned().collect();
+        if !folders.is_empty() {
+            heading(&mut col, "Projekte");
+            for p in folders {
+                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string());
+                let dir = p.parent().and_then(|d| d.file_name()).map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+                if welcome_row(&mut col, &theme, |painter, c| icons::folder(painter, c, theme.text_muted, false), &name, &dir)
+                    .on_hover_text(p.display().to_string())
+                    .clicked()
+                {
+                    let ctx = col.ctx().clone();
+                    self.handle_sidebar_action(&ctx, SidebarAction::SwitchFolder(p));
                 }
             }
         }

@@ -69,6 +69,10 @@ pub struct AppSettings {
     pub sidebar_width: f32,
     pub last_folder: Option<PathBuf>,
     pub recent_files: Vec<PathBuf>,
+    /// Project folders, most recent first.
+    pub recent_folders: Vec<PathBuf>,
+    /// Files that were open in each project folder (path string) when switching away.
+    pub project_tabs: std::collections::BTreeMap<String, ProjectTabs>,
     /// Publishing targets per local project folder (path string).
     pub publish: std::collections::BTreeMap<String, PublishTarget>,
     /// Documents open when the app was last closed.
@@ -95,6 +99,13 @@ pub struct PublishTarget {
     pub upload_on_save: bool,
     /// Modification time (seconds) of each file when it was last uploaded, by relative path.
     pub uploaded: std::collections::BTreeMap<String, u64>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProjectTabs {
+    pub entries: Vec<SessionEntry>,
+    pub active: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -128,6 +139,8 @@ impl Default for AppSettings {
             sidebar_width: 260.0,
             last_folder: None,
             recent_files: Vec::new(),
+            recent_folders: Vec::new(),
+            project_tabs: Default::default(),
             languages: Default::default(),
             session: Vec::new(),
             publish: Default::default(),

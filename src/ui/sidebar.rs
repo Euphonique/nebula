@@ -104,6 +104,8 @@ pub enum NameAction {
 pub enum SidebarAction {
     OpenLocal(PathBuf),
     OpenFolder,
+    /// Switch to a recently used project folder.
+    SwitchFolder(PathBuf),
     OpenRemote { site_id: String, path: String },
     Connect(String),
     Disconnect(String),
@@ -200,6 +202,8 @@ pub struct Sidebar {
     spring: Option<(String, Instant)>,
     pub search: super::search::SearchPanel,
     pub git: super::git::GitStatus,
+    /// Recent project folders for the switcher in the header.
+    pub recent_folders: Vec<PathBuf>,
 }
 
 impl Sidebar {
@@ -224,6 +228,7 @@ impl Sidebar {
             spring: None,
             search: Default::default(),
             git: Default::default(),
+            recent_folders: Vec::new(),
         }
     }
 
@@ -732,7 +737,7 @@ impl Sidebar {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| root.display().to_string());
-        let resp = section_header(ui, rc.theme, &name);
+        let resp = section_header(ui, rc.theme, &format!("{name} ▾"));
         if let Some(branch) = &self.git.branch {
             ui.painter().text(
                 pos2(resp.rect.right() - 8.0, resp.rect.center().y),
@@ -749,6 +754,27 @@ impl Sidebar {
         }
         let clipboard_ready = self.clipboard.is_some();
         resp.context_menu(|ui| dir_menu(ui, &target, clipboard_ready, actions));
+        let resp = resp.on_hover_text("Projekt wechseln");
+        egui::Popup::menu(&resp).show(|ui| {
+            ui.set_min_width(240.0);
+            for p in self.recent_folders.iter().filter(|p| **p != root) {
+                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string());
+                let dir = p.parent().map(|d| d.display().to_string()).unwrap_or_default();
+                let chars: Vec<char> = dir.chars().collect();
+                let dir = if chars.len() > 40 { format!("…{}", chars[chars.len() - 39..].iter().collect::<String>()) } else { dir };
+                let mut job = egui::text::LayoutJob::simple_singleline(name, FontId::proportional(13.0), ui.visuals().text_color());
+                job.append(&format!("   {dir}"), 0.0, egui::TextFormat::simple(FontId::proportional(11.0), rc.theme.text_faint));
+                if ui.button(job).on_hover_text(p.display().to_string()).clicked() {
+                    actions.push(SidebarAction::SwitchFolder(p.clone()));
+                }
+            }
+            if self.recent_folders.len() > 1 {
+                ui.separator();
+            }
+            if ui.button("Ordner öffnen…").clicked() {
+                actions.push(SidebarAction::OpenFolder);
+            }
+        });
         let filter = self.filter.to_lowercase();
         self.show_local_dir(ui, rc, &root, 0, &filter, actions);
     }
