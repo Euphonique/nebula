@@ -121,6 +121,16 @@ impl NebulaApp {
 
     /// Shows or hides the panel; with no terminal yet, opens an SSH terminal
     /// for a server file, else a local shell.
+    /// Zen mode: only the editor, full screen; Esc or the shortcut leaves it.
+    pub(super) fn toggle_zen(&mut self, ctx: &egui::Context) {
+        self.zen = !self.zen;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.zen));
+        if self.zen {
+            self.info("Zen-Modus – Esc zum Beenden");
+        }
+        self.focus_editor = true;
+    }
+
     pub(super) fn toggle_terminal(&mut self, ctx: &egui::Context) {
         if !self.terminals.is_empty() {
             self.terminals.visible = !self.terminals.visible;

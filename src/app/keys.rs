@@ -47,6 +47,8 @@ pub(super) fn defaults(c: Command) -> Vec<KeyboardShortcut> {
         NextBookmark => vec![ks(CTRL | alt, Key::L), ks(none, Key::F2)],
         PrevBookmark => vec![ks(CTRL | alt, Key::J), ks(shift, Key::F2)],
         ToggleSidebar => vec![ks(CTRL, Key::B)],
+        // F11 is often a media key, so there is a Strg+Alt alternative.
+        ToggleZen => vec![ks(CTRL | alt, Key::Enter), ks(none, Key::F11)],
         FontBigger => vec![ks(CTRL, Key::Plus), ks(CTRL, Key::Equals)],
         FontSmaller => vec![ks(CTRL, Key::Minus)],
         FontReset => vec![ks(CTRL, Key::Num0)],

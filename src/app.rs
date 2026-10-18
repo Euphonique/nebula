@@ -46,6 +46,8 @@ use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
 
 const MAX_OPEN_BYTES: usize = 64 * 1024 * 1024;
+/// Width of the text column in zen mode.
+const ZEN_WIDTH: f32 = 960.0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum ToastKind {
@@ -116,6 +118,8 @@ pub struct NebulaApp {
     find: FindState,
     sidebar: Sidebar,
     show_sidebar: bool,
+    /// Zen mode: only the editor, full screen.
+    zen: bool,
     dialog: Option<Dialog>,
     toasts: Vec<Toast>,
     host_keys: VecDeque<(String, HostKeyPrompt)>,
@@ -192,6 +196,7 @@ impl NebulaApp {
             remote: RemoteManager::new(cc.egui_ctx.clone()),
             find: FindState::default(),
             show_sidebar: true,
+            zen: false,
             dialog: None,
             toasts: Vec::new(),
             host_keys: VecDeque::new(),
@@ -1272,6 +1277,10 @@ impl NebulaApp {
                 {
                     self.show_sidebar = !self.show_sidebar;
                     ui.close();
+                }
+                if ui.add(egui::Button::new("Zen-Modus").shortcut_text(self.shortcut_label(palette::Command::ToggleZen))).clicked() {
+                    ui.close();
+                    self.toggle_zen(&ui.ctx().clone());
                 }
                 if ui
                     .add(egui::Button::new("Terminal").shortcut_text(self.shortcut_label(palette::Command::ToggleTerminal)).selected(self.terminals.visible))
@@ -2755,14 +2764,21 @@ impl eframe::App for NebulaApp {
         }
         self.update_highlights();
 
-        // Title bar across the whole width, above the sidebar.
-        egui::Panel::top("titlebar")
-            .exact_size(chrome::TITLEBAR_H)
-            .show_separator_line(false)
-            .frame(egui::Frame::new())
-            .show(ui, |ui| self.title_bar(ui));
+        // Zen mode: Esc leaves it (unless the search bar or a dialog wants Esc).
+        if self.zen && self.dialog.is_none() && !self.find.visible && ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.toggle_zen(&ctx);
+        }
 
-        if self.show_sidebar {
+        // Title bar across the whole width, above the sidebar.
+        if !self.zen {
+            egui::Panel::top("titlebar")
+                .exact_size(chrome::TITLEBAR_H)
+                .show_separator_line(false)
+                .frame(egui::Frame::new())
+                .show(ui, |ui| self.title_bar(ui));
+        }
+
+        if self.show_sidebar && !self.zen {
             let mut actions = Vec::new();
             if self.dialog.is_none() {
                 self.sidebar.handle_keys(&ctx, &mut actions);
@@ -2794,7 +2810,7 @@ impl eframe::App for NebulaApp {
         }
 
         // Preview or outline on the right, below the title bar like the sidebar.
-        let preview_rect = self.right_panel(ui);
+        let preview_rect = if self.zen { None } else { self.right_panel(ui) };
         egui::CentralPanel::no_frame().show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             // Below the (translucent) title bar everything sits on the document color.
@@ -2804,20 +2820,27 @@ impl eframe::App for NebulaApp {
                 self.welcome(ui);
                 return;
             }
-            egui::Panel::bottom("status")
-                .exact_size(26.0)
-                .show_separator_line(false)
-                .frame(egui::Frame::new().fill(self.theme.jumpbar_bg).inner_margin(egui::Margin::symmetric(12, 0)))
-                .show(ui, |ui| self.status_bar(ui));
-            self.terminal_panel(ui);
-            self.jump_bar(ui);
+            if !self.zen {
+                egui::Panel::bottom("status")
+                    .exact_size(26.0)
+                    .show_separator_line(false)
+                    .frame(egui::Frame::new().fill(self.theme.jumpbar_bg).inner_margin(egui::Margin::symmetric(12, 0)))
+                    .show(ui, |ui| self.status_bar(ui));
+                self.terminal_panel(ui);
+                self.jump_bar(ui);
+            }
             if self.find.visible {
                 self.find_bar(ui);
             }
             if self.active.is_none() {
                 return;
             }
-            let editor_rect = ui.available_rect_before_wrap();
+            let mut editor_rect = ui.available_rect_before_wrap();
+            if self.zen {
+                // A calm, centered column with some air above.
+                let width = editor_rect.width().min(ZEN_WIDTH);
+                editor_rect = Rect::from_center_size(editor_rect.center(), vec2(width, editor_rect.height())).with_min_y(editor_rect.top() + 24.0);
+            }
 
             let matches = if self.find.visible { std::mem::take(&mut self.find.matches) } else { Vec::new() };
             let out = self.editor_area(ui, editor_rect, &matches);
