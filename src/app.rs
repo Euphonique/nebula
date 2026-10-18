@@ -127,6 +127,8 @@ pub struct NebulaApp {
     focus_editor: bool,
     last_title: String,
     icon_texture: Option<egui::TextureHandle>,
+    /// The "nebula" lettering, rasterized for the current pixel size.
+    wordmark_tex: Option<(usize, egui::TextureHandle)>,
     backdrop_state: Option<(bool, bool)>,
     settings_ui: SettingsUi,
     /// Cursor positions for remote files reopened from the last session.
@@ -197,6 +199,7 @@ impl NebulaApp {
             focus_editor: true,
             last_title: String::new(),
             icon_texture: None,
+            wordmark_tex: None,
             backdrop_state: None,
             settings_ui: SettingsUi::default(),
             pending_cursors: HashMap::new(),
@@ -1378,8 +1381,22 @@ impl NebulaApp {
         ui.painter().rect_filled(bar, 0.0, theme.titlebar_bg);
         chrome::window_drag(ui, &bar_resp);
 
+        // Above the sidebar (as wide as it, even when it is hidden): the logo
+        // running off the corner and the wordmark.
+        let brand = Rect::from_min_size(bar.min, vec2(self.settings.sidebar_width.clamp(160.0, 600.0), bar.height()));
+        let icon = self.app_icon(ui.ctx());
+        let painter = ui.painter().with_clip_rect(brand);
+        painter.image(
+            icon.id(),
+            Rect::from_center_size(brand.left_top() + vec2(18.0, 26.0), vec2(175.0, 175.0)),
+            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+            Color32::from_white_alpha(180),
+        );
+        // The visible part of the logo ends about 110 pt from the left.
+        crate::ui::wordmark::paint(&painter, &mut self.wordmark_tex, brand.center(), brand.left() + 116.0, 21.0, theme.text_muted);
+
         let content = Rect::from_min_max(
-            pos2(bar.left() + 8.0, bar.top() + 7.0),
+            pos2(brand.right() + 8.0, bar.top() + 7.0),
             pos2(bar.right() - chrome::caption_buttons_width() - 8.0, bar.bottom() - 7.0),
         );
         let mut row = ui.new_child(
@@ -1389,12 +1406,6 @@ impl NebulaApp {
         );
         row.spacing_mut().item_spacing.x = 4.0;
         let btn = vec2(30.0, 30.0);
-        if icons::icon_button(&mut row, &theme, btn, false, |p, c, col| icons::sidebar_toggle(p, c, col))
-            .on_hover_text("Seitenleiste ein/aus (Strg+B)")
-            .clicked()
-        {
-            self.show_sidebar = !self.show_sidebar;
-        }
         let menu = icons::icon_button(&mut row, &theme, btn, false, |p, c, col| icons::menu(p, c, col))
             .on_hover_text("Menü");
         egui::Popup::menu(&menu).show(|ui| {
@@ -1553,6 +1564,13 @@ impl NebulaApp {
             });
             if resp.inner.on_hover_text(tip).clicked() {
                 self.toggle_split();
+            }
+            let tip = format!("Seitenleiste ein/aus ({})", self.shortcut_label(palette::Command::ToggleSidebar));
+            if icons::icon_button(ui, &theme, btn, self.show_sidebar, |p, c, col| icons::sidebar_toggle(p, c, col))
+                .on_hover_text(tip)
+                .clicked()
+            {
+                self.show_sidebar = !self.show_sidebar;
             }
         });
         if let Some(i) = activate {
@@ -1814,21 +1832,22 @@ impl NebulaApp {
         }
     }
 
+    /// The logo as a texture (title bar corner and welcome page).
+    fn app_icon(&mut self, ctx: &egui::Context) -> egui::TextureHandle {
+        self.icon_texture
+            .get_or_insert_with(|| {
+                let size = 320;
+                let image = egui::ColorImage::from_rgba_unmultiplied([size, size], &crate::icon::render_icon(size as u32));
+                ctx.load_texture("app-icon", image, egui::TextureOptions::LINEAR)
+            })
+            .clone()
+    }
+
     fn welcome(&mut self, ui: &mut egui::Ui) {
         let theme = self.theme.clone();
         let area = ui.available_rect_before_wrap();
         ui.painter().rect_filled(area, 0.0, theme.background);
-        let icon = self
-            .icon_texture
-            .get_or_insert_with(|| {
-                let size = 320;
-                let image = egui::ColorImage::from_rgba_unmultiplied(
-                    [size, size],
-                    &crate::icon::render_icon(size as u32),
-                );
-                ui.ctx().load_texture("app-icon", image, egui::TextureOptions::LINEAR)
-            })
-            .clone();
+        let icon = self.app_icon(ui.ctx());
 
         let card_size = vec2(680.0_f32.min(area.width() - 40.0), 400.0_f32.min(area.height() - 40.0));
         let card = Rect::from_center_size(area.center(), card_size);
@@ -2709,6 +2728,13 @@ impl eframe::App for NebulaApp {
         }
         self.update_highlights();
 
+        // Title bar across the whole width, above the sidebar.
+        egui::Panel::top("titlebar")
+            .exact_size(chrome::TITLEBAR_H)
+            .show_separator_line(false)
+            .frame(egui::Frame::new())
+            .show(ui, |ui| self.title_bar(ui));
+
         if self.show_sidebar {
             let mut actions = Vec::new();
             if self.dialog.is_none() {
@@ -2743,7 +2769,6 @@ impl eframe::App for NebulaApp {
         let mut preview_rect = None;
         egui::CentralPanel::no_frame().show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            self.title_bar(ui);
             // Below the (translucent) title bar everything sits on the document color.
             ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, self.theme.background);
             if self.docs.is_empty() {

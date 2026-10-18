@@ -430,15 +430,11 @@ impl Sidebar {
         let full = ui.max_rect();
         self.git.poll(self.root.as_deref(), ui.ctx());
         let dragging = egui::DragAndDrop::has_payload_of_type::<DragItems>(ui.ctx());
-        // Header strip in the title bar row: drag area plus the mode switcher.
-        let (header, header_resp) = ui.allocate_exact_size(
-            vec2(ui.available_width(), super::chrome::TITLEBAR_H),
-            Sense::click_and_drag(),
-        );
-        super::chrome::window_drag(ui, &header_resp);
+        // Mode switcher and actions, level with the jump bar of the editor.
+        let (header, _) = ui.allocate_exact_size(vec2(ui.available_width(), HEADER_H), Sense::hover());
         let mut child = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(header.shrink2(vec2(10.0, 6.0)))
+                .max_rect(header.shrink2(vec2(10.0, 2.0)))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         {
@@ -1191,6 +1187,8 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
+/// Height of the mode switcher row; matches the jump bar above the editor.
+const HEADER_H: f32 = 30.0;
 const ROW_H: f32 = 24.0;
 const INDENT: f32 = 14.0;
 
