@@ -91,6 +91,7 @@ Alle Kürzel lassen sich unter Einstellungen → Tastenkürzel ändern. Standard
 | Im Projekt suchen | Strg+Umschalt+F |
 | Gehe zu Zeile / Gehe zu Symbol | Strg+G / Strg+R |
 | Navigation zurück / vor | Alt+← / Alt+→ (auch Maustasten 4/5) |
+| Lesezeichen setzen / nächstes / vorheriges | Strg+Alt+K / Strg+Alt+L / Strg+Alt+J (oder Strg+F2 / F2 / Umschalt+F2) |
 | Im Browser öffnen | F5 |
 | Rechtes Panel mit Live-Vorschau ein/aus | Strg+Umschalt+V |
 | Automatischer Zeilenumbruch | Alt+Z |

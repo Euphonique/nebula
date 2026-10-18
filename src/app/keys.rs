@@ -42,6 +42,10 @@ pub(super) fn defaults(c: Command) -> Vec<KeyboardShortcut> {
         GotoSymbol => vec![ks(CTRL, Key::R)],
         NavBack => vec![ks(alt, Key::ArrowLeft)],
         NavForward => vec![ks(alt, Key::ArrowRight)],
+        // F2 is often taken by brightness/media keys, so there is a Strg+Alt alternative.
+        ToggleBookmark => vec![ks(CTRL | alt, Key::K), ks(CTRL, Key::F2)],
+        NextBookmark => vec![ks(CTRL | alt, Key::L), ks(none, Key::F2)],
+        PrevBookmark => vec![ks(CTRL | alt, Key::J), ks(shift, Key::F2)],
         ToggleSidebar => vec![ks(CTRL, Key::B)],
         FontBigger => vec![ks(CTRL, Key::Plus), ks(CTRL, Key::Equals)],
         FontSmaller => vec![ks(CTRL, Key::Minus)],
@@ -66,6 +70,12 @@ pub(super) fn defaults(c: Command) -> Vec<KeyboardShortcut> {
 fn editor_command(c: Command) -> bool {
     use Command::*;
     matches!(c, ToggleComment | DuplicateLine | DeleteLine | SelectAllOccurrences | CursorsAtLineEnds)
+}
+
+/// Commands whose keys only apply while the editor has the keyboard.
+fn needs_editor(c: Command) -> bool {
+    use Command::*;
+    matches!(c, ToggleBookmark | NextBookmark | PrevBookmark)
 }
 
 /// Commands that can have shortcuts (no per-item commands like languages or servers).
@@ -201,6 +211,10 @@ impl NebulaApp {
                     continue;
                 }
                 table.extend(defaults(c).into_iter().map(|s| (s, None)));
+            }
+            // F2 also renames in the sidebar: bookmark keys need the editor.
+            if needs_editor(c) && (!editor_focused || self.sidebar.focused) {
+                continue;
             }
             table.extend(self.bindings(c).into_iter().map(|s| (s, Some(c))));
         }

@@ -240,6 +240,8 @@ pub struct ViewState {
     pub completion: Option<super::complete::Completion>,
     /// Start lines of folded blocks.
     pub folds: std::collections::BTreeSet<usize>,
+    /// Bookmarked lines (Strg+F2).
+    pub bookmarks: std::collections::BTreeSet<usize>,
     /// Bumped whenever `folds` changes.
     pub fold_gen: u64,
     pub fold_ranges: Option<(u64, Arc<Vec<(usize, usize)>>)>,
@@ -627,6 +629,19 @@ impl Document {
                         .map(|f| if f > line { (f as isize + delta).max(0) as usize } else { f })
                         .collect();
                     self.view.fold_gen += 1;
+                }
+            }
+            if !self.view.bookmarks.is_empty() {
+                // Bookmarks move with their lines; removed lines lose theirs.
+                let line = self.rope.char_to_line(start);
+                let removed_lines = removed.matches('\n').count();
+                let delta = change.text.matches('\n').count() as isize - removed_lines as isize;
+                if delta != 0 {
+                    self.view.bookmarks = std::mem::take(&mut self.view.bookmarks)
+                        .into_iter()
+                        .filter(|&b| b <= line || b > line + removed_lines)
+                        .map(|b| if b > line { (b as isize + delta).max(0) as usize } else { b })
+                        .collect();
                 }
             }
             self.rope.remove(start..end);

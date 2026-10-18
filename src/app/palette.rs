@@ -30,6 +30,10 @@ pub enum Command {
     GotoSymbol,
     NavBack,
     NavForward,
+    ToggleBookmark,
+    NextBookmark,
+    PrevBookmark,
+    ClearBookmarks,
     ToggleSidebar,
     Settings,
     Themes,
@@ -105,6 +109,10 @@ impl Command {
             (GotoSymbol, "Gehe zu Symbol…"),
             (NavBack, "Navigation: Zurück"),
             (NavForward, "Navigation: Vor"),
+            (ToggleBookmark, "Lesezeichen: Setzen/entfernen"),
+            (NextBookmark, "Lesezeichen: Nächstes"),
+            (PrevBookmark, "Lesezeichen: Vorheriges"),
+            (ClearBookmarks, "Lesezeichen: Alle entfernen"),
             (ToggleSidebar, "Ansicht: Seitenleiste ein/aus"),
             (ToggleTheme, "Ansicht: Hell/Dunkel umschalten"),
             (FontBigger, "Ansicht: Schrift größer"),
@@ -287,6 +295,14 @@ impl NebulaApp {
             Command::Replace => self.open_find(true),
             Command::FindInProject => self.open_project_search(),
             Command::GotoSymbol => self.open_goto_symbol(),
+            Command::ToggleBookmark => with_doc(self, cmd::toggle_bookmark),
+            Command::NextBookmark => with_doc(self, |d| {
+                cmd::goto_bookmark(d, true);
+            }),
+            Command::PrevBookmark => with_doc(self, |d| {
+                cmd::goto_bookmark(d, false);
+            }),
+            Command::ClearBookmarks => with_doc(self, |d| d.view.bookmarks.clear()),
             Command::NavBack => self.navigate(false),
             Command::NavForward => self.navigate(true),
             Command::FindNext => self.find_step(true),

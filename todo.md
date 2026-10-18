@@ -12,7 +12,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 - **B** Minimap bzw. Markierungen in der Scrollleiste (Suchtreffer, Fehler, geänderte Zeilen, Cursor).
 - **B** Textwerkzeuge: Zeilen sortieren, Duplikate entfernen, GROSS/klein/Titel, Zeilen verbinden, Auswahl umschließen (Klammern/Anführungszeichen/Tag um markierten Text), Zeilen umkehren.
-- **B** Lesezeichen (Strg+F2 setzen, F2 springen) mit Markierung in der Leiste.
 - **B** Klickbare Pfadleiste: Klick auf ein Element zeigt Geschwister zum Springen (wie Nova).
 - **B** Eigene Snippets pro Sprache in den Einstellungen anlegen/bearbeiten (mit Platzhaltern `$1`, `${2:name}`).
 - **C** Makros aufnehmen und abspielen.

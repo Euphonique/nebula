@@ -1138,7 +1138,12 @@ fn paint(
                 let r = s.range();
                 doc.char_to_line(r.start) <= line && line <= doc.char_to_line(r.end)
             });
-        let color = if active { theme.gutter_fg_active } else { theme.gutter_fg };
+        let bookmarked = doc.view.bookmarks.contains(&line);
+        if bookmarked {
+            let r = Rect::from_min_max(pos2(gutter.left() + 19.0, y + 3.0), pos2(gutter.right() - 8.0, y + m.row_h - 3.0));
+            painter.rect_filled(r, 4.0, theme.accent.gamma_multiply(0.45));
+        }
+        let color = if active || bookmarked { theme.gutter_fg_active } else { theme.gutter_fg };
         painter.text(
             pos2(gutter.right() - 14.0, y + num_offset),
             egui::Align2::RIGHT_TOP,

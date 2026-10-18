@@ -1271,3 +1271,27 @@ pub fn cursors_at_line_ends(doc: &mut Document) {
     doc.primary = doc.selections.len() - 1;
     doc.normalize_selections();
 }
+
+/// Sets or removes a bookmark on the cursor's line.
+pub fn toggle_bookmark(doc: &mut Document) {
+    let line = doc.char_to_line(doc.primary_selection().head);
+    if !doc.view.bookmarks.remove(&line) {
+        doc.view.bookmarks.insert(line);
+    }
+}
+
+/// Moves the cursor to the next (or previous) bookmark, wrapping around.
+pub fn goto_bookmark(doc: &mut Document, forward: bool) -> bool {
+    let line = doc.char_to_line(doc.primary_selection().head);
+    let marks = &doc.view.bookmarks;
+    let target = if forward {
+        marks.range(line + 1..).next().or_else(|| marks.iter().next())
+    } else {
+        marks.range(..line).next_back().or_else(|| marks.iter().next_back())
+    };
+    let Some(&target) = target else { return false };
+    let target = target.min(doc.len_lines().saturating_sub(1));
+    doc.set_selection(Selection::cursor(doc.line_to_char(target)));
+    doc.view.center_line = Some(target);
+    true
+}
