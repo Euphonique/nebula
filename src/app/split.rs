@@ -138,6 +138,7 @@ impl NebulaApp {
     fn show_pane(&mut self, ui: &mut egui::Ui, rect: Rect, index: usize, pane: u8, follow: bool, matches: &[std::ops::Range<usize>]) -> EditorOutput {
         let settings = self.settings.editor_for_doc(&self.docs[index]);
         let current_match = if matches.is_empty() { None } else { self.find.current };
+        self.docs[index].view.find_scope = if self.find.visible { self.find.scope_in(&self.docs[index]) } else { None };
         let doc = &mut self.docs[index];
         ui.scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", pane)), |ui| {
             EditorView { doc, settings: &settings, theme: &self.theme, matches, current_match, pane, follow }.show(ui)

@@ -21,7 +21,7 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 ## Suchen und Navigieren
 
 - **B** Projektsuche mit Ein-/Ausschlussmustern (`*.php`, `!vendor/**`) und Berücksichtigung der `.gitignore`.
-- **B** Suchen/Ersetzen nur in der Auswahl; Regex-Ersetzung mit Vorschau.
+- **C** Regex-Ersetzung mit Vorschau.
 - **B** „Schnell öffnen“ (Strg+P) auch für Dateien auf dem Server (aus bereits geladenen Ordnern) und mit `:Zeile`-Suffix.
 - **C** Gehe zu Definition ohne Language Server für einfache Fälle (CSS-Klassen, PHP-Funktionen im Projekt).
 

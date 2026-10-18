@@ -1002,6 +1002,10 @@ impl NebulaApp {
             let sel = doc.primary_selection();
             if !sel.is_empty() && doc.char_to_line(sel.anchor) == doc.char_to_line(sel.head) {
                 self.find.query = doc.slice(sel.range());
+                self.find.scope = None;
+            } else {
+                // A selection over several lines becomes the search range.
+                self.find.set_scope(doc, !sel.is_empty());
             }
         }
     }
@@ -1643,6 +1647,10 @@ impl NebulaApp {
                     ui.toggle_value(&mut f.case_sensitive, "Aa").on_hover_text("Groß-/Kleinschreibung");
                     ui.toggle_value(&mut f.whole_word, "W").on_hover_text("Ganzes Wort");
                     ui.toggle_value(&mut f.use_regex, ".*").on_hover_text("Regulärer Ausdruck");
+                    let mut in_sel = f.scope.as_ref().is_some_and(|(id, ..)| *id == doc.id);
+                    if ui.toggle_value(&mut in_sel, "⊏⊐").on_hover_text("Nur in der Auswahl suchen").changed() {
+                        f.set_scope(doc, in_sel);
+                    }
                     let label = match (&f.error, f.matches.len(), f.current) {
                         (Some(e), _, _) => RichText::new(e).color(Color32::from_rgb(230, 100, 100)),
                         (None, 0, _) if !f.query.is_empty() => RichText::new("Keine Treffer"),

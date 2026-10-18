@@ -874,6 +874,9 @@ fn paint(
     // Find matches.
     let first_char = doc.line_to_char(first);
     let last_char = doc.line_to_char(last);
+    if let Some(scope) = &doc.view.find_scope {
+        paint_range(scope.clone(), theme.selection_inactive.gamma_multiply(0.6), true);
+    }
     let start_idx = matches.partition_point(|r| r.end < first_char);
     for (i, r) in matches.iter().enumerate().skip(start_idx) {
         if r.start > last_char {

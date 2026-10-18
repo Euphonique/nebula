@@ -20,7 +20,9 @@ pub struct FindState {
     pub error: Option<String>,
     /// Request focus on the query field next frame.
     pub focus_query: bool,
-    key: Option<(u64, u64, String, bool, bool, bool)>,
+    /// Search only in this range of a document: (doc id, chars, length of the document when set).
+    pub scope: Option<(u64, Range<usize>, usize)>,
+    key: Option<(u64, u64, String, bool, bool, bool, Option<Range<usize>>)>,
 }
 
 impl FindState {
@@ -44,8 +46,30 @@ impl FindState {
             .map_err(|e| e.to_string().lines().last().unwrap_or("Ungültiger Ausdruck").to_string())
     }
 
+    /// Limits the search to the primary selection of `doc`, or lifts the limit.
+    pub fn set_scope(&mut self, doc: &Document, on: bool) {
+        let sel = doc.primary_selection().range();
+        self.scope = (on && !sel.is_empty()).then(|| (doc.id, sel, doc.len_chars()));
+    }
+
+    /// The search range in `doc` (follows edits by the change in length).
+    pub fn scope_in(&mut self, doc: &Document) -> Option<Range<usize>> {
+        let (id, range, len) = self.scope.as_mut()?;
+        if *id != doc.id {
+            return None;
+        }
+        let now = doc.len_chars();
+        if now != *len {
+            range.end = (range.end as isize + now as isize - *len as isize).max(range.start as isize) as usize;
+            *len = now;
+        }
+        range.end = range.end.min(now);
+        Some(range.clone())
+    }
+
     /// Recomputes matches when the query or document changed.
     pub fn update(&mut self, doc: &mut Document) {
+        let scope = self.scope_in(doc);
         let key = (
             doc.id,
             doc.version,
@@ -53,6 +77,7 @@ impl FindState {
             self.case_sensitive,
             self.whole_word,
             self.use_regex,
+            scope.clone(),
         );
         if self.key.as_ref() == Some(&key) {
             return;
@@ -80,6 +105,14 @@ impl FindState {
             let start = chars;
             chars += m.as_str().chars().count();
             last_byte = m.end();
+            if let Some(s) = &scope
+                && (start < s.start || chars > s.end)
+            {
+                if start > s.end {
+                    break;
+                }
+                continue;
+            }
             self.matches.push(start..chars);
             if self.matches.len() >= 100_000 {
                 break;
@@ -157,5 +190,27 @@ impl FindState {
             self.update(doc);
         }
         n
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::DocSource;
+
+    #[test]
+    fn replace_in_selection_only() {
+        let mut d = Document::new(DocSource::Untitled(1), "a a\na a\na a\n");
+        d.set_selection(Selection::new(4, 7)); // second line
+        let mut f = FindState { query: "a".into(), replacement: "bb".into(), ..Default::default() };
+        f.set_scope(&d, true);
+        assert_eq!(f.replace_all(&mut d), 2);
+        assert_eq!(d.rope.to_string(), "a a\nbb bb\na a\n");
+        // The range grew with the replacement; nothing outside matches.
+        f.update(&mut d);
+        assert!(f.matches.is_empty());
+        f.set_scope(&d, false);
+        f.update(&mut d);
+        assert_eq!(f.matches.len(), 4);
     }
 }

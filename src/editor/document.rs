@@ -240,6 +240,8 @@ pub struct ViewState {
     pub completion: Option<super::complete::Completion>,
     /// Start lines of folded blocks.
     pub folds: std::collections::BTreeSet<usize>,
+    /// Range the open find bar searches in (shown shaded).
+    pub find_scope: Option<Range<usize>>,
     /// Bookmarked lines (Strg+F2).
     pub bookmarks: std::collections::BTreeSet<usize>,
     /// Bumped whenever `folds` changes.
