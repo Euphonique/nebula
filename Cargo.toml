@@ -56,6 +56,7 @@ png = "0.18"
 vt100 = "0.17.0"
 notify = { version = "8.2.0", default-features = false }
 portable-pty = "0.9.0"
+ignore = "0.4.33"
 
 [profile.release]
 opt-level = 3

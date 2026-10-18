@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_channel::Receiver;
 use eframe::egui::{self, Align2, FontId, RichText, Sense, Ui, pos2, vec2};
+use ignore::WalkBuilder;
+use ignore::overrides::OverrideBuilder;
 use regex::{Regex, RegexBuilder};
 
 use super::icons;
@@ -13,7 +15,13 @@ use crate::theme::Theme;
 
 const MAX_MATCHES: usize = 5000;
 const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
-const SKIP_DIRS: &[&str] = &[".git", "node_modules", "vendor", ".svn", ".hg", "target", ".idea", ".vs", "dist", ".cache"];
+const VCS_DIRS: &[&str] = &[".git", ".svn", ".hg"];
+const SKIP_DIRS: &[&str] = &["node_modules", "vendor", "target", ".idea", ".vs", "dist", ".cache"];
+
+/// `*.php, !vendor/` → `["*.php", "!vendor/"]` (commas or spaces separate).
+fn split_patterns(s: &str) -> Vec<String> {
+    s.split([',', ';', ' ']).map(str::trim).filter(|p| !p.is_empty()).map(String::from).collect()
+}
 
 #[derive(Clone)]
 pub struct LineMatch {
@@ -44,6 +52,10 @@ pub struct SearchPanel {
     pub whole_word: bool,
     pub use_regex: bool,
     pub show_replace: bool,
+    /// File patterns, e.g. `*.php, !vendor/`.
+    pub files: String,
+    /// Also search files hidden by `.gitignore` and folders like `node_modules`.
+    pub include_ignored: bool,
     pub results: Vec<FileMatches>,
     pub collapsed: std::collections::HashSet<PathBuf>,
     pub error: Option<String>,
@@ -64,6 +76,36 @@ impl SearchPanel {
             .map_err(|e| e.to_string().lines().last().unwrap_or("Ungültiger Ausdruck").to_string())
     }
 
+    /// Files to search: `.gitignore` and the usual build/dependency folders
+    /// unless switched off, then the user's patterns (`*.php, !vendor/`).
+    fn walker(&self, root: &Path) -> Result<WalkBuilder, String> {
+        let mut overrides = OverrideBuilder::new(root);
+        for pat in split_patterns(&self.files) {
+            overrides.add(&pat).map_err(|e| format!("Muster „{pat}“: {e}"))?;
+        }
+        let overrides = overrides.build().map_err(|e| e.to_string())?;
+        let mut walk = WalkBuilder::new(root);
+        let skip_ignored = !self.include_ignored;
+        walk.hidden(false)
+            .git_ignore(skip_ignored)
+            .git_exclude(skip_ignored)
+            .git_global(skip_ignored)
+            .ignore(skip_ignored)
+            .parents(skip_ignored)
+            .require_git(false)
+            .overrides(overrides)
+            .sort_by_file_name(|a, b| a.cmp(b))
+            .filter_entry(move |e| {
+                let name = e.file_name();
+                // VCS internals always, build/dependency folders unless wanted.
+                if VCS_DIRS.iter().any(|s| name == *s) {
+                    return false;
+                }
+                !(skip_ignored && e.depth() > 0 && e.file_type().is_some_and(|t| t.is_dir()) && SKIP_DIRS.iter().any(|s| name == *s))
+            });
+        Ok(walk)
+    }
+
     pub fn start(&mut self, root: &Path, ctx: &egui::Context) {
         if let Some((_, cancel)) = self.running.take() {
             cancel.store(true, Ordering::Relaxed);
@@ -82,52 +124,47 @@ impl SearchPanel {
                 return;
             }
         };
+        let walk = match self.walker(root) {
+            Ok(w) => w,
+            Err(e) => {
+                self.error = Some(e);
+                return;
+            }
+        };
         let (tx, rx) = crossbeam_channel::unbounded();
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = cancel.clone();
-        let root = root.to_path_buf();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let mut stack = vec![root];
             let mut total = 0;
-            while let Some(dir) = stack.pop() {
-                let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-                let mut entries: Vec<_> = rd.flatten().collect();
-                entries.sort_by_key(|e| e.file_name());
-                for e in entries {
-                    if flag.load(Ordering::Relaxed) || total >= MAX_MATCHES {
+            for e in walk.build().flatten() {
+                if flag.load(Ordering::Relaxed) || total >= MAX_MATCHES {
+                    return;
+                }
+                if !e.file_type().is_some_and(|t| t.is_file()) {
+                    continue;
+                }
+                if e.metadata().map(|m| m.len() > MAX_FILE_BYTES).unwrap_or(true) {
+                    continue;
+                }
+                let Ok(bytes) = std::fs::read(e.path()) else { continue };
+                if bytes[..bytes.len().min(8192)].contains(&0) {
+                    continue;
+                }
+                let text = String::from_utf8_lossy(&bytes);
+                let mut lines = Vec::new();
+                for (n, line) in text.lines().enumerate() {
+                    let ranges: Vec<_> = re.find_iter(line).filter(|m| !m.is_empty()).map(|m| m.range()).collect();
+                    if !ranges.is_empty() {
+                        total += ranges.len();
+                        lines.push(LineMatch { line: n, text: line.chars().take(400).collect(), ranges });
+                    }
+                }
+                if !lines.is_empty() {
+                    if tx.send(FileMatches { path: e.path().to_path_buf(), lines }).is_err() {
                         return;
                     }
-                    let Ok(ft) = e.file_type() else { continue };
-                    let name = e.file_name();
-                    if ft.is_dir() {
-                        if !SKIP_DIRS.iter().any(|s| name == *s) {
-                            stack.push(e.path());
-                        }
-                        continue;
-                    }
-                    if e.metadata().map(|m| m.len() > MAX_FILE_BYTES).unwrap_or(true) {
-                        continue;
-                    }
-                    let Ok(bytes) = std::fs::read(e.path()) else { continue };
-                    if bytes[..bytes.len().min(8192)].contains(&0) {
-                        continue;
-                    }
-                    let text = String::from_utf8_lossy(&bytes);
-                    let mut lines = Vec::new();
-                    for (n, line) in text.lines().enumerate() {
-                        let ranges: Vec<_> = re.find_iter(line).filter(|m| !m.is_empty()).map(|m| m.range()).collect();
-                        if !ranges.is_empty() {
-                            total += ranges.len();
-                            lines.push(LineMatch { line: n, text: line.chars().take(400).collect(), ranges });
-                        }
-                    }
-                    if !lines.is_empty() {
-                        if tx.send(FileMatches { path: e.path(), lines }).is_err() {
-                            return;
-                        }
-                        ctx.request_repaint();
-                    }
+                    ctx.request_repaint();
                 }
             }
             ctx.request_repaint();
@@ -175,6 +212,17 @@ impl SearchPanel {
             restart |= ui.toggle_value(&mut self.use_regex, ".*").on_hover_text("Regulärer Ausdruck").changed();
             ui.toggle_value(&mut self.show_replace, "Ersetzen");
         });
+        let files = ui.add(
+            egui::TextEdit::singleline(&mut self.files)
+                .hint_text("Dateien, z. B. *.php, !vendor/")
+                .desired_width(f32::INFINITY),
+        );
+        let files = files.on_hover_text("Muster wie in .gitignore, durch Komma getrennt. Ohne ! = nur diese Dateien durchsuchen, mit ! = ausschließen.");
+        restart |= files.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        restart |= ui
+            .checkbox(&mut self.include_ignored, RichText::new("Ignorierte Dateien einbeziehen").small())
+            .on_hover_text("Auch Dateien aus .gitignore und Ordner wie node_modules, vendor, dist durchsuchen")
+            .changed();
         if self.show_replace {
             ui.add(egui::TextEdit::singleline(&mut self.replacement).hint_text("Ersetzen durch").desired_width(f32::INFINITY));
             let files: Vec<PathBuf> = self.results.iter().map(|f| f.path.clone()).collect();
@@ -279,4 +327,51 @@ impl SearchPanel {
 /// Trims leading whitespace of the first shown segment only.
 fn trim_if(s: &str, cond: bool) -> &str {
     if cond { s.trim_start() } else { s }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn files(panel: &SearchPanel, root: &Path) -> Vec<String> {
+        let mut v: Vec<String> = panel
+            .walker(root)
+            .unwrap()
+            .build()
+            .flatten()
+            .filter(|e| e.file_type().is_some_and(|t| t.is_file()))
+            .map(|e| e.path().strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"))
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn patterns_and_gitignore() {
+        let root = std::env::temp_dir().join(format!("nebula-search-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for f in ["a.php", "b.js", ".htaccess", "cache/x.php", "vendor/lib.php", "node_modules/m.js", ".git/config", ".gitignore"] {
+            let p = root.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "x").unwrap();
+        }
+        std::fs::write(root.join(".gitignore"), "cache/\n").unwrap();
+
+        let mut panel = SearchPanel::default();
+        assert_eq!(files(&panel, &root), [".gitignore", ".htaccess", "a.php", "b.js"]);
+
+        panel.files = "*.php".into();
+        assert_eq!(files(&panel, &root), ["a.php"]);
+
+        panel.include_ignored = true;
+        panel.files = "*.php, !vendor/".into();
+        assert_eq!(files(&panel, &root), ["a.php", "cache/x.php"]);
+
+        panel.files = "!*.js".into();
+        assert_eq!(files(&panel, &root), [".gitignore", ".htaccess", "a.php", "cache/x.php", "vendor/lib.php"]);
+
+        panel.files = "[".into();
+        assert!(panel.walker(&root).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

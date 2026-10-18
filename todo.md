@@ -19,7 +19,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Suchen und Navigieren
 
-- **B** Projektsuche mit Ein-/Ausschlussmustern (`*.php`, `!vendor/**`) und Berücksichtigung der `.gitignore`.
 - **C** Regex-Ersetzung mit Vorschau.
 - **B** „Schnell öffnen“ (Strg+P) auch für Dateien auf dem Server (aus bereits geladenen Ordnern) und mit `:Zeile`-Suffix.
 - **C** Gehe zu Definition ohne Language Server für einfache Fälle (CSS-Klassen, PHP-Funktionen im Projekt).
@@ -71,12 +70,11 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Nächste Schritte
 
-1. Rest Runde 1: Projektsuche mit Ein-/Ausschlussmustern und `.gitignore`.
-2. Runde 2 (Arbeitsfluss): automatisch speichern und lokaler Verlauf, Diff als Tab, Git-Aktionen, Übertragungsliste, gespeicherte Serverbefehle.
-3. Danach KI im rechten Panel (Agenten über ACP, eigener Chat).
+1. Runde 2 (Arbeitsfluss): automatisch speichern und lokaler Verlauf, Diff als Tab, Git-Aktionen, Übertragungsliste, gespeicherte Serverbefehle.
+2. Danach KI im rechten Panel (Agenten über ACP, eigener Chat).
 
 ## Erledigt
 
 Externe Änderungen erkennen, Wiederherstellung nach Absturz, geteilte Ansicht, Blockauswahl, Formatieren beim Speichern und `.editorconfig`, zuletzt geöffnete Projekte, Git-Markierungen, Unterschiede im Konfliktdialog, eigene Tastenkürzel.
 
-Danach: Knöpfe für geteilte Ansicht und rechtes Panel, rechtes Panel mit Vorschau und Gliederung, lokales Terminal (PowerShell, Git Bash, cmd), Wort unter dem Cursor hervorheben, passendes HTML-Tag hervorheben und mit umbenennen, Gehe zu Symbol (Strg+R), Navigationsverlauf (Alt+←/→), Lesezeichen, Textwerkzeuge, Suchen/Ersetzen in der Auswahl, Markierungen am rechten Rand, klickbare Pfadleiste (auch Netzlaufwerke werden jetzt korrekt geöffnet).
+Danach: Knöpfe für geteilte Ansicht und rechtes Panel, rechtes Panel mit Vorschau und Gliederung, lokales Terminal (PowerShell, Git Bash, cmd), Wort unter dem Cursor hervorheben, passendes HTML-Tag hervorheben und mit umbenennen, Gehe zu Symbol (Strg+R), Navigationsverlauf (Alt+←/→), Lesezeichen, Textwerkzeuge, Suchen/Ersetzen in der Auswahl, Markierungen am rechten Rand, klickbare Pfadleiste (auch Netzlaufwerke werden jetzt korrekt geöffnet), Projektsuche mit Dateimustern und `.gitignore`.

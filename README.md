@@ -33,7 +33,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - 26 Sprachen mit tree-sitter-Highlighting: HTML, CSS, SCSS, Less, JavaScript, TypeScript, TSX, PHP, JSON, Markdown, XML/SVG, Python, Ruby, Rust, Go, Java, C, C++, C#, Shell, SQL, Lua, YAML, TOML, INI/.htaccess und Diff. Eingebettete Sprachen werden mit gefärbt (CSS/JS in HTML, HTML in PHP, Code-Blöcke in Markdown).
 - Autovervollständigung: HTML-Tags und -Attribute, CSS-Eigenschaften und -Werte, Schlüsselwörter, Snippets (z. B. `html5`, `media`, `log`) und Wörter aus dem Dokument. Eigene Einträge pro Sprache.
 - Emmet mit Tab, z. B. `ul.nav>li.item$*3>a{Link $}`
-- Mehrere Cursor, Suchen und Ersetzen (auch per Regex, auf Wunsch nur in der Auswahl – bei mehrzeiliger Auswahl automatisch), Projektsuche mit Ersetzen
+- Mehrere Cursor, Suchen und Ersetzen (auch per Regex, auf Wunsch nur in der Auswahl – bei mehrzeiliger Auswahl automatisch), Projektsuche mit Ersetzen, Dateimustern (`*.php, !vendor/`) und Beachtung der `.gitignore`
 - Code-Faltung mit +/−-Knöpfen in der Zeilennummernleiste: nach Klammern und HTML-Tags (auch über PHP-Abschnitte hinweg), sonst nach Einrückung
 - Automatischer Zeilenumbruch (Ansicht, Alt+Z); Fortsetzungszeilen behalten die Einrückung und haben keine eigene Zeilennummer
 - Drucken mit Syntaxfarben, Zeilennummern und Seitenzahlen (Strg+Alt+P)
