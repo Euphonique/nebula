@@ -777,6 +777,13 @@ impl Document {
         let text = encoding.decode(bytes);
         self.encoding = encoding;
         self.line_ending = if text.contains("\r\n") { LineEnding::CrLf } else { LineEnding::Lf };
+        self.replace_text(&text);
+        self.mark_saved();
+    }
+
+    /// Replaces the content with `text` as one undoable step, touching only
+    /// the differing middle part so cursors, folds and scrolling stay in place.
+    pub fn replace_text(&mut self, text: &str) {
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
         let old: Vec<char> = self.rope.chars().collect();
         let new: Vec<char> = text.chars().collect();
@@ -799,7 +806,6 @@ impl Document {
         self.apply(vec![Change::new(prefix..end, inserted)], Some(after), EditKind::Other);
         self.break_undo_group();
         self.view.scroll_to_cursor = false;
-        self.mark_saved();
     }
 
     /// Prevents the next edit from being merged into the previous undo step.

@@ -30,6 +30,7 @@ mod settings_page;
 mod tabs;
 mod terminal;
 mod watch;
+mod backup;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -134,6 +135,8 @@ pub struct NebulaApp {
     terminals: terminal::Terminals,
     /// Changes to open files and the project folder made by other programs.
     disk: watch::DiskWatch,
+    /// Copies of unsaved contents for crash recovery.
+    backups: backup::Backups,
 }
 
 impl NebulaApp {
@@ -177,9 +180,11 @@ impl NebulaApp {
             printing: None,
             terminals: Default::default(),
             disk: Default::default(),
+            backups: Default::default(),
             settings,
         };
         app.restore_session();
+        app.restore_backups();
         for path in open_paths {
             if path.is_dir() {
                 app.open_folder(path);
@@ -523,6 +528,7 @@ impl NebulaApp {
                     self.add_doc(doc);
                     if let Some(i) = self.active {
                         self.apply_pending_cursor(i);
+                        self.apply_pending_backup(i);
                     }
                 }
                 Reply::Conflict { path } => {
@@ -591,8 +597,10 @@ impl NebulaApp {
                                 tree.dirs.insert(path.clone(), Vec::new());
                             }
                         }
-                        Request::Read(_) => {
-                            self.pending_opens.remove(&ev.tag);
+                        Request::Read(path) => {
+                            if let Some((site_id, _)) = self.pending_opens.remove(&ev.tag) {
+                                self.backup_open_failed(&site_id, Some(path));
+                            }
                             self.pending_reloads.remove(&ev.tag);
                         }
                         Request::Upload { .. } | Request::Download { .. } | Request::Copy { .. } => {
@@ -682,6 +690,7 @@ impl NebulaApp {
 
     fn fail_pending_for_site(&mut self, site_id: &str) {
         self.pending_opens.retain(|_, (s, _)| s != site_id);
+        self.backup_open_failed(site_id, None);
         let ids: Vec<u64> = self.pending_saves.values().map(|s| s.doc_id).collect();
         for id in ids {
             if let Some(i) = self.doc_index(id)
@@ -2686,6 +2695,7 @@ impl eframe::App for NebulaApp {
         }
         self.process_remote_events();
         self.poll_disk(&ctx);
+        self.backup_unsaved(&ctx);
         self.poll_terminals();
         self.poll_printing();
         self.serve_preview();
@@ -2844,6 +2854,7 @@ impl eframe::App for NebulaApp {
     }
 
     fn on_exit(&mut self) {
+        self.discard_backups();
         self.store_session();
         let _ = self.settings.save();
     }
