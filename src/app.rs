@@ -1721,9 +1721,15 @@ impl NebulaApp {
             let doc = &mut self.docs[i];
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(4.0);
-                let lang = clickable(ui, doc.language.name().to_string()).on_hover_text("Sprache");
-                icons::language(ui.painter(), pos2(lang.rect.left() - 13.0, lang.rect.center().y), doc.language);
-                ui.add_space(16.0);
+                // Icon and name form one click target.
+                let galley = ui.painter().layout_no_wrap(doc.language.name().to_string(), FontId::proportional(11.5), theme.text_muted);
+                let (rect, lang) = ui.allocate_exact_size(vec2(galley.size().x + 20.0, galley.size().y), Sense::click());
+                if lang.hovered() {
+                    ui.painter().rect_filled(rect.expand2(vec2(5.0, 2.0)), 4.0, theme.hover);
+                }
+                icons::language(ui.painter(), pos2(rect.left() + 6.0, rect.center().y), doc.language);
+                ui.painter().galley(pos2(rect.right() - galley.size().x, rect.top()), galley, theme.text_muted);
+                let lang = lang.on_hover_text("Sprache");
                 egui::Popup::menu(&lang).show(|ui| {
                     egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
                         ui.set_min_width(170.0);
