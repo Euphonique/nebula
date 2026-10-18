@@ -21,7 +21,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - SSH-Terminal im Panel unter dem Editor (Strg+Ö, Kontextmenü eines Servers oder Befehlspalette): mehrere Sitzungen als Tabs, 256 Farben, Scrollback per Mausrad, Markieren und Kopieren, Einfügen, Neuverbinden mit Enter. Nutzt Zugangsdaten und Host-Key-Prüfung der Server (bei FTP-Servern Port 22) und wechselt in den Startpfad.
 - Berechtigungen (chmod) für Dateien und Ordner auf dem Server, auf Wunsch rekursiv (nur Dateien, nur Ordner oder alles); die aktuellen Rechte stehen im Tooltip
 - Dateien auf dem Server öffnen und mit Strg+S direkt hochladen
-- Konflikterkennung: Wurde eine Datei auf dem Server inzwischen geändert, fragt Nebula nach (Überschreiben, Server-Version laden oder Abbrechen)
+- Konflikterkennung: Wurde eine Datei auf dem Server inzwischen geändert, fragt Nebula nach (Überschreiben, Server-Version laden oder Abbrechen) und zeigt auf Wunsch die Unterschiede an
 - Kopieren, Ausschneiden, Einfügen, Duplizieren, Umbenennen und Löschen, lokal und auf Servern, auch mit Mehrfachauswahl (Strg+Klick)
 - Drag & Drop im Baum: verschiebt, mit Strg wird kopiert. Ordner öffnen sich beim Darüberhalten. Lokale Dateien lassen sich aus dem Fenster heraus in den Explorer (oder andere Programme) ziehen.
 - Dateien aus dem Explorer in einen Ordner ziehen oder dort einfügen: lokal kopieren oder auf den Server hochladen. In Nebula kopierte Dateien lassen sich im Explorer einfügen.
@@ -41,6 +41,12 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Pfadleiste mit Position im Dokument (z. B. `body › main#content › ul`)
 - HTML-Tags und Klammern werden automatisch geschlossen
 - Die Sitzung wird beim nächsten Start wiederhergestellt (geöffnete Dateien und Cursor)
+- Wiederherstellung nach Absturz: Ungespeicherte Inhalte (auch unbenannte Tabs) werden alle paar Sekunden gesichert und nach einem Absturz beim nächsten Start zurückgeholt
+- Externe Änderungen: Wird eine geöffnete Datei von einem anderen Programm geändert (z. B. Git), lädt Nebula sie neu (rückgängig machbar); bei eigenen ungespeicherten Änderungen wird nachgefragt, mit Unterschiede-Ansicht. Gelöschte Dateien werden gemeldet, die Seitenleiste aktualisiert sich selbst.
+- Geteilte Ansicht (Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
+- Blockauswahl mit Alt+Ziehen; Alt+Umschalt+I setzt Cursor an alle Zeilenenden der Auswahl
+- Git-Markierungen in der Zeilennummernleiste: neue, geänderte und gelöschte Zeilen gegenüber dem letzten Commit
+- `.editorconfig` wird ausgewertet (Einrückung, Zeilenenden, Kodierung, Leerzeichen am Zeilenende, Zeilenumbruch am Dateiende); beides auch als Einstellung beim Speichern. Einrückung lässt sich zwischen Tabs und Leerzeichen umwandeln.
 
 **Live-Vorschau**
 - HTML-, PHP- und Markdown-Seiten neben dem Editor (WebView2), aktualisiert beim Tippen, auch mit ungespeicherten Änderungen
@@ -62,11 +68,15 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Eigene Titelleiste mit Tabs; Tabs scrollen, lassen sich per Drag sortieren und haben ein Kontextmenü (Speichern, Duplizieren, Drucken, Schließen, andere/rechts/alle schließen, Pfad kopieren, im Explorer zeigen)
 - Windows-11-Andocklayouts am Maximieren-Knopf, Mica-Hintergrund in der Seitenleiste, native Schatten und abgerundete Ecken
 - Seitenleiste mit Dateien, Servern und Projektsuche; Git-Status (Branch, geänderte und neue Dateien)
+- Zuletzt geöffnete Projekte: Klick auf den Projektnamen in der Seitenleiste, Menü, Startseite oder Befehlspalette. Pro Projekt merkt sich Nebula die offenen Dateien.
 - Befehlspalette mit allen Befehlen
 - Themes „Nebula Dunkel“ und „Nebula Hell“ (Paletten nach Novas Themes). Eigene Themes lassen sich bearbeiten, als JSON importieren und exportieren, und Nova-Themes (.css) können importiert werden.
 - Einstellungen für Editor, Design und Sprachen (Dateiendungen, Einrückung, eigene Vervollständigungen)
+- Eigene Tastenkürzel (Einstellungen → Tastenkürzel): neue Kombination aufnehmen, weitere hinzufügen, auf Standard zurücksetzen; doppelt belegte Kürzel werden rot markiert
 
 ## Tastenkürzel
+
+Alle Kürzel lassen sich unter Einstellungen → Tastenkürzel ändern. Standardbelegung:
 
 | Aktion | Kürzel |
 |---|---|
@@ -81,6 +91,8 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 | Live-Vorschau ein/aus | Strg+Umschalt+V |
 | Automatischer Zeilenumbruch | Alt+Z |
 | Drucken | Strg+Alt+P |
+| Geteilte Ansicht | Strg+Alt+T |
+| Blockauswahl / Cursor an Zeilenenden | Alt+Ziehen / Alt+Umschalt+I |
 | SSH-Terminal ein/aus | Strg+Ö |
 | Gehe zu Definition (Erweiterungen) | F12 / Strg+Klick |
 | Vervollständigung / Emmet | Strg+Leertaste / Tab |

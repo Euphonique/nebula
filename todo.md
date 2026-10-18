@@ -2,20 +2,14 @@
 
 Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, **C** = nice to have.
 
-## Sicherheit und Datenerhalt (fehlt bisher ganz)
+## Sicherheit und Datenerhalt
 
-- **A** Externe Änderungen erkennen: Lokale Datei wurde außerhalb von Nebula geändert (Git-Checkout, anderes Programm) → ohne eigene Änderungen still neu laden, sonst nachfragen. Auch gelöschte/umbenannte Dateien melden. Seitenleiste automatisch aktualisieren (Dateisystem-Überwachung statt „Aktualisieren“-Knopf).
-- **A** Wiederherstellung nach Absturz („Hot Exit“): Ungespeicherte Inhalte (auch unbenannte Tabs) regelmäßig sichern und beim nächsten Start wiederherstellen.
 - **B** Automatisches Speichern (optional: bei Fokusverlust oder nach x Sekunden), für Serverdateien eher aus.
 - **B** Lokaler Verlauf: frühere Fassungen einer Datei (z. B. die letzten 20 Speicherstände) ansehen, vergleichen und wiederherstellen – besonders wertvoll beim direkten Arbeiten auf dem Server.
 - **B** Backup vor dem Überschreiben auf dem Server (optional `.bak` oder lokale Kopie).
 
 ## Editor
 
-- **A** Geteilte Ansicht: zwei Dateien (oder dieselbe Datei an zwei Stellen) nebeneinander/untereinander.
-- **A** Block-/Spaltenauswahl mit Alt+Ziehen (Rechteckauswahl), dazu „Cursor an alle Zeilenenden der Auswahl“ (Alt+Umschalt+I).
-- **A** Formatieren ohne Erweiterung: Leerzeichen am Zeilenende entfernen, Zeilenumbruch am Dateiende sicherstellen (beides als Option beim Speichern), Einrückung Tabs ↔ Leerzeichen umwandeln.
-- **A** `.editorconfig` auswerten (Einrückung, Zeilenenden, Kodierung pro Projekt).
 - **B** Minimap bzw. Markierungen in der Scrollleiste (Suchtreffer, Fehler, geänderte Zeilen, Cursor).
 - **B** Textwerkzeuge: Zeilen sortieren, Duplikate entfernen, GROSS/klein/Titel, Zeilen verbinden, Auswahl umschließen (Klammern/Anführungszeichen/Tag um markierten Text), Zeilen umkehren.
 - **B** Lesezeichen (Strg+F2 setzen, F2 springen) mit Markierung in der Leiste.
@@ -31,7 +25,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Suchen und Navigieren
 
-- **A** Zuletzt geöffnete Ordner/Projekte (nicht nur Dateien) und schnelles Wechseln zwischen Projekten.
 - **B** Projektsuche mit Ein-/Ausschlussmustern (`*.php`, `!vendor/**`) und Berücksichtigung der `.gitignore`.
 - **B** Suchen/Ersetzen nur in der Auswahl; Regex-Ersetzung mit Vorschau.
 - **B** Navigationsverlauf: Zurück/Vor zur letzten Cursorposition (Alt+←/→), auch über Dateien hinweg.
@@ -40,14 +33,12 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Git
 
-- **A** Geänderte Zeilen in der Zeilennummernleiste markieren (neu/geändert/gelöscht) – Branch und Dateistatus sind schon da.
-- **B** Diff-Ansicht: Arbeitsstand gegen letzten Commit, und allgemein zwei Dateien vergleichen (auch lokal ↔ Server).
+- **B** Diff-Ansicht als eigener Tab: Arbeitsstand gegen letzten Commit, zwei beliebige Dateien vergleichen (auch lokal ↔ Server). Der Diff-Algorithmus (`src/diff.rs`) ist schon da.
 - **B** Einfache Git-Aktionen: Dateien stagen, Commit mit Nachricht, Pull/Push, Branch wechseln.
 - **C** Blame für die aktuelle Zeile (Autor/Datum dezent am Zeilenende).
 
 ## Server und Veröffentlichen
 
-- **A** Konfliktdialog um „Unterschiede anzeigen“ erweitern: Diff lokal ↔ Server, bevor überschrieben wird.
 - **B** Synchronisieren in beide Richtungen mit Vorschau (neu/geändert/gelöscht) und Ausschlussliste (`.git`, `node_modules`, `.env`).
 - **B** Übertragungsliste: laufende/fertige/fehlgeschlagene Übertragungen mit Fortschritt, Abbrechen und Wiederholen.
 - **B** Server in Ordnern gruppieren, Server duplizieren, Import aus FileZilla (`sitemanager.xml`).
@@ -64,7 +55,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Oberfläche und Allgemein
 
-- **A** Eigene Tastenkürzel festlegen (Tastenbelegung in den Einstellungen, Konflikte anzeigen).
 - **B** Tabs anheften; mehrere Fenster/Projekte gleichzeitig.
 - **B** Große Dateien (> 64 MB) schreibgeschützt öffnen statt ablehnen; Hex-Ansicht für Binärdateien.
 - **B** Einstellungen exportieren/importieren (Server ohne Passwörter, Themes, Tastenkürzel).
@@ -77,3 +67,7 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 - **B** Performance mit sehr großen Dateien (10–50 MB, minifiziertes JS in einer Zeile) und vielen Tabs prüfen; Highlighting inkrementell statt komplett neu.
 - **B** Absturzbericht: Panics in eine Logdatei schreiben und beim nächsten Start anbieten.
 - **C** Automatisierte UI-Tests für die wichtigsten Abläufe (Öffnen, Bearbeiten, Speichern lokal/Server).
+
+## Erledigt (A-Prioritäten)
+
+Externe Änderungen erkennen, Wiederherstellung nach Absturz, geteilte Ansicht, Blockauswahl, Formatieren beim Speichern und `.editorconfig`, zuletzt geöffnete Projekte, Git-Markierungen, Unterschiede im Konfliktdialog, eigene Tastenkürzel.
