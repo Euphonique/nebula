@@ -1,0 +1,73 @@
+[package]
+name = "nebula"
+version = "0.1.0"
+edition = "2024"
+description = "Fast native code editor for Windows with built-in FTP/SFTP remote editing"
+
+[dependencies]
+eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "wgpu", "persistence"] }
+ropey = "1.6.1"
+tree-sitter = "0.27.1"
+tree-sitter-highlight = "0.27.1"
+tree-sitter-html = "0.23.2"
+tree-sitter-css = "0.25.0"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-php = "0.25.1"
+tree-sitter-json = "0.24.8"
+suppaftp = { version = "12.2.1", features = ["native-tls"] }
+russh = { version = "0.64.1", default-features = false, features = ["flate2", "ring", "rsa"] }
+russh-sftp = "3.0.1"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "macros"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+directories = "6.0.0"
+keyring = "4.2.0"
+rfd = "0.17.2"
+anyhow = "1.0.104"
+crossbeam-channel = "0.5.17"
+regex = "1.13.1"
+winreg = "0.56.0"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-python = "0.25.0"
+tree-sitter-rust = "0.24.2"
+tree-sitter-go = "0.25.0"
+tree-sitter-java = "0.23.5"
+tree-sitter-c = "0.24.2"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-c-sharp = "0.23.5"
+tree-sitter-ruby = "0.23.1"
+tree-sitter-bash = "0.25.1"
+tree-sitter-yaml = "0.7.2"
+tree-sitter-toml-ng = "0.7.0"
+tree-sitter-md = "0.5.3"
+tree-sitter-xml = "0.7.0"
+tree-sitter-lua = "0.5.0"
+tree-sitter-sequel = "0.3.11"
+tree-sitter-diff = "0.1.0"
+tree-sitter-ini = "1.4.0"
+raw-window-handle = "0.6"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_Controls", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_HiDpi", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Com", "Win32_System_Diagnostics_Debug", "Win32_UI_Controls_Dialogs", "Win32_Storage_Xps"] }
+wry = { version = "0.57.0", default-features = false, features = ["devtools", "os-webview"] }
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+rquickjs = { version = "0.14.0", features = ["futures", "classes", "properties", "array-buffer", "loader", "macro"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
+ureq = { version = "3.4.2", default-features = false, features = ["native-tls", "gzip", "json"] }
+png = "0.18"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[dev-dependencies]
+libunftp = { version = "0.23.1", default-features = false, features = ["ring"] }
+tempfile = "3.27.0"
+unftp-sbe-fs = "0.4.0"
+
+[build-dependencies]
+winresource = "0.1.34"
