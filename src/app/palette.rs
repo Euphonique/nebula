@@ -38,6 +38,7 @@ pub enum Command {
     FontSmaller,
     ToggleInvisibles,
     ToggleWordWrap,
+    ToggleSplit,
     Print,
     DuplicateDoc,
     CloseOthers,
@@ -92,6 +93,7 @@ impl Command {
             (FontSmaller, "Ansicht: Schrift kleiner", "Strg+-"),
             (ToggleInvisibles, "Ansicht: Unsichtbare Zeichen ein/aus", ""),
             (ToggleWordWrap, "Ansicht: Automatischer Zeilenumbruch ein/aus", "Alt+Z"),
+            (ToggleSplit, "Ansicht: Geteilte Ansicht ein/aus", "Strg+Alt+T"),
             (ToggleTerminal, "Terminal: SSH-Terminal ein/aus", "Strg+Ö"),
             (Settings, "Einstellungen: Editor", "Strg+,"),
             (Themes, "Einstellungen: Design und Themes", ""),
@@ -292,6 +294,7 @@ impl NebulaApp {
             Command::FontBigger => self.settings.editor.font_size = (self.settings.editor.font_size + 1.0).min(40.0),
             Command::FontSmaller => self.settings.editor.font_size = (self.settings.editor.font_size - 1.0).max(8.0),
             Command::ToggleInvisibles => self.settings.editor.show_invisibles = !self.settings.editor.show_invisibles,
+            Command::ToggleSplit => self.toggle_split(),
             Command::ToggleWordWrap => self.settings.editor.word_wrap = !self.settings.editor.word_wrap,
             Command::ToggleTerminal => self.toggle_terminal(ctx),
             Command::Terminal(n) => {

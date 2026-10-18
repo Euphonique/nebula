@@ -10,4 +10,4 @@ pub mod view;
 
 pub use document::{DocSource, Document};
 pub use find::FindState;
-pub use view::{EditorView, editor_id};
+pub use view::{EditorOutput, EditorView, editor_id};

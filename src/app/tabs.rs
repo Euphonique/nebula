@@ -11,6 +11,7 @@ pub(super) enum TabCmd {
     Save,
     SaveAs,
     Duplicate,
+    Split,
     Print,
     Close,
     CloseOthers,
@@ -31,6 +32,7 @@ pub(super) fn tab_menu(ui: &mut egui::Ui, doc: &Document, i: usize, count: usize
     item(ui, "Speichern", "Strg+S", true, TabCmd::Save);
     item(ui, "Speichern unter…", "Strg+Umschalt+S", true, TabCmd::SaveAs);
     item(ui, "Duplizieren", "", true, TabCmd::Duplicate);
+    item(ui, "In geteilter Ansicht öffnen", "", true, TabCmd::Split);
     item(ui, "Drucken…", "Strg+Alt+P", true, TabCmd::Print);
     ui.separator();
     item(ui, "Schließen", "Strg+W", true, TabCmd::Close);
@@ -59,6 +61,7 @@ impl NebulaApp {
                 self.save_doc_as(i);
             }
             TabCmd::Duplicate => self.duplicate_doc(i),
+            TabCmd::Split => self.open_in_split(i),
             TabCmd::Print => {
                 self.activate(i);
                 self.print_active(ctx);

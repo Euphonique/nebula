@@ -10,7 +10,7 @@ use eframe::egui::{
     Rect, ViewportCommand, pos2, vec2,
 };
 
-use crate::editor::{DocSource, Document, EditorView, FindState, editor_id};
+use crate::editor::{DocSource, Document, FindState};
 use crate::editor::document::DiskStamp;
 use crate::highlight::HighlightService;
 use crate::lang::Language;
@@ -33,6 +33,7 @@ mod watch;
 mod backup;
 mod gitdiff;
 mod compare;
+mod split;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -143,6 +144,8 @@ pub struct NebulaApp {
     git_bases: gitdiff::GitBases,
     /// Differences shown in the conflict dialog (document id).
     compare: Option<(u64, compare::Compare)>,
+    /// Second editor beside the first.
+    split: Option<split::SplitView>,
 }
 
 impl NebulaApp {
@@ -189,6 +192,7 @@ impl NebulaApp {
             backups: Default::default(),
             git_bases: Default::default(),
             compare: None,
+            split: None,
             settings,
         };
         app.restore_session();
@@ -996,6 +1000,9 @@ impl NebulaApp {
         if pressed(ctrl, Key::Num0) {
             self.settings.editor.font_size = 14.0;
         }
+        if pressed(ctrl | Modifiers::ALT, Key::T) || pressed(ctrl, Key::Backslash) {
+            self.toggle_split();
+        }
         if pressed(Modifiers::ALT, Key::Z) {
             self.settings.editor.word_wrap = !self.settings.editor.word_wrap;
             // Alt+letter may also arrive as typed text.
@@ -1004,7 +1011,7 @@ impl NebulaApp {
         // Undo/redo also work while the editor doesn't have keyboard focus,
         // e.g. after an extension command changed the document.
         if let Some(i) = self.active
-            && !ctx.memory(|m| m.has_focus(editor_id(self.docs[i].id)))
+            && !self.active_editor_id().is_some_and(|id| ctx.memory(|m| m.has_focus(id)))
             && !ctx.egui_wants_keyboard_input()
         {
             if pressed(ctrl_shift, Key::Z) || pressed(ctrl, Key::Y) {
@@ -1259,6 +1266,13 @@ impl NebulaApp {
                     .clicked()
                 {
                     self.toggle_terminal(&ui.ctx().clone());
+                    ui.close();
+                }
+                if ui
+                    .add(egui::Button::new("Geteilte Ansicht").shortcut_text("Strg+Alt+T").selected(self.split.is_some()))
+                    .clicked()
+                {
+                    self.toggle_split();
                     ui.close();
                 }
                 let e = &mut self.settings.editor;
@@ -2856,7 +2870,9 @@ impl eframe::App for NebulaApp {
             if self.find.visible {
                 self.find_bar(ui);
             }
-            let Some(i) = self.active else { return };
+            if self.active.is_none() {
+                return;
+            }
             // Editor and, optionally, the live preview side by side.
             let full = ui.available_rect_before_wrap();
             let mut editor_rect = full;
@@ -2867,22 +2883,9 @@ impl eframe::App for NebulaApp {
                 let pane = Rect::from_min_max(pos2(split, full.top()), full.max);
                 preview_rect = self.preview_pane(ui, pane, full);
             }
+
             let matches = if self.find.visible { std::mem::take(&mut self.find.matches) } else { Vec::new() };
-            let editor_settings = self.settings.editor_for_doc(&self.docs[i]);
-            let doc = &mut self.docs[i];
-            let doc_id = doc.id;
-            let out = ui
-                .scope_builder(egui::UiBuilder::new().max_rect(editor_rect), |ui| {
-                    EditorView {
-                        doc,
-                        settings: &editor_settings,
-                        theme: &self.theme,
-                        matches: &matches,
-                        current_match: self.find.current,
-                    }
-                    .show(ui)
-                })
-                .inner;
+            let out = self.editor_area(ui, editor_rect, &matches);
             if self.find.visible {
                 self.find.matches = matches;
             }
@@ -2892,8 +2895,12 @@ impl eframe::App for NebulaApp {
             if out.has_focus {
                 self.sidebar.focused = false;
             }
-            if std::mem::take(&mut self.focus_editor) && self.dialog.is_none() && !self.find.focus_query {
-                ctx.memory_mut(|m| m.request_focus(editor_id(doc_id)));
+            if std::mem::take(&mut self.focus_editor)
+                && self.dialog.is_none()
+                && !self.find.focus_query
+                && let Some(id) = self.active_editor_id()
+            {
+                ctx.memory_mut(|m| m.request_focus(id));
             }
         });
 

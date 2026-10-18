@@ -24,10 +24,13 @@ const TEXT_PADDING: f32 = 12.0;
 const TOP_PADDING: f32 = 6.0;
 const DOUBLE_CLICK: f64 = 0.4;
 
+#[derive(Default)]
 pub struct EditorOutput {
     /// Text to put on the clipboard.
     pub copied: Option<String>,
     pub has_focus: bool,
+    /// The editor got the keyboard focus this frame.
+    pub gained_focus: bool,
 }
 
 /// Mouse state kept in egui's temp memory between frames.
@@ -49,8 +52,8 @@ struct BlockStart {
     col: usize,
 }
 
-pub fn editor_id(doc_id: u64) -> Id {
-    Id::unique(("editor", doc_id))
+pub fn editor_id(doc_id: u64, pane: u8) -> Id {
+    Id::unique(("editor", doc_id, pane))
 }
 
 pub struct EditorView<'a> {
@@ -60,6 +63,10 @@ pub struct EditorView<'a> {
     /// Find matches (char ranges, sorted).
     pub matches: &'a [Range<usize>],
     pub current_match: Option<usize>,
+    /// 0: main editor, 1: second half of the split view.
+    pub pane: u8,
+    /// Scroll to the cursor after edits (false for the unfocused copy of a document shown twice).
+    pub follow: bool,
 }
 
 struct Metrics {
@@ -77,8 +84,10 @@ impl EditorView<'_> {
             theme,
             matches,
             current_match,
+            pane,
+            follow,
         } = self;
-        let id = editor_id(doc.id);
+        let id = editor_id(doc.id, pane);
         let font = FontId::monospace(settings.font_size);
         let (glyph_h, char_w) =
             ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, 'M')));
@@ -95,6 +104,7 @@ impl EditorView<'_> {
         let mut out = EditorOutput {
             copied: None,
             has_focus: false,
+            gained_focus: false,
         };
 
         // Wrapped lines fill the editor width (scroll bars float over the text).
@@ -112,7 +122,7 @@ impl EditorView<'_> {
         update_git_marks(doc);
         let rows = folding::rows(doc, tab, wrap);
         let scroll = ScrollArea::both()
-            .id_salt(("editor-scroll", doc.id))
+            .id_salt(("editor-scroll", doc.id, pane))
             .auto_shrink([false, false])
             .show_viewport(ui, |ui, viewport| {
                 let content_h = TOP_PADDING + rows.count() as f32 * m.row_h + (viewport.height() - m.row_h * 3.0).max(0.0);
@@ -191,6 +201,7 @@ impl EditorView<'_> {
                 // ---- keyboard -------------------------------------------------
                 let focused = response.has_focus();
                 out.has_focus = focused;
+                out.gained_focus = response.gained_focus();
                 if focused {
                     ui.memory_mut(|mem| {
                         mem.set_focus_lock_filter(
@@ -219,6 +230,7 @@ impl EditorView<'_> {
                 let viewport_ready = viewport.height() >= m.row_h * 4.0;
                 if !viewport_ready {
                     ui.ctx().request_repaint();
+                } else if !follow {
                 } else if let Some(line) = doc.view.center_line.take() {
                     let y = origin.y + rows.row_of_line(line) as f32 * m.row_h;
                     let r = Rect::from_min_size(pos2(visible.left(), y), vec2(1.0, m.row_h));
