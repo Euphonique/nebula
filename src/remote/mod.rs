@@ -8,6 +8,7 @@
 mod ftp;
 mod sftp;
 pub mod terminal;
+pub mod search;
 #[cfg(test)]
 mod integration_tests;
 

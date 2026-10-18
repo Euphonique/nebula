@@ -68,12 +68,24 @@ impl NebulaApp {
     /// Applies a cursor remembered from the last session to a freshly opened remote file.
     pub(super) fn apply_pending_cursor(&mut self, index: usize) {
         let DocSource::Remote { site_id, path } = self.docs[index].source.clone() else { return };
-        if let Some(cursor) = self.pending_cursors.remove(&(site_id, path)) {
+        if let Some((line, column)) = self.pending_lines.remove(&(site_id.clone(), path.clone())) {
+            self.goto_line_column(index, line, column);
+        } else if let Some(cursor) = self.pending_cursors.remove(&(site_id, path)) {
             let doc = &mut self.docs[index];
             let pos = cursor.min(doc.len_chars());
             doc.set_selection(Selection::cursor(pos));
             doc.view.center_line = Some(doc.char_to_line(pos));
         }
+    }
+
+    /// Cursor to `line`/`column` (clamped), centered, editor focused.
+    pub(super) fn goto_line_column(&mut self, index: usize, line: usize, column: usize) {
+        let doc = &mut self.docs[index];
+        let line = line.min(doc.len_lines() - 1);
+        let pos = doc.line_to_char(line) + column.min(doc.line_len(line));
+        doc.set_selection(Selection::cursor(pos));
+        doc.view.center_line = Some(line);
+        self.focus_editor = true;
     }
 
     /// Opens a project folder. Switching projects closes the unchanged files

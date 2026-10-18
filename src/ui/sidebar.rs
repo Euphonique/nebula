@@ -131,6 +131,8 @@ pub enum SidebarAction {
     Publish,
     PublishSetup,
     Search(super::search::SearchAction),
+    /// Project search limited to a folder (local or on a server).
+    SearchIn(DirRef),
 }
 
 #[derive(Clone, PartialEq)]
@@ -493,7 +495,9 @@ impl Sidebar {
         if self.tab == SidebarTab::Search {
             let mut search_actions = Vec::new();
             let root = self.root.clone();
-            self.search.show(&mut list_ui, theme, root.as_deref(), &mut search_actions);
+            let homes: HashMap<String, String> =
+                self.remote.iter().filter_map(|(id, t)| Some((id.clone(), t.home.clone()?))).collect();
+            self.search.show(&mut list_ui, theme, root.as_deref(), sites, &homes, &mut search_actions);
             actions.extend(search_actions.into_iter().map(SidebarAction::Search));
             ui.advance_cursor_after_rect(full);
             return;
@@ -864,6 +868,11 @@ impl Sidebar {
                     actions.push(SidebarAction::OpenTerminal(site.id.clone()));
                     ui.close();
                 }
+                if ui.button("Auf dem Server suchen…").clicked() {
+                    let path = home.clone().unwrap_or_else(|| site.root_path.trim().to_string());
+                    actions.push(SidebarAction::SearchIn(DirRef::Remote { site_id: site.id.clone(), path }));
+                    ui.close();
+                }
                 ui.separator();
                 if ui.button("Bearbeiten…").clicked() {
                     actions.push(SidebarAction::EditSite(Some(site.id.clone())));
@@ -999,6 +1008,10 @@ fn item_menu(
     if item.is_dir {
         if let Some(dir) = target {
             new_entries(ui, dir, actions, &mut close);
+            if menu_button(ui, "In diesem Ordner suchen…", "") {
+                actions.push(SidebarAction::SearchIn(dir.clone()));
+                close = true;
+            }
             ui.separator();
         }
     } else if menu_button(ui, "Öffnen", "") {

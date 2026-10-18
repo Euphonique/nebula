@@ -417,8 +417,9 @@ impl NebulaApp {
             }
         }
         self.info(format!("{count} Ersetzungen in {changed_files} Dateien (geöffnete Dateien noch speichern)"));
-        if let Some(root) = self.sidebar.root.clone() {
-            self.sidebar.search.start(&root, ctx);
+        {
+            let root = self.sidebar.root.clone();
+            self.sidebar.search.start(root.as_deref(), &self.sites, ctx);
         }
     }
 }

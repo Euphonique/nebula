@@ -1,5 +1,7 @@
-//! Project-wide search (and replace) in the local project folder.
+//! Project-wide search (and replace): in the local project folder or, over
+//! SSH, in a folder on a server.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,6 +13,10 @@ use ignore::overrides::OverrideBuilder;
 use regex::{Regex, RegexBuilder};
 
 use super::icons;
+use super::sidebar::{DirRef, FileRef};
+use crate::remote::HostKeyPrompt;
+use crate::remote::search::{self as remote_search, SearchEvent};
+use crate::settings::{Protocol, Sites};
 use crate::theme::Theme;
 
 const MAX_MATCHES: usize = 5000;
@@ -34,18 +40,43 @@ pub struct LineMatch {
 
 #[derive(Clone)]
 pub struct FileMatches {
-    pub path: PathBuf,
+    pub file: FileRef,
+    /// Path shown in the list, relative to the searched folder.
+    pub rel: String,
     pub lines: Vec<LineMatch>,
 }
 
 /// What the search panel asks the app to do.
 pub enum SearchAction {
-    Open { path: PathBuf, line: usize, column: usize },
+    Open { file: FileRef, line: usize, column: usize },
     ReplaceAll { files: Vec<PathBuf>, regex: Regex, replacement: String },
+    /// The server's SSH host key is not trusted yet.
+    HostKey { site_id: String, prompt: HostKeyPrompt },
+}
+
+/// Where the search runs.
+#[derive(Clone, Default, PartialEq)]
+pub enum Scope {
+    /// The local project folder.
+    #[default]
+    Project,
+    /// A local folder or a folder on a server.
+    Folder(DirRef),
+}
+
+struct RemoteRun {
+    rx: Receiver<SearchEvent>,
+    site_id: String,
+    root: String,
+    lines: usize,
+    /// The site is FTP; SSH goes to port 22, which may not be open.
+    via_ftp: bool,
 }
 
 #[derive(Default)]
 pub struct SearchPanel {
+    pub scope: Scope,
+    remote: Option<RemoteRun>,
     pub query: String,
     pub replacement: String,
     pub case_sensitive: bool,
@@ -57,7 +88,7 @@ pub struct SearchPanel {
     /// Also search files hidden by `.gitignore` and folders like `node_modules`.
     pub include_ignored: bool,
     pub results: Vec<FileMatches>,
-    pub collapsed: std::collections::HashSet<PathBuf>,
+    pub collapsed: std::collections::HashSet<String>,
     pub error: Option<String>,
     pub focus_query: bool,
     running: Option<(Receiver<FileMatches>, Arc<AtomicBool>)>,
@@ -106,14 +137,65 @@ impl SearchPanel {
         Ok(walk)
     }
 
-    pub fn start(&mut self, root: &Path, ctx: &egui::Context) {
+    /// The folder searched for `scope`, if there is one.
+    pub fn target(&self, project: Option<&Path>) -> Option<DirRef> {
+        match &self.scope {
+            Scope::Project => project.map(|p| DirRef::Local(p.to_path_buf())),
+            Scope::Folder(d) => Some(d.clone()),
+        }
+    }
+
+    /// Runs the search in the current scope (the project folder by default).
+    pub fn start(&mut self, project: Option<&Path>, sites: &Sites, ctx: &egui::Context) {
+        match self.target(project) {
+            Some(DirRef::Local(root)) => self.start_local(&root, ctx),
+            Some(DirRef::Remote { site_id, path }) => self.start_remote(sites, &site_id, &path, ctx),
+            None => {}
+        }
+    }
+
+    fn reset(&mut self) {
         if let Some((_, cancel)) = self.running.take() {
             cancel.store(true, Ordering::Relaxed);
         }
+        // Dropping the receiver ends the SSH search.
+        self.remote = None;
         self.results.clear();
         self.collapsed.clear();
         self.truncated = false;
         self.error = None;
+    }
+
+    fn start_remote(&mut self, sites: &Sites, site_id: &str, root: &str, ctx: &egui::Context) {
+        self.reset();
+        if self.query.is_empty() {
+            return;
+        }
+        // Checked here so a typo does not cost a server round trip.
+        if let Err(e) = self.build_regex() {
+            self.error = Some(e);
+            return;
+        }
+        let Some(site) = sites.get(site_id).cloned() else {
+            self.error = Some("Server nicht gefunden".into());
+            return;
+        };
+        let query = remote_search::Query {
+            pattern: self.query.clone(),
+            regex: self.use_regex,
+            case_sensitive: self.case_sensitive,
+            whole_word: self.whole_word,
+            files: split_patterns(&self.files),
+            include_ignored: self.include_ignored,
+            skip_dirs: SKIP_DIRS.iter().map(|s| s.to_string()).collect(),
+        };
+        let via_ftp = site.protocol != Protocol::Sftp;
+        let rx = remote_search::start(site, root.to_string(), query, ctx.clone());
+        self.remote = Some(RemoteRun { rx, site_id: site_id.to_string(), root: root.to_string(), lines: 0, via_ftp });
+    }
+
+    fn start_local(&mut self, root: &Path, ctx: &egui::Context) {
+        self.reset();
         if self.query.is_empty() {
             return;
         }
@@ -135,6 +217,7 @@ impl SearchPanel {
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = cancel.clone();
         let ctx = ctx.clone();
+        let root = root.to_path_buf();
         std::thread::spawn(move || {
             let mut total = 0;
             for e in walk.build().flatten() {
@@ -161,7 +244,9 @@ impl SearchPanel {
                     }
                 }
                 if !lines.is_empty() {
-                    if tx.send(FileMatches { path: e.path().to_path_buf(), lines }).is_err() {
+                    let rel = e.path().strip_prefix(&root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
+                    let file = FileRef::Local(e.path().to_path_buf());
+                    if tx.send(FileMatches { file, rel, lines }).is_err() {
                         return;
                     }
                     ctx.request_repaint();
@@ -170,6 +255,49 @@ impl SearchPanel {
             ctx.request_repaint();
         });
         self.running = Some((rx, cancel));
+    }
+
+    fn poll_remote(&mut self, actions: &mut Vec<SearchAction>) {
+        if self.remote.is_none() {
+            return;
+        }
+        let re = self.build_regex().ok();
+        let Some(run) = &mut self.remote else { return };
+        let mut done = None;
+        for ev in run.rx.try_iter() {
+            match ev {
+                SearchEvent::HostKey(prompt) => actions.push(SearchAction::HostKey { site_id: run.site_id.clone(), prompt }),
+                SearchEvent::Root(root) => run.root = root,
+                SearchEvent::Hits(hits) => {
+                    run.lines += hits.len();
+                    for h in hits {
+                        // Highlight with Nebula's regex; the server's dialect may differ slightly.
+                        let mut ranges: Vec<_> = re
+                            .as_ref()
+                            .map(|re| re.find_iter(&h.text).filter(|m| !m.is_empty()).map(|m| m.range()).collect())
+                            .unwrap_or_default();
+                        if ranges.is_empty() {
+                            ranges.push(0..0);
+                        }
+                        let m = LineMatch { line: h.line, text: h.text, ranges };
+                        match self.results.last_mut() {
+                            Some(f) if f.rel == h.path => f.lines.push(m),
+                            _ => {
+                                let path = crate::remote::join(&run.root, &h.path);
+                                let file = FileRef::Remote { site_id: run.site_id.clone(), path };
+                                self.results.push(FileMatches { file, rel: h.path, lines: vec![m] });
+                            }
+                        }
+                    }
+                }
+                SearchEvent::Done(err) => done = Some(err),
+            }
+        }
+        if let Some(err) = done {
+            self.truncated = run.lines >= remote_search::MAX_LINES;
+            self.error = err.map(|e| if run.via_ftp { format!("Suche auf dem Server braucht SSH-Zugang (Port 22): {e}") } else { e });
+            self.remote = None;
+        }
     }
 
     fn poll(&mut self) {
@@ -192,25 +320,81 @@ impl SearchPanel {
         self.results.iter().flat_map(|f| &f.lines).map(|l| l.ranges.len()).sum()
     }
 
-    pub fn show(&mut self, ui: &mut Ui, theme: &Theme, root: Option<&Path>, actions: &mut Vec<SearchAction>) {
+    /// Picker for where to search: project, a server, or a folder chosen
+    /// from the sidebar. Returns true if the scope changed.
+    fn scope_picker(&mut self, ui: &mut Ui, theme: &Theme, project: Option<&Path>, sites: &Sites, homes: &HashMap<String, String>) -> bool {
+        let label = match &self.scope {
+            Scope::Project => "Projektordner".to_string(),
+            Scope::Folder(DirRef::Local(p)) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            Scope::Folder(DirRef::Remote { site_id, .. }) => sites.get(site_id).map(|s| s.display_name()).unwrap_or_default(),
+        };
+        let before = self.scope.clone();
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Suchen in").small().color(theme.text_faint));
+            egui::ComboBox::from_id_salt("search-scope").selected_text(label).width(ui.available_width()).show_ui(ui, |ui| {
+                if project.is_some() {
+                    ui.selectable_value(&mut self.scope, Scope::Project, "Projektordner");
+                }
+                if let Scope::Folder(DirRef::Local(p)) = &before {
+                    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    ui.selectable_value(&mut self.scope, before.clone(), name);
+                }
+                if !sites.sites.is_empty() {
+                    ui.separator();
+                    ui.label(RichText::new("Server (über SSH)").small().color(theme.text_faint));
+                }
+                for site in &sites.sites {
+                    let current = matches!(&before, Scope::Folder(DirRef::Remote { site_id, .. }) if *site_id == site.id);
+                    if ui.selectable_label(current, site.display_name()).clicked() && !current {
+                        let path = homes.get(&site.id).cloned().unwrap_or_else(|| site.root_path.trim().to_string());
+                        self.scope = Scope::Folder(DirRef::Remote { site_id: site.id.clone(), path });
+                    }
+                }
+            });
+        });
+        // Server folder, editable; empty means the login folder.
+        if let Scope::Folder(DirRef::Remote { path, .. }) = &mut self.scope {
+            let resp = ui.add(egui::TextEdit::singleline(path).hint_text("Ordner auf dem Server (leer = Startordner)").desired_width(f32::INFINITY));
+            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                return true;
+            }
+        }
+        self.scope != before
+    }
+
+    pub fn show(
+        &mut self,
+        ui: &mut Ui,
+        theme: &Theme,
+        project: Option<&Path>,
+        sites: &Sites,
+        homes: &HashMap<String, String>,
+        actions: &mut Vec<SearchAction>,
+    ) {
         self.poll();
-        let Some(root) = root else {
+        self.poll_remote(actions);
+        ui.add_space(8.0);
+        let scope_changed = self.scope_picker(ui, theme, project, sites, homes);
+        let Some(target) = self.target(project) else {
             ui.add_space(30.0);
-            ui.vertical_centered(|ui| ui.label(RichText::new("Öffne einen Ordner, um im Projekt zu suchen.").color(theme.text_faint)));
+            ui.vertical_centered(|ui| ui.label(RichText::new("Öffne einen Ordner oder wähle einen Server, um zu suchen.").color(theme.text_faint)));
             return;
         };
-        ui.add_space(8.0);
-        let resp = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("Im Projekt suchen").desired_width(f32::INFINITY));
+        let remote = matches!(target, DirRef::Remote { .. });
+        let hint = if remote { "Auf dem Server suchen" } else { "Im Projekt suchen" };
+        let resp = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text(hint).desired_width(f32::INFINITY));
         if std::mem::take(&mut self.focus_query) {
             resp.request_focus();
         }
         let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        let mut restart = enter;
+        let mut restart = enter || (scope_changed && !self.query.is_empty());
         ui.horizontal(|ui| {
             restart |= ui.toggle_value(&mut self.case_sensitive, "Aa").on_hover_text("Groß-/Kleinschreibung").changed();
             restart |= ui.toggle_value(&mut self.whole_word, "W").on_hover_text("Ganzes Wort").changed();
             restart |= ui.toggle_value(&mut self.use_regex, ".*").on_hover_text("Regulärer Ausdruck").changed();
-            ui.toggle_value(&mut self.show_replace, "Ersetzen");
+            if !remote {
+                ui.toggle_value(&mut self.show_replace, "Ersetzen");
+            }
         });
         let files = ui.add(
             egui::TextEdit::singleline(&mut self.files)
@@ -223,9 +407,16 @@ impl SearchPanel {
             .checkbox(&mut self.include_ignored, RichText::new("Ignorierte Dateien einbeziehen").small())
             .on_hover_text("Auch Dateien aus .gitignore und Ordner wie node_modules, vendor, dist durchsuchen")
             .changed();
-        if self.show_replace {
+        if self.show_replace && !remote {
             ui.add(egui::TextEdit::singleline(&mut self.replacement).hint_text("Ersetzen durch").desired_width(f32::INFINITY));
-            let files: Vec<PathBuf> = self.results.iter().map(|f| f.path.clone()).collect();
+            let files: Vec<PathBuf> = self
+                .results
+                .iter()
+                .filter_map(|f| match &f.file {
+                    FileRef::Local(p) => Some(p.clone()),
+                    FileRef::Remote { .. } => None,
+                })
+                .collect();
             let label = format!("Alle ersetzen ({} in {} Dateien)", self.match_count(), files.len());
             if ui.add_enabled(!files.is_empty() && self.running.is_none(), egui::Button::new(label)).clicked()
                 && let Ok(regex) = self.build_regex()
@@ -234,10 +425,10 @@ impl SearchPanel {
             }
         }
         if restart {
-            self.start(root, ui.ctx());
+            self.start(project, sites, ui.ctx());
         }
         ui.add_space(4.0);
-        let summary = match (&self.error, self.running.is_some()) {
+        let summary = match (&self.error, self.running.is_some() || self.remote.is_some()) {
             (Some(e), _) => RichText::new(e).color(theme.danger),
             (None, true) => RichText::new(format!("Suche… {} Treffer", self.match_count())).color(theme.text_faint),
             (None, false) if self.query.is_empty() => RichText::new(""),
@@ -255,8 +446,8 @@ impl SearchPanel {
         egui::ScrollArea::vertical().id_salt("search-results").auto_shrink([false, false]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 1.0;
             for file in &self.results {
-                let rel = file.path.strip_prefix(root).unwrap_or(&file.path).to_string_lossy().replace('\\', "/");
-                let open = !self.collapsed.contains(&file.path);
+                let rel = &file.rel;
+                let open = !self.collapsed.contains(rel);
                 let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
                 if resp.hovered() {
                     ui.painter().rect_filled(rect, 6.0, theme.hover);
@@ -273,9 +464,9 @@ impl SearchPanel {
                 );
                 if resp.clicked() {
                     if open {
-                        self.collapsed.insert(file.path.clone());
+                        self.collapsed.insert(rel.clone());
                     } else {
-                        self.collapsed.remove(&file.path);
+                        self.collapsed.remove(rel);
                     }
                 }
                 if !open {
@@ -316,7 +507,7 @@ impl SearchPanel {
                     );
                     if resp.clicked() {
                         let column = m.text[..first.start].chars().count();
-                        actions.push(SearchAction::Open { path: file.path.clone(), line: m.line, column });
+                        actions.push(SearchAction::Open { file: file.file.clone(), line: m.line, column });
                     }
                 }
             }

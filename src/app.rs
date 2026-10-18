@@ -128,6 +128,8 @@ pub struct NebulaApp {
     settings_ui: SettingsUi,
     /// Cursor positions for remote files reopened from the last session.
     pending_cursors: HashMap<(String, String), usize>,
+    /// Line and column to jump to once a remote file from the search arrives.
+    pending_lines: HashMap<(String, String), (usize, usize)>,
     /// Publish uploads in flight: tag -> (project, relative path, mtime).
     pending_publish: HashMap<u64, (String, String, u64)>,
     /// Scroll the tab strip so the active tab is visible.
@@ -192,6 +194,7 @@ impl NebulaApp {
             backdrop_state: None,
             settings_ui: SettingsUi::default(),
             pending_cursors: HashMap::new(),
+            pending_lines: HashMap::new(),
             pending_publish: HashMap::new(),
             reveal_active_tab: true,
             outline_cache: None,
@@ -803,20 +806,34 @@ impl NebulaApp {
             }
             SidebarAction::Publish => self.publish(),
             SidebarAction::PublishSetup => self.open_publish_setup(),
-            SidebarAction::Search(crate::ui::search::SearchAction::Open { path, line, column }) => {
+            SidebarAction::Search(crate::ui::search::SearchAction::Open { file: FileRef::Local(path), line, column }) => {
                 self.open_local(&path);
                 // open_local activates the file (or the already open tab).
                 if let Some(i) = self.active
                     && matches!(&self.docs[i].source, DocSource::Local(p) if p.file_name() == path.file_name())
                 {
-                    let doc = &mut self.docs[i];
-                    let line = line.min(doc.len_lines() - 1);
-                    let pos = doc.line_to_char(line) + column.min(doc.line_len(line));
-                    doc.set_selection(crate::editor::document::Selection::cursor(pos));
-                    doc.view.center_line = Some(line);
-                    self.focus_editor = true;
+                    self.goto_line_column(i, line, column);
                     self.sidebar.focused = false;
                 }
+            }
+            SidebarAction::Search(crate::ui::search::SearchAction::Open { file: FileRef::Remote { site_id, path }, line, column }) => {
+                let source = DocSource::Remote { site_id: site_id.clone(), path: path.clone() };
+                if let Some(i) = self.docs.iter().position(|d| d.source == source) {
+                    self.activate(i);
+                    self.goto_line_column(i, line, column);
+                    self.sidebar.focused = false;
+                } else {
+                    // Applied once the download arrives.
+                    self.pending_lines.insert((site_id.clone(), path.clone()), (line, column));
+                    self.open_remote(&site_id, &path);
+                }
+            }
+            SidebarAction::Search(crate::ui::search::SearchAction::HostKey { site_id, prompt }) => {
+                self.host_keys.push_back((site_id, prompt));
+            }
+            SidebarAction::SearchIn(dir) => {
+                self.sidebar.search.scope = crate::ui::search::Scope::Folder(dir);
+                self.open_project_search();
             }
             SidebarAction::Search(crate::ui::search::SearchAction::ReplaceAll { files, regex, replacement }) => {
                 self.replace_in_files(files, regex, replacement, ctx);
