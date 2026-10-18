@@ -170,6 +170,9 @@ impl NebulaApp {
             ui.label("");
             ui.checkbox(&mut e.word_wrap, "Automatischer Zeilenumbruch");
             ui.end_row();
+            ui.label("");
+            ui.checkbox(&mut e.minimap, "Minimap am rechten Rand");
+            ui.end_row();
         });
         section(ui, "Einrückung (Standard)");
         egui::Grid::new("indent-grid").num_columns(2).spacing([16.0, 10.0]).show(ui, |ui| {

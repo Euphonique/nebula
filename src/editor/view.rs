@@ -108,6 +108,13 @@ impl EditorView<'_> {
             gained_focus: false,
         };
 
+        // The minimap takes a strip on the right (not in narrow panes).
+        let full = ui.available_rect_before_wrap();
+        let map_w = if settings.minimap && full.width() > 480.0 { MINIMAP_W } else { 0.0 };
+        let map_rect = Rect::from_min_max(pos2(full.right() - map_w, full.top()), full.max);
+        let mut text_ui = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(full.min, pos2(full.right() - map_w, full.bottom()))));
+        let ui = &mut text_ui;
+
         // Wrapped lines fill the editor width (scroll bars float over the text).
         let wrap = settings
             .word_wrap
@@ -122,10 +129,11 @@ impl EditorView<'_> {
 
         update_git_marks(doc);
         let rows = folding::rows(doc, tab, wrap);
-        let scroll = ScrollArea::both()
-            .id_salt(("editor-scroll", doc.id, pane))
-            .auto_shrink([false, false])
-            .show_viewport(ui, |ui, viewport| {
+        let mut area = ScrollArea::both().id_salt(("editor-scroll", doc.id, pane)).auto_shrink([false, false]);
+        if let Some(y) = doc.view.scroll_request.take() {
+            area = area.vertical_scroll_offset(y);
+        }
+        let scroll = area.show_viewport(ui, |ui, viewport| {
                 let content_h = TOP_PADDING + rows.count() as f32 * m.row_h + (viewport.height() - m.row_h * 3.0).max(0.0);
                 let size = vec2(content_w.max(viewport.width()), content_h.max(viewport.height()));
                 let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
@@ -292,6 +300,9 @@ impl EditorView<'_> {
                 }
             });
         overview_ruler(ui, doc, theme, matches, scroll.inner_rect, tab, wrap);
+        if map_w > 0.0 {
+            minimap(ui, doc, theme, map_rect, &scroll, m.row_h, tab, wrap, id);
+        }
         out
     }
 }
@@ -336,6 +347,107 @@ fn overview_ruler(ui: &Ui, doc: &mut Document, theme: &Theme, matches: &[Range<u
     }
     for s in doc.selections.clone() {
         mark(doc.char_to_line(s.head), w - 12.0, theme.foreground.gamma_multiply(0.7), 2.0);
+    }
+}
+
+/// Width of the minimap and the height of one line in it.
+const MINIMAP_W: f32 = 90.0;
+const MINIMAP_ROW: f32 = 2.0;
+
+/// Shrunken view of the document to the right of the text: colored blocks
+/// per token, the visible part highlighted; click or drag to scroll.
+#[allow(clippy::too_many_arguments)]
+fn minimap(
+    ui: &Ui,
+    doc: &mut Document,
+    theme: &Theme,
+    area: Rect,
+    scroll: &egui::scroll_area::ScrollAreaOutput<()>,
+    row_h: f32,
+    tab: usize,
+    wrap: Option<usize>,
+    id: Id,
+) {
+    let painter = ui.painter_at(area);
+    painter.rect_filled(area, 0.0, theme.background);
+    painter.line_segment([area.left_top(), area.left_bottom()], Stroke::new(1.0, theme.separator.gamma_multiply(0.5)));
+    let rows = folding::rows(doc, tab, wrap);
+    let total = rows.count();
+    if total == 0 {
+        return;
+    }
+    let view_h = scroll.inner_rect.height();
+    let max_scroll = (scroll.content_size.y - view_h).max(0.0);
+    let offset = scroll.state.clamped_offset().y;
+    let visible_rows = view_h / row_h;
+    let first_visible = ((offset - TOP_PADDING) / row_h).max(0.0);
+    // Long documents scroll inside the minimap along with the editor.
+    let fits = area.height() / MINIMAP_ROW;
+    let map_top = if total as f32 > fits && max_scroll > 0.0 { offset / max_scroll * (total as f32 - fits) } else { 0.0 };
+
+    let first = map_top.floor() as usize;
+    let last = ((map_top + fits).ceil() as usize + 1).min(total);
+    let cw = 1.0; // one point per column
+    let spans = doc.highlights.clone();
+    for r in first..last {
+        let row = rows.row(r);
+        let y = area.top() + (r as f32 - map_top) * MINIMAP_ROW;
+        let text = doc.line_text(row.line);
+        // This row's part of the line (wrapped lines span several rows).
+        let end = if r + 1 < total && rows.row(r + 1).line == row.line { rows.row(r + 1).byte } else { text.len() };
+        let segment = text.get(row.byte..end.min(text.len())).unwrap_or("");
+        let line_spans: &[crate::highlight::Span] = spans.get(row.line).map_or(&[], |v| v.as_slice());
+        let mut col = row.col;
+        let mut run: Option<(usize, usize, Color32)> = None; // (start col, end col, color)
+        let flush = |run: &mut Option<(usize, usize, Color32)>| {
+            if let Some((s, e, c)) = run.take() {
+                let x0 = area.left() + 6.0 + s as f32 * cw;
+                if x0 < area.right() {
+                    let rect = Rect::from_min_max(pos2(x0, y), pos2((area.left() + 6.0 + e as f32 * cw).min(area.right()), y + MINIMAP_ROW - 0.5));
+                    painter.rect_filled(rect, 0.0, c.gamma_multiply(0.7));
+                }
+            }
+        };
+        for (i, ch) in segment.char_indices() {
+            let byte = row.byte + i;
+            let width = if ch == '\t' { tab - col % tab } else { 1 };
+            if ch.is_whitespace() {
+                flush(&mut run);
+            } else {
+                let style = line_spans.iter().find(|s| (s.start as usize) <= byte && byte < s.end as usize);
+                let color = style.map_or(theme.foreground, |s| theme.syntax_color(s.style));
+                match &mut run {
+                    Some((_, e, c)) if *c == color && *e == col => *e = col + width,
+                    _ => {
+                        flush(&mut run);
+                        run = Some((col, col + width, color));
+                    }
+                }
+            }
+            col += width;
+            if area.left() + 6.0 + col as f32 * cw > area.right() {
+                break;
+            }
+        }
+        flush(&mut run);
+    }
+
+    // The part shown in the editor.
+    let view_rect = Rect::from_min_size(
+        pos2(area.left() + 1.0, area.top() + (first_visible - map_top) * MINIMAP_ROW),
+        vec2(area.width() - 1.0, (visible_rows * MINIMAP_ROW).max(4.0)),
+    );
+    let resp = ui.interact(area, id.with("minimap"), Sense::click_and_drag());
+    let active = resp.hovered() || resp.dragged();
+    painter.rect_filled(view_rect, 0.0, theme.foreground.gamma_multiply(if active { 0.12 } else { 0.07 }));
+    // Click or drag: center the editor on that spot.
+    if (resp.clicked() || resp.dragged())
+        && let Some(p) = resp.interact_pointer_pos()
+    {
+        let row = map_top + (p.y - area.top()) / MINIMAP_ROW;
+        let target = ((row - visible_rows / 2.0) * row_h + TOP_PADDING).clamp(0.0, max_scroll);
+        doc.view.scroll_request = Some(target);
+        ui.ctx().request_repaint();
     }
 }
 

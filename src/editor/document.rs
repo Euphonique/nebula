@@ -271,6 +271,8 @@ pub struct ViewState {
     pub color_hits: Vec<(eframe::egui::Rect, Range<usize>)>,
     /// Open color picker: the value and where the picker sits.
     pub color_edit: Option<(Range<usize>, eframe::egui::Pos2)>,
+    /// Scroll position requested by the minimap, applied next frame.
+    pub scroll_request: Option<f32>,
 }
 
 /// A problem shown in the editor (squiggle and gutter marker).
