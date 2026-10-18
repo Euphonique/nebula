@@ -148,6 +148,25 @@ impl NebulaApp {
         ui.checkbox(&mut e.auto_pair, "Klammern und Anführungszeichen automatisch schließen");
         ui.checkbox(&mut e.auto_close_tags, "HTML-Tags automatisch schließen");
         ui.checkbox(&mut e.emmet, "Emmet-Kürzel mit Tab expandieren (z. B. ul>li*3)");
+        section(ui, "Terminal");
+        let shells = crate::remote::terminal::local_shells();
+        let current = shells
+            .iter()
+            .find(|s| s.name == self.settings.terminal_shell)
+            .unwrap_or(&shells[0])
+            .name
+            .clone();
+        ui.horizontal(|ui| {
+            ui.label("Lokale Shell");
+            egui::ComboBox::from_id_salt("terminal-shell").selected_text(&current).width(220.0).show_ui(ui, |ui| {
+                for s in &shells {
+                    if ui.selectable_label(s.name == current, &s.name).on_hover_text(&s.program).clicked() {
+                        self.settings.terminal_shell = s.name.clone();
+                    }
+                }
+            });
+        });
+        ui.label(RichText::new("Strg+Ö öffnet bei lokalen Dateien diese Shell im Projektordner, bei Serverdateien ein SSH-Terminal.").small().color(self.theme.text_faint));
     }
 
     fn apply_theme(&mut self, ctx: &egui::Context) {

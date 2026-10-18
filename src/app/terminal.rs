@@ -1,9 +1,10 @@
-//! SSH terminals in a panel below the editor, one tab per session.
+//! Terminals in a panel below the editor, one tab per session: local
+//! shells (PowerShell, Git Bash, …) and SSH sessions on servers.
 
 use eframe::egui::{self, Color32, CursorIcon, Event, FontId, Id, Key, Pos2, Rect, Sense, Stroke, pos2, vec2};
 
 use super::NebulaApp;
-use crate::remote::terminal::{TermStatus, Terminal, key_bytes};
+use crate::remote::terminal::{LocalShell, TermStatus, Terminal, key_bytes, local_shells};
 use crate::ui::icons;
 
 const PADDING: f32 = 8.0;
@@ -19,6 +20,10 @@ pub(super) struct TermTab {
     selection: Option<((u16, u16), (u16, u16))>,
     /// Changed into the site's start folder after connecting.
     entered_root: bool,
+    /// Local shell and folder it started in (`None`: SSH, see `term.site_id`).
+    local: Option<(LocalShell, Option<std::path::PathBuf>)>,
+    /// Take the keyboard focus when drawn next (a closing menu would steal it now).
+    want_focus: bool,
 }
 
 #[derive(Default)]
@@ -51,15 +56,40 @@ impl NebulaApp {
         let title = if same == 0 { name } else { format!("{name} ({})", same + 1) };
         let mut term = Terminal::open(&site, ctx, 24, 80);
         term.site_id = site.id.clone();
-        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: false });
+        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: false, local: None, want_focus: true });
         self.terminals.active = self.terminals.tabs.len() - 1;
         self.terminals.visible = true;
         let id = self.terminals.tabs[self.terminals.active].term.id;
         ctx.memory_mut(|m| m.request_focus(term_id(id)));
     }
 
-    /// Shows or hides the panel; with no terminal yet, opens one for the
-    /// server of the active document (or the only server).
+    /// The shell chosen in the settings, else the first one found.
+    fn default_shell(&self) -> LocalShell {
+        let shells = local_shells();
+        shells.iter().find(|s| s.name == self.settings.terminal_shell).cloned().unwrap_or_else(|| shells[0].clone())
+    }
+
+    /// Opens a local shell in the project folder (or the active file's folder).
+    pub(super) fn open_local_terminal(&mut self, ctx: &egui::Context, shell: Option<LocalShell>, cwd: Option<std::path::PathBuf>) {
+        let shell = shell.unwrap_or_else(|| self.default_shell());
+        let cwd = cwd.or_else(|| self.sidebar.root.clone()).or_else(|| {
+            match self.active.and_then(|i| self.docs.get(i)).map(|d| &d.source) {
+                Some(crate::editor::DocSource::Local(p)) => p.parent().map(|p| p.to_path_buf()),
+                _ => None,
+            }
+        });
+        let same = self.terminals.tabs.iter().filter(|t| t.local.as_ref().is_some_and(|(s, _)| s.name == shell.name)).count();
+        let title = if same == 0 { shell.name.clone() } else { format!("{} ({})", shell.name, same + 1) };
+        let term = Terminal::open_local(&shell, cwd.as_deref(), ctx, 24, 80);
+        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: true, local: Some((shell, cwd)), want_focus: true });
+        self.terminals.active = self.terminals.tabs.len() - 1;
+        self.terminals.visible = true;
+        let id = self.terminals.tabs[self.terminals.active].term.id;
+        ctx.memory_mut(|m| m.request_focus(term_id(id)));
+    }
+
+    /// Shows or hides the panel; with no terminal yet, opens an SSH terminal
+    /// for a server file, else a local shell.
     pub(super) fn toggle_terminal(&mut self, ctx: &egui::Context) {
         if !self.terminals.is_empty() {
             self.terminals.visible = !self.terminals.visible;
@@ -71,14 +101,12 @@ impl NebulaApp {
             }
             return;
         }
-        let site = match self.active.and_then(|i| self.docs.get(i)).map(|d| &d.source) {
-            Some(crate::editor::DocSource::Remote { site_id, .. }) => Some(site_id.clone()),
-            _ => (self.sites.sites.len() == 1).then(|| self.sites.sites[0].id.clone()),
-        };
-        match site {
-            Some(id) => self.open_terminal(ctx, &id),
-            None if self.sites.sites.is_empty() => self.info("Lege zuerst einen Server an, um ein SSH-Terminal zu öffnen."),
-            None => self.info("Öffne ein Terminal über das Kontextmenü eines Servers oder die Befehlspalette (Terminal: …)."),
+        match self.active.and_then(|i| self.docs.get(i)).map(|d| &d.source) {
+            Some(crate::editor::DocSource::Remote { site_id, .. }) => {
+                let id = site_id.clone();
+                self.open_terminal(ctx, &id);
+            }
+            _ => self.open_local_terminal(ctx, None, None),
         }
     }
 
@@ -128,9 +156,13 @@ impl NebulaApp {
                     let reconnect = terminal_view(ui, tab, body, &theme, font);
                     if reconnect {
                         let site = tab.term.site_id.clone();
+                        let local = tab.local.clone();
                         let i = self.terminals.active;
                         self.terminals.tabs.remove(i);
-                        self.open_terminal(ui.ctx(), &site);
+                        match local {
+                            Some((shell, cwd)) => self.open_local_terminal(ui.ctx(), Some(shell), cwd),
+                            None => self.open_terminal(ui.ctx(), &site),
+                        }
                         // Keep the tab where it was.
                         let tab = self.terminals.tabs.pop().unwrap();
                         self.terminals.tabs.insert(i, tab);
@@ -187,11 +219,24 @@ impl NebulaApp {
                 activate = Some(i);
             }
         }
-        // New terminal: one per server.
-        let plus = icons::icon_button(ui, &theme, vec2(24.0, 24.0), false, |p, c, col| icons::plus(p, c, col)).on_hover_text("Neues SSH-Terminal");
+        // New terminal: a local shell or an SSH session on a server.
+        let plus = icons::icon_button(ui, &theme, vec2(24.0, 24.0), false, |p, c, col| icons::plus(p, c, col)).on_hover_text("Neues Terminal");
         let sites: Vec<(String, String)> = self.sites.sites.iter().map(|s| (s.id.clone(), s.display_name())).collect();
         let mut open = None;
+        let mut open_local = None;
         egui::Popup::menu(&plus).show(|ui| {
+            ui.set_min_width(200.0);
+            ui.label(egui::RichText::new("Lokal").small().color(theme.text_faint));
+            for shell in local_shells() {
+                if ui.button(&shell.name).clicked() {
+                    open_local = Some(shell);
+                    ui.close();
+                }
+            }
+            if !sites.is_empty() {
+                ui.separator();
+                ui.label(egui::RichText::new("SSH").small().color(theme.text_faint));
+            }
             for (id, name) in &sites {
                 if ui.button(name).clicked() {
                     open = Some(id.clone());
@@ -225,6 +270,9 @@ impl NebulaApp {
         if let Some(id) = open {
             self.open_terminal(&ui.ctx().clone(), &id);
         }
+        if let Some(shell) = open_local {
+            self.open_local_terminal(&ui.ctx().clone(), Some(shell), None);
+        }
     }
 }
 
@@ -242,7 +290,7 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
     if resp.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::Text);
     }
-    if resp.clicked() || resp.drag_started() {
+    if resp.clicked() || resp.drag_started() || std::mem::take(&mut tab.want_focus) {
         resp.request_focus();
     }
     let focused = resp.has_focus();
@@ -447,6 +495,8 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
     }
     let note = match &tab.term.status {
         TermStatus::Connecting => Some("Verbinde …".to_string()),
+        TermStatus::Closed(Some(err)) if tab.local.is_some() => Some(format!("{err}  –  Enter startet neu")),
+        TermStatus::Closed(None) if tab.local.is_some() => Some("Shell beendet  –  Enter startet neu".to_string()),
         TermStatus::Closed(Some(err)) => Some(format!("Verbindung fehlgeschlagen: {err}  –  Enter verbindet neu")),
         TermStatus::Closed(None) => Some("Sitzung beendet  –  Enter verbindet neu".to_string()),
         TermStatus::Connected => None,

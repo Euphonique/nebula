@@ -87,7 +87,9 @@ pub struct AppSettings {
     pub right_panel: bool,
     pub right_tab: RightTab,
     pub right_width: f32,
-    /// Height of the SSH terminal panel.
+    /// Shell for new local terminals (name, empty: first found).
+    pub terminal_shell: String,
+    /// Height of the terminal panel.
     pub terminal_height: f32,
     /// Changed keyboard shortcuts: command -> "Ctrl+Shift+P, F1" (empty: none).
     pub keybindings: std::collections::BTreeMap<String, String>,
@@ -154,6 +156,7 @@ impl Default for AppSettings {
             preview: false,
             preview_split: 0.45,
             terminal_height: 260.0,
+            terminal_shell: String::new(),
             right_panel: false,
             right_tab: RightTab::Preview,
             right_width: 460.0,

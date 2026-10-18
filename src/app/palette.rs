@@ -68,6 +68,7 @@ pub enum Command {
     /// Index into `available_clips()`.
     Clip(usize),
     ToggleTerminal,
+    LocalTerminal,
     /// SSH terminal for the server at this index.
     Terminal(usize),
     SwitchProject(usize),
@@ -106,7 +107,8 @@ impl Command {
             (ToggleInvisibles, "Ansicht: Unsichtbare Zeichen ein/aus"),
             (ToggleWordWrap, "Ansicht: Automatischer Zeilenumbruch ein/aus"),
             (ToggleSplit, "Ansicht: Geteilte Ansicht ein/aus"),
-            (ToggleTerminal, "Terminal: SSH-Terminal ein/aus"),
+            (ToggleTerminal, "Terminal: Ein/aus"),
+            (LocalTerminal, "Terminal: Neues lokales Terminal"),
             (Settings, "Einstellungen: Editor"),
             (Themes, "Einstellungen: Design und Themes"),
             (Languages, "Einstellungen: Sprachen"),
@@ -319,6 +321,7 @@ impl NebulaApp {
             Command::ToggleSplit => self.toggle_split(),
             Command::ToggleWordWrap => self.settings.editor.word_wrap = !self.settings.editor.word_wrap,
             Command::ToggleTerminal => self.toggle_terminal(ctx),
+            Command::LocalTerminal => self.open_local_terminal(ctx, None, None),
             Command::Terminal(n) => {
                 if let Some(id) = self.sites.sites.get(n).map(|s| s.id.clone()) {
                     self.open_terminal(ctx, &id);

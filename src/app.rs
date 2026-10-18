@@ -1172,7 +1172,7 @@ impl NebulaApp {
                     ui.close();
                 }
                 if ui
-                    .add(egui::Button::new("SSH-Terminal").shortcut_text(self.shortcut_label(palette::Command::ToggleTerminal)).selected(self.terminals.visible))
+                    .add(egui::Button::new("Terminal").shortcut_text(self.shortcut_label(palette::Command::ToggleTerminal)).selected(self.terminals.visible))
                     .clicked()
                 {
                     self.toggle_terminal(&ui.ctx().clone());

@@ -18,7 +18,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 
 **Server und Dateien**
 - Server-Verwaltung für SFTP, FTP und FTPS (explizites TLS über Windows SChannel)
-- SSH-Terminal im Panel unter dem Editor (Strg+Ö, Kontextmenü eines Servers oder Befehlspalette): mehrere Sitzungen als Tabs, 256 Farben, Scrollback per Mausrad, Markieren und Kopieren, Einfügen, Neuverbinden mit Enter. Nutzt Zugangsdaten und Host-Key-Prüfung der Server (bei FTP-Servern Port 22) und wechselt in den Startpfad.
+- Terminal im Panel unter dem Editor (Strg+Ö): lokale Shells (PowerShell, Windows PowerShell, Git Bash, Eingabeaufforderung) im Projektordner, z. B. für Claude Code oder npm; Standard-Shell in den Einstellungen wählbar. SSH-Terminals über das +-Menü, das Kontextmenü eines Servers oder die Befehlspalette: mehrere Sitzungen als Tabs, 256 Farben, Scrollback per Mausrad, Markieren und Kopieren, Einfügen, Neuverbinden mit Enter. Nutzt Zugangsdaten und Host-Key-Prüfung der Server (bei FTP-Servern Port 22) und wechselt in den Startpfad.
 - Berechtigungen (chmod) für Dateien und Ordner auf dem Server, auf Wunsch rekursiv (nur Dateien, nur Ordner oder alles); die aktuellen Rechte stehen im Tooltip
 - Dateien auf dem Server öffnen und mit Strg+S direkt hochladen
 - Konflikterkennung: Wurde eine Datei auf dem Server inzwischen geändert, fragt Nebula nach (Überschreiben, Server-Version laden oder Abbrechen) und zeigt auf Wunsch die Unterschiede an
@@ -94,7 +94,7 @@ Alle Kürzel lassen sich unter Einstellungen → Tastenkürzel ändern. Standard
 | Drucken | Strg+Alt+P |
 | Geteilte Ansicht | Strg+Alt+T |
 | Blockauswahl / Cursor an Zeilenenden | Alt+Ziehen / Alt+Umschalt+I |
-| SSH-Terminal ein/aus | Strg+Ö |
+| Terminal ein/aus | Strg+Ö |
 | Gehe zu Definition (Erweiterungen) | F12 / Strg+Klick |
 | Vervollständigung / Emmet | Strg+Leertaste / Tab |
 | Nächstes / alle Vorkommen auswählen | Strg+D / Strg+Umschalt+L |

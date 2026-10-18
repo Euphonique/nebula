@@ -11,6 +11,49 @@ use super::HostKeyPrompt;
 use super::sftp::{PromptFn, RUNTIME, open_session};
 use crate::settings::Site;
 
+/// A shell installed on this computer.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocalShell {
+    pub name: String,
+    pub program: String,
+    pub args: Vec<String>,
+}
+
+/// Shells found on this computer, the usual default first.
+pub fn local_shells() -> Vec<LocalShell> {
+    let shell = |name: &str, program: String, args: &[&str]| LocalShell {
+        name: name.to_string(),
+        program,
+        args: args.iter().map(|a| a.to_string()).collect(),
+    };
+    let in_path = |exe: &str| {
+        std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|p| p.join(exe)).find(|p| p.is_file()))
+    };
+    let mut out = Vec::new();
+    if let Some(p) = in_path("pwsh.exe") {
+        out.push(shell("PowerShell", p.to_string_lossy().into_owned(), &["-NoLogo"]));
+    }
+    let windows = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    let ps = format!(r"{windows}\System32\WindowsPowerShell\v1.0\powershell.exe");
+    if std::path::Path::new(&ps).is_file() {
+        let name = if out.is_empty() { "PowerShell" } else { "Windows PowerShell" };
+        out.push(shell(name, ps, &["-NoLogo"]));
+    }
+    // Git Bash: next to git.exe (…\Git\cmd\git.exe -> …\Git\bin\bash.exe) or in the default folder.
+    let git_bash = in_path("git.exe")
+        .and_then(|git| git.parent()?.parent().map(|g| g.join(r"bin\bash.exe")))
+        .filter(|p| p.is_file())
+        .or_else(|| {
+            let p = std::path::PathBuf::from(r"C:\Program Files\Git\bin\bash.exe");
+            p.is_file().then_some(p)
+        });
+    if let Some(bash) = git_bash {
+        out.push(shell("Git Bash", bash.to_string_lossy().into_owned(), &["--login", "-i"]));
+    }
+    out.push(shell("Eingabeaufforderung", format!(r"{windows}\System32\cmd.exe"), &[]));
+    out
+}
+
 /// Lines kept above the screen.
 const SCROLLBACK: usize = 5000;
 
@@ -75,6 +118,98 @@ impl Terminal {
             events,
             size: (rows, cols),
         }
+    }
+
+    /// Starts a local shell in a Windows pseudo console (ConPTY) in `cwd`.
+    pub fn open_local(shell: &LocalShell, cwd: Option<&std::path::Path>, ctx: &egui::Context, rows: u16, cols: u16) -> Self {
+        use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+        let (rows, cols) = (rows.max(2), cols.max(10));
+        let parser = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, SCROLLBACK)));
+        let (input, mut input_rx) = tokio::sync::mpsc::unbounded_channel::<Input>();
+        let (events_tx, events) = crossbeam_channel::unbounded();
+        let mut term = Self {
+            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            site_id: String::new(),
+            status: TermStatus::Connected,
+            parser: parser.clone(),
+            input,
+            events,
+            size: (rows, cols),
+        };
+        let started = (|| -> anyhow::Result<()> {
+            let pair = native_pty_system().openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })?;
+            let mut cmd = CommandBuilder::new(&shell.program);
+            cmd.args(&shell.args);
+            if let Some(dir) = cwd {
+                cmd.cwd(dir);
+            }
+            cmd.env("TERM", "xterm-256color");
+            cmd.env("COLORTERM", "truecolor");
+            let mut child = pair.slave.spawn_command(cmd)?;
+            drop(pair.slave);
+            let mut reader = pair.master.try_clone_reader()?;
+            let mut writer = pair.master.take_writer()?;
+            let mut killer = child.clone_killer();
+            let master = Arc::new(Mutex::new(Some(pair.master)));
+
+            // Output into the emulator until the pseudo console closes.
+            let ctx2 = ctx.clone();
+            let answer = term.input.clone();
+            std::thread::spawn(move || {
+                let mut buf = [0u8; 8192];
+                while let Ok(n) = std::io::Read::read(&mut reader, &mut buf) {
+                    if n == 0 {
+                        break;
+                    }
+                    let data = &buf[..n];
+                    let mut p = parser.lock().unwrap();
+                    p.process(data);
+                    // ConPTY asks for the cursor position (ESC[6n) and waits for the answer.
+                    if data.windows(4).any(|w| w == b"\x1b[6n") {
+                        let (row, col) = p.screen().cursor_position();
+                        let _ = answer.send(Input::Data(format!("\x1b[{};{}R", row + 1, col + 1).into_bytes()));
+                    }
+                    drop(p);
+                    ctx2.request_repaint();
+                }
+            });
+            // The shell exited: close the pseudo console so the reader ends too.
+            let (master2, ctx2, events_tx2) = (master.clone(), ctx.clone(), events_tx.clone());
+            std::thread::spawn(move || {
+                let status = child.wait();
+                master2.lock().unwrap().take();
+                let error = match status {
+                    Ok(s) if !s.success() => Some(format!("Beendet mit Code {}", s.exit_code())),
+                    Err(e) => Some(e.to_string()),
+                    _ => None,
+                };
+                let _ = events_tx2.send(TermEvent::Closed(error));
+                ctx2.request_repaint();
+            });
+            // Keys and size changes; ends (and stops the shell) when the panel drops the terminal.
+            std::thread::spawn(move || {
+                while let Some(i) = input_rx.blocking_recv() {
+                    match i {
+                        Input::Data(bytes) => {
+                            if std::io::Write::write_all(&mut writer, &bytes).is_err() {
+                                break;
+                            }
+                        }
+                        Input::Resize(rows, cols) => {
+                            if let Some(m) = master.lock().unwrap().as_ref() {
+                                let _ = m.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+                            }
+                        }
+                    }
+                }
+                let _ = killer.kill();
+            });
+            Ok(())
+        })();
+        if let Err(e) = started {
+            term.status = TermStatus::Closed(Some(format!("{} konnte nicht gestartet werden: {e:#}", shell.name)));
+        }
+        term
     }
 
     pub fn send(&self, bytes: impl Into<Vec<u8>>) {
