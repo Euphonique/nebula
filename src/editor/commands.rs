@@ -1243,6 +1243,34 @@ mod whitespace_tests {
     }
 
     #[test]
+    fn text_tools() {
+        let mut d = Document::new(DocSource::Untitled(1), "item10\nItem2\nb\nitem2\nb");
+        sort_lines(&mut d, false);
+        assert_eq!(d.rope.to_string(), "b\nb\nItem2\nitem2\nitem10");
+        unique_lines(&mut d);
+        assert_eq!(d.rope.to_string(), "b\nItem2\nitem2\nitem10");
+        d.set_selection(Selection::new(0, 8)); // "b\nItem2\n" -> lines 0..=1
+        reverse_lines(&mut d);
+        assert_eq!(d.rope.to_string(), "Item2\nb\nitem2\nitem10");
+        d.set_selection(Selection::cursor(1));
+        change_case(&mut d, Case::Upper);
+        assert_eq!(d.line_text(0), "ITEM2");
+        let mut d = Document::new(DocSource::Untitled(1), "  foo   \n    bar\nbaz");
+        d.set_selection(Selection::cursor(2));
+        join_lines(&mut d);
+        assert_eq!(d.rope.to_string(), "  foo bar\nbaz");
+        let mut d = Document::new(DocSource::Untitled(1), "hallo welt");
+        d.set_selection(Selection::cursor(0));
+        change_case(&mut d, Case::Title);
+        assert_eq!(d.rope.to_string(), "Hallo welt");
+        d.set_selection(Selection::new(0, 5));
+        wrap_in_tag(&mut d);
+        assert_eq!(d.rope.to_string(), "<>Hallo</> welt");
+        let heads: Vec<usize> = d.selections.iter().map(|s| s.head).collect();
+        assert_eq!(heads, vec![1, 9]);
+    }
+
+    #[test]
     fn cursors_at_ends() {
         let mut d = Document::new(DocSource::Untitled(1), "ab\ncde\nf\n");
         d.set_selection(Selection::new(1, 9));
@@ -1294,4 +1322,181 @@ pub fn goto_bookmark(doc: &mut Document, forward: bool) -> bool {
     doc.set_selection(Selection::cursor(doc.line_to_char(target)));
     doc.view.center_line = Some(target);
     true
+}
+
+/// Line range covered by the selections, or the whole document without a selection.
+fn line_span(doc: &Document) -> (usize, usize) {
+    let sel = doc.primary_selection();
+    if sel.is_empty() && doc.selections.len() == 1 {
+        // The empty line after a final line break stays at the end.
+        let mut last = doc.len_lines().saturating_sub(1);
+        if last > 0 && doc.line_len(last) == 0 {
+            last -= 1;
+        }
+        return (0, last);
+    }
+    let start = doc.selections.iter().map(|s| s.range().start).min().unwrap_or(0);
+    let end = doc.selections.iter().map(|s| s.range().end).max().unwrap_or(0);
+    let first = doc.char_to_line(start);
+    let mut last = doc.char_to_line(end);
+    if last > first && doc.line_to_char(last) == end {
+        last -= 1;
+    }
+    (first, last)
+}
+
+/// Replaces the selected lines (see [`line_span`]) by `f` applied to them.
+fn transform_lines(doc: &mut Document, f: impl FnOnce(Vec<String>) -> Vec<String>) {
+    let (first, last) = line_span(doc);
+    let start = doc.line_to_char(first);
+    let end = doc.line_end(last);
+    let lines: Vec<String> = (first..=last).map(|l| doc.slice(doc.line_to_char(l)..doc.line_end(l))).collect();
+    let text = f(lines).join("\n");
+    let n = text.chars().count();
+    doc.break_undo_group();
+    doc.apply(vec![Change::new(start..end, text)], Some(vec![Selection::new(start, start + n)]), EditKind::Other);
+    doc.break_undo_group();
+}
+
+pub fn sort_lines(doc: &mut Document, descending: bool) {
+    transform_lines(doc, |mut lines| {
+        lines.sort_by(|a, b| natural_cmp(a, b));
+        if descending {
+            lines.reverse();
+        }
+        lines
+    });
+}
+
+/// Compares case-insensitively, with numbers by value ("item2" < "item10").
+fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let key = |s: &str| -> Vec<(String, u128)> {
+        let mut out = Vec::new();
+        let mut text = String::new();
+        let mut num = String::new();
+        for c in s.chars() {
+            if c.is_ascii_digit() {
+                num.push(c);
+            } else {
+                if !num.is_empty() {
+                    out.push((std::mem::take(&mut text), num.parse().unwrap_or(u128::MAX)));
+                    num.clear();
+                }
+                text.extend(c.to_lowercase());
+            }
+        }
+        out.push((text, num.parse().unwrap_or(0)));
+        out
+    };
+    key(a).cmp(&key(b)).then_with(|| a.cmp(b))
+}
+
+pub fn unique_lines(doc: &mut Document) {
+    transform_lines(doc, |lines| {
+        let mut seen = std::collections::HashSet::new();
+        lines.into_iter().filter(|l| seen.insert(l.clone())).collect()
+    });
+}
+
+pub fn reverse_lines(doc: &mut Document) {
+    transform_lines(doc, |mut lines| {
+        lines.reverse();
+        lines
+    });
+}
+
+/// Joins the selected lines (or the cursor line with the next) with single spaces.
+pub fn join_lines(doc: &mut Document) {
+    let sel = doc.primary_selection();
+    let (first, mut last) = line_span(doc);
+    if sel.is_empty() && doc.selections.len() == 1 {
+        let line = doc.char_to_line(sel.head);
+        if line + 1 >= doc.len_lines() {
+            return;
+        }
+        let start = doc.line_end(line);
+        let next_start = doc.line_to_char(line + 1);
+        let indent = doc.line_text(line + 1).chars().take_while(|c| *c == ' ' || *c == '\t').count();
+        let before_ws = doc.slice(doc.line_to_char(line)..start).chars().rev().take_while(|c| *c == ' ' || *c == '\t').count();
+        let from = start - before_ws;
+        doc.apply(vec![Change::new(from..next_start + indent, " ")], Some(vec![Selection::cursor(from)]), EditKind::Other);
+        return;
+    }
+    if last == first {
+        last += 1;
+    }
+    let last = last.min(doc.len_lines() - 1);
+    let start = doc.line_to_char(first);
+    let end = doc.line_end(last);
+    let lines: Vec<String> = (first..=last).map(|l| doc.slice(doc.line_to_char(l)..doc.line_end(l))).collect();
+    let indent: String = lines[0].chars().take_while(|c| c.is_whitespace()).collect();
+    let joined = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+    let text = format!("{indent}{joined}");
+    let n = text.chars().count();
+    doc.apply(vec![Change::new(start..end, text)], Some(vec![Selection::cursor(start + n)]), EditKind::Other);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Case {
+    Upper,
+    Lower,
+    Title,
+}
+
+/// Changes the case of the selections (or of the word at each cursor).
+pub fn change_case(doc: &mut Document, case: Case) {
+    let ranges: Vec<std::ops::Range<usize>> = doc
+        .selections
+        .iter()
+        .map(|s| if s.is_empty() { word_at(doc, s.head).unwrap_or(s.head..s.head) } else { s.range() })
+        .collect();
+    let changes: Vec<Change> = ranges
+        .iter()
+        .filter(|r| !r.is_empty())
+        .map(|r| {
+            let text = doc.slice(r.clone());
+            let new = match case {
+                Case::Upper => text.to_uppercase(),
+                Case::Lower => text.to_lowercase(),
+                Case::Title => {
+                    let mut out = String::with_capacity(text.len());
+                    let mut start = true;
+                    for c in text.chars() {
+                        if start && c.is_alphabetic() {
+                            out.extend(c.to_uppercase());
+                        } else {
+                            out.extend(c.to_lowercase());
+                        }
+                        start = !c.is_alphanumeric() && c != '\'';
+                    }
+                    out
+                }
+            };
+            Change::new(r.clone(), new)
+        })
+        .collect();
+    // Keep the selections; case changes rarely change the length.
+    let after = doc.selections.clone();
+    doc.break_undo_group();
+    doc.apply(changes, Some(after), EditKind::Other);
+    doc.break_undo_group();
+}
+
+/// Wraps each selection in a new tag; the cursors sit in both tag names so
+/// typing the name fills in the opening and closing tag at once.
+pub fn wrap_in_tag(doc: &mut Document) {
+    let ranges: Vec<std::ops::Range<usize>> = doc.selections.iter().map(|s| s.range()).collect();
+    let mut changes = Vec::new();
+    let mut cursors = Vec::new();
+    let mut shift = 0;
+    for r in &ranges {
+        changes.push(Change::new(r.start..r.start, "<>"));
+        changes.push(Change::new(r.end..r.end, "</>"));
+        cursors.push(Selection::cursor(r.start + shift + 1));
+        shift += 2;
+        cursors.push(Selection::cursor(r.end + shift + 2));
+        shift += 3;
+    }
+    doc.break_undo_group();
+    doc.apply(changes, Some(cursors), EditKind::Other);
 }

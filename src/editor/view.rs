@@ -184,6 +184,26 @@ impl EditorView<'_> {
                         cmd::toggle_comment(doc);
                         ui.close();
                     }
+                    ui.menu_button("Text", |ui| {
+                        type Tool = fn(&mut Document);
+                        let tools: [(&str, Tool); 9] = [
+                            ("Zeilen sortieren (A–Z)", |d| cmd::sort_lines(d, false)),
+                            ("Zeilen sortieren (Z–A)", |d| cmd::sort_lines(d, true)),
+                            ("Doppelte Zeilen entfernen", cmd::unique_lines),
+                            ("Zeilen umkehren", cmd::reverse_lines),
+                            ("Zeilen verbinden", cmd::join_lines),
+                            ("GROSSBUCHSTABEN", |d| cmd::change_case(d, cmd::Case::Upper)),
+                            ("kleinbuchstaben", |d| cmd::change_case(d, cmd::Case::Lower)),
+                            ("Wörter Großschreiben", |d| cmd::change_case(d, cmd::Case::Title)),
+                            ("Mit Tag umschließen", cmd::wrap_in_tag),
+                        ];
+                        for (label, tool) in tools {
+                            if ui.button(label).clicked() {
+                                tool(doc);
+                                ui.close();
+                            }
+                        }
+                    });
                     ui.separator();
                     if ui.button("Block ein-/ausklappen").clicked() {
                         folding::toggle_at_cursor(doc, tab);

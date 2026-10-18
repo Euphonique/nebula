@@ -62,6 +62,8 @@ pub(super) fn defaults(c: Command) -> Vec<KeyboardShortcut> {
         DeleteLine => vec![ks(CTRL | shift, Key::K)],
         SelectAllOccurrences => vec![ks(CTRL | shift, Key::L)],
         CursorsAtLineEnds => vec![ks(alt | shift, Key::I)],
+        JoinLines => vec![ks(CTRL, Key::J)],
+        WrapInTag => vec![ks(alt, Key::W)],
         _ => Vec::new(),
     }
 }
@@ -75,7 +77,7 @@ fn editor_command(c: Command) -> bool {
 /// Commands whose keys only apply while the editor has the keyboard.
 fn needs_editor(c: Command) -> bool {
     use Command::*;
-    matches!(c, ToggleBookmark | NextBookmark | PrevBookmark)
+    matches!(c, ToggleBookmark | NextBookmark | PrevBookmark | JoinLines | WrapInTag)
 }
 
 /// Commands that can have shortcuts (no per-item commands like languages or servers).
