@@ -48,22 +48,43 @@ pub enum SearchEvent {
     Done(Option<String>),
 }
 
-/// Starts a search in `root` on `site`. Drop the receiver to stop listening.
-pub fn start(mut site: Site, root: String, query: Query, ctx: egui::Context) -> Receiver<SearchEvent> {
+/// A running search. Dropping it stops the search on the server.
+pub struct RemoteSearch {
+    pub events: Receiver<SearchEvent>,
+    cancel: Arc<tokio::sync::Notify>,
+}
+
+impl Drop for RemoteSearch {
+    fn drop(&mut self) {
+        self.cancel.notify_one();
+    }
+}
+
+/// Starts a search in `root` on `site`.
+pub fn start(mut site: Site, root: String, query: Query, ctx: egui::Context) -> RemoteSearch {
     // FTP servers usually offer SSH on the standard port (like the terminal).
     if site.protocol != crate::settings::Protocol::Sftp {
         site.port = 22;
     }
-    let (tx, rx) = crossbeam_channel::unbounded();
+    let (tx, events) = crossbeam_channel::unbounded();
+    let cancel = Arc::new(tokio::sync::Notify::new());
+    let stop = cancel.clone();
     RUNTIME.spawn(async move {
-        let result = run(site, root, query, tx.clone(), ctx.clone()).await;
+        let result = run(site, root, query, tx.clone(), ctx.clone(), stop).await;
         let _ = tx.send(SearchEvent::Done(result.err().map(|e| format!("{e:#}"))));
         ctx.request_repaint();
     });
-    rx
+    RemoteSearch { events, cancel }
 }
 
-async fn run(site: Site, root: String, query: Query, tx: Sender<SearchEvent>, ctx: egui::Context) -> anyhow::Result<()> {
+async fn run(
+    site: Site,
+    root: String,
+    query: Query,
+    tx: Sender<SearchEvent>,
+    ctx: egui::Context,
+    cancel: Arc<tokio::sync::Notify>,
+) -> anyhow::Result<()> {
     let password = {
         let site = site.clone();
         tokio::task::spawn_blocking(move || site.password()).await?.unwrap_or_default()
@@ -75,7 +96,10 @@ async fn run(site: Site, root: String, query: Query, tx: Sender<SearchEvent>, ct
             ctx.request_repaint();
         }
     };
-    let session = open_session(&site, &password, Arc::new(Box::new(prompt) as PromptFn)).await?;
+    let session = tokio::select! {
+        s = open_session(&site, &password, Arc::new(Box::new(prompt) as PromptFn)) => s?,
+        _ = cancel.notified() => return Ok(()),
+    };
     let mut channel = session.channel_open_session().await?;
     channel.exec(true, command(&root, &query)).await?;
 
@@ -83,7 +107,16 @@ async fn run(site: Site, root: String, query: Query, tx: Sender<SearchEvent>, ct
     let mut stderr = Vec::new();
     let mut lines = 0;
     let mut status = None;
-    while let Some(msg) = channel.wait().await {
+    loop {
+        let msg = tokio::select! {
+            msg = channel.wait() => msg,
+            _ = cancel.notified() => {
+                // Stop the command; closing the connection alone would let it run on.
+                let _ = channel.signal(russh::Sig::TERM).await;
+                return Ok(());
+            }
+        };
+        let Some(msg) = msg else { break };
         match msg {
             ChannelMsg::Data { data } => {
                 buf.extend_from_slice(&data);
@@ -210,7 +243,7 @@ fn command(root: &str, q: &Query) -> String {
     let dir = if root.trim().is_empty() { ".".to_string() } else { quote(root) };
     // First line: the absolute folder, so results can be opened.
     format!(
-        "cd {dir} || exit 2; printf '{ROOT_MARK}%s\\n' \"$(pwd)\"; if command -v rg >/dev/null 2>&1; then {rg}; elif {use_git}; then {git}; else {grep}; fi"
+        "cd {dir} || exit 2; printf '{ROOT_MARK}%s\\n' \"$(pwd)\"; if command -v rg >/dev/null 2>&1; then exec {rg}; elif {use_git}; then exec {git}; else exec {grep}; fi"
     )
 }
 

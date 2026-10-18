@@ -832,8 +832,9 @@ impl NebulaApp {
                 self.host_keys.push_back((site_id, prompt));
             }
             SidebarAction::SearchIn(dir) => {
-                self.sidebar.search.scope = crate::ui::search::Scope::Folder(dir);
                 self.open_project_search();
+                let scope = crate::ui::search::Scope::for_dir(&dir, self.sidebar.root.as_deref());
+                self.sidebar.search.set_scope(scope);
             }
             SidebarAction::Search(crate::ui::search::SearchAction::ReplaceAll { files, regex, replacement }) => {
                 self.replace_in_files(files, regex, replacement, ctx);
@@ -1007,8 +1008,7 @@ impl NebulaApp {
 
     fn open_project_search(&mut self) {
         self.show_sidebar = true;
-        self.sidebar.tab = crate::ui::sidebar::SidebarTab::Search;
-        self.sidebar.search.focus_query = true;
+        self.sidebar.open_search();
         if let Some(doc) = self.active.and_then(|i| self.docs.get(i)) {
             let sel = doc.primary_selection();
             if !sel.is_empty() && doc.char_to_line(sel.anchor) == doc.char_to_line(sel.head) {

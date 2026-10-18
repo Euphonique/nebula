@@ -55,17 +55,36 @@ pub enum SearchAction {
 }
 
 /// Where the search runs.
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Scope {
-    /// The local project folder.
-    #[default]
-    Project,
-    /// A local folder or a folder on a server.
-    Folder(DirRef),
+    /// A folder in the local project, relative with `/` (empty = whole project).
+    Local { dir: String },
+    /// A folder on a server (empty = the login folder).
+    Remote { site_id: String, path: String },
+}
+
+impl Default for Scope {
+    fn default() -> Self {
+        Scope::Local { dir: String::new() }
+    }
+}
+
+impl Scope {
+    /// Scope for a folder from the sidebar; local folders outside the project
+    /// fall back to the whole project.
+    pub fn for_dir(dir: &DirRef, project: Option<&Path>) -> Self {
+        match dir {
+            DirRef::Local(p) => {
+                let rel = project.and_then(|root| p.strip_prefix(root).ok());
+                Scope::Local { dir: rel.map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default() }
+            }
+            DirRef::Remote { site_id, path } => Scope::Remote { site_id: site_id.clone(), path: path.clone() },
+        }
+    }
 }
 
 struct RemoteRun {
-    rx: Receiver<SearchEvent>,
+    search: remote_search::RemoteSearch,
     site_id: String,
     root: String,
     lines: usize,
@@ -93,6 +112,10 @@ pub struct SearchPanel {
     pub focus_query: bool,
     running: Option<(Receiver<FileMatches>, Arc<AtomicBool>)>,
     truncated: bool,
+    /// The user stopped the last search.
+    cancelled: bool,
+    /// Scope changed from outside; search again on the next frame.
+    restart_pending: bool,
 }
 
 impl SearchPanel {
@@ -140,9 +163,38 @@ impl SearchPanel {
     /// The folder searched for `scope`, if there is one.
     pub fn target(&self, project: Option<&Path>) -> Option<DirRef> {
         match &self.scope {
-            Scope::Project => project.map(|p| DirRef::Local(p.to_path_buf())),
-            Scope::Folder(d) => Some(d.clone()),
+            Scope::Local { dir } => {
+                let root = project?;
+                let dir = dir.trim().trim_matches('/');
+                Some(DirRef::Local(if dir.is_empty() { root.to_path_buf() } else { root.join(dir) }))
+            }
+            Scope::Remote { site_id, path } => Some(DirRef::Remote { site_id: site_id.clone(), path: path.trim().to_string() }),
         }
+    }
+
+    /// Sets where to search; with a search term, searches again there.
+    pub fn set_scope(&mut self, scope: Scope) {
+        if scope != self.scope {
+            self.scope = scope;
+            self.restart_pending = !self.query.is_empty();
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running.is_some() || self.remote.is_some()
+    }
+
+    /// Stops the running search; results found so far stay.
+    pub fn cancel(&mut self) {
+        if !self.is_running() {
+            return;
+        }
+        if let Some((_, cancel)) = self.running.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        // Dropping the remote search stops the command on the server.
+        self.remote = None;
+        self.cancelled = true;
     }
 
     /// Runs the search in the current scope (the project folder by default).
@@ -158,11 +210,12 @@ impl SearchPanel {
         if let Some((_, cancel)) = self.running.take() {
             cancel.store(true, Ordering::Relaxed);
         }
-        // Dropping the receiver ends the SSH search.
+        // Dropping the remote search stops the command on the server.
         self.remote = None;
         self.results.clear();
         self.collapsed.clear();
         self.truncated = false;
+        self.cancelled = false;
         self.error = None;
     }
 
@@ -190,8 +243,8 @@ impl SearchPanel {
             skip_dirs: SKIP_DIRS.iter().map(|s| s.to_string()).collect(),
         };
         let via_ftp = site.protocol != Protocol::Sftp;
-        let rx = remote_search::start(site, root.to_string(), query, ctx.clone());
-        self.remote = Some(RemoteRun { rx, site_id: site_id.to_string(), root: root.to_string(), lines: 0, via_ftp });
+        let search = remote_search::start(site, root.to_string(), query, ctx.clone());
+        self.remote = Some(RemoteRun { search, site_id: site_id.to_string(), root: root.to_string(), lines: 0, via_ftp });
     }
 
     fn start_local(&mut self, root: &Path, ctx: &egui::Context) {
@@ -264,7 +317,7 @@ impl SearchPanel {
         let re = self.build_regex().ok();
         let Some(run) = &mut self.remote else { return };
         let mut done = None;
-        for ev in run.rx.try_iter() {
+        for ev in run.search.events.try_iter() {
             match ev {
                 SearchEvent::HostKey(prompt) => actions.push(SearchAction::HostKey { site_id: run.site_id.clone(), prompt }),
                 SearchEvent::Root(root) => run.root = root,
@@ -320,46 +373,52 @@ impl SearchPanel {
         self.results.iter().flat_map(|f| &f.lines).map(|l| l.ranges.len()).sum()
     }
 
-    /// Picker for where to search: project, a server, or a folder chosen
-    /// from the sidebar. Returns true if the scope changed.
+    /// Picker for where to search: the local project or a server, plus the
+    /// folder inside it. Returns true if the scope changed.
     fn scope_picker(&mut self, ui: &mut Ui, theme: &Theme, project: Option<&Path>, sites: &Sites, homes: &HashMap<String, String>) -> bool {
         let label = match &self.scope {
-            Scope::Project => "Projektordner".to_string(),
-            Scope::Folder(DirRef::Local(p)) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-            Scope::Folder(DirRef::Remote { site_id, .. }) => sites.get(site_id).map(|s| s.display_name()).unwrap_or_default(),
+            Scope::Local { .. } => "Projekt (lokal)".to_string(),
+            Scope::Remote { site_id, .. } => sites.get(site_id).map(|s| s.display_name()).unwrap_or_default(),
         };
         let before = self.scope.clone();
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Suchen in").small().color(theme.text_faint));
+            ui.add_sized(vec2(52.0, 18.0), egui::Label::new(RichText::new("Suchen in").small().color(theme.text_faint)));
             egui::ComboBox::from_id_salt("search-scope").selected_text(label).width(ui.available_width()).show_ui(ui, |ui| {
-                if project.is_some() {
-                    ui.selectable_value(&mut self.scope, Scope::Project, "Projektordner");
-                }
-                if let Scope::Folder(DirRef::Local(p)) = &before {
-                    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    ui.selectable_value(&mut self.scope, before.clone(), name);
+                let local = matches!(before, Scope::Local { .. });
+                if ui.add_enabled(project.is_some(), egui::Button::selectable(local, "Projekt (lokal)")).clicked() && !local {
+                    self.scope = Scope::default();
                 }
                 if !sites.sites.is_empty() {
                     ui.separator();
                     ui.label(RichText::new("Server (über SSH)").small().color(theme.text_faint));
                 }
                 for site in &sites.sites {
-                    let current = matches!(&before, Scope::Folder(DirRef::Remote { site_id, .. }) if *site_id == site.id);
+                    let current = matches!(&before, Scope::Remote { site_id, .. } if *site_id == site.id);
                     if ui.selectable_label(current, site.display_name()).clicked() && !current {
                         let path = homes.get(&site.id).cloned().unwrap_or_else(|| site.root_path.trim().to_string());
-                        self.scope = Scope::Folder(DirRef::Remote { site_id: site.id.clone(), path });
+                        self.scope = Scope::Remote { site_id: site.id.clone(), path };
                     }
                 }
             });
         });
-        // Server folder, editable; empty means the login folder.
-        if let Scope::Folder(DirRef::Remote { path, .. }) = &mut self.scope {
-            let resp = ui.add(egui::TextEdit::singleline(path).hint_text("Ordner auf dem Server (leer = Startordner)").desired_width(f32::INFINITY));
-            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                return true;
-            }
-        }
-        self.scope != before
+        let switched = match (&self.scope, &before) {
+            (Scope::Local { .. }, Scope::Local { .. }) => false,
+            (Scope::Remote { site_id: a, .. }, Scope::Remote { site_id: b, .. }) => a != b,
+            _ => true,
+        };
+        // The folder inside the project or on the server; Enter searches again.
+        let (text, hint) = match &mut self.scope {
+            Scope::Local { dir } => (dir, "Ordner im Projekt (leer = ganzes Projekt)"),
+            Scope::Remote { path, .. } => (path, "Ordner auf dem Server (leer = Startordner)"),
+        };
+        let resp = ui
+            .horizontal(|ui| {
+                ui.add_sized(vec2(52.0, 18.0), egui::Label::new(RichText::new("Ordner").small().color(theme.text_faint)));
+                ui.add(egui::TextEdit::singleline(text).hint_text(hint).desired_width(f32::INFINITY))
+            })
+            .inner
+            .on_hover_text(hint);
+        switched || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
     }
 
     pub fn show(
@@ -387,7 +446,7 @@ impl SearchPanel {
             resp.request_focus();
         }
         let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        let mut restart = enter || (scope_changed && !self.query.is_empty());
+        let mut restart = enter || (scope_changed && !self.query.is_empty()) || std::mem::take(&mut self.restart_pending);
         ui.horizontal(|ui| {
             restart |= ui.toggle_value(&mut self.case_sensitive, "Aa").on_hover_text("Groß-/Kleinschreibung").changed();
             restart |= ui.toggle_value(&mut self.whole_word, "W").on_hover_text("Ganzes Wort").changed();
@@ -428,7 +487,8 @@ impl SearchPanel {
             self.start(project, sites, ui.ctx());
         }
         ui.add_space(4.0);
-        let summary = match (&self.error, self.running.is_some() || self.remote.is_some()) {
+        let running = self.is_running();
+        let summary = match (&self.error, running) {
             (Some(e), _) => RichText::new(e).color(theme.danger),
             (None, true) => RichText::new(format!("Suche… {} Treffer", self.match_count())).color(theme.text_faint),
             (None, false) if self.query.is_empty() => RichText::new(""),
@@ -436,11 +496,26 @@ impl SearchPanel {
                 "{} Treffer in {} Dateien{}",
                 self.match_count(),
                 self.results.len(),
-                if self.truncated { " (gekürzt)" } else { "" }
+                if self.cancelled {
+                    " (abgebrochen)"
+                } else if self.truncated {
+                    " (gekürzt)"
+                } else {
+                    ""
+                }
             ))
             .color(theme.text_faint),
         };
-        ui.label(summary.small());
+        ui.horizontal(|ui| {
+            ui.add(egui::Label::new(summary.small()).wrap());
+            if running {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("Abbrechen").clicked() {
+                        self.cancel();
+                    }
+                });
+            }
+        });
         ui.add_space(4.0);
 
         egui::ScrollArea::vertical().id_salt("search-results").auto_shrink([false, false]).show(ui, |ui| {
@@ -535,6 +610,25 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    #[test]
+    fn scope_from_sidebar_folder() {
+        let root = Path::new(r"C:\proj");
+        let sub = DirRef::Local(PathBuf::from(r"C:\proj\src\app"));
+        assert_eq!(Scope::for_dir(&sub, Some(root)), Scope::Local { dir: "src/app".into() });
+        assert_eq!(Scope::for_dir(&DirRef::Local(PathBuf::from(r"D:\other")), Some(root)), Scope::default());
+
+        let mut panel = SearchPanel { scope: Scope::Local { dir: "src/app".into() }, ..Default::default() };
+        assert_eq!(panel.target(Some(root)), Some(DirRef::Local(PathBuf::from(r"C:\proj\src\app"))));
+        assert_eq!(panel.target(None), None);
+
+        // A new scope searches again only when there is something to search for.
+        panel.set_scope(Scope::default());
+        assert!(!panel.restart_pending);
+        panel.query = "x".into();
+        panel.set_scope(Scope::Remote { site_id: "s".into(), path: "/var/www".into() });
+        assert!(panel.restart_pending);
     }
 
     #[test]

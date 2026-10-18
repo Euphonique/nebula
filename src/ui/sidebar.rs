@@ -251,6 +251,57 @@ impl Sidebar {
         }
     }
 
+    /// Shows the search tab. Coming from the files or servers view, it
+    /// searches where the user just was: the selected folder (or the folder
+    /// of the selected file), else the project or the connected server.
+    pub fn open_search(&mut self) {
+        if self.tab != SidebarTab::Search {
+            if let Some(scope) = self.context_scope() {
+                self.search.set_scope(scope);
+            }
+            self.tab = SidebarTab::Search;
+        }
+        self.search.focus_query = true;
+    }
+
+    fn context_scope(&self) -> Option<super::search::Scope> {
+        use super::search::Scope;
+        let root = self.root.as_deref();
+        let remote_view = match self.tab {
+            SidebarTab::Files => false,
+            SidebarTab::Servers => true,
+            _ => return None,
+        };
+        let selected = self
+            .selection
+            .iter()
+            .rev()
+            .find(|i| matches!(i.file, FileRef::Remote { .. }) == remote_view)
+            .and_then(|item| {
+                if !item.is_dir {
+                    return item.parent();
+                }
+                Some(match &item.file {
+                    FileRef::Local(p) => DirRef::Local(p.clone()),
+                    FileRef::Remote { site_id, path } => DirRef::Remote { site_id: site_id.clone(), path: path.clone() },
+                })
+            });
+        if let Some(dir) = selected {
+            return Some(Scope::for_dir(&dir, root));
+        }
+        if !remote_view {
+            return Some(Scope::default());
+        }
+        // No selection: the start folder of a connected server.
+        let mut connected: Vec<_> = self
+            .expanded_sites
+            .iter()
+            .filter_map(|id| Some((id.clone(), self.remote.get(id)?.home.clone()?)))
+            .collect();
+        connected.sort();
+        connected.into_iter().next().map(|(site_id, path)| Scope::Remote { site_id, path })
+    }
+
     /// Names in a remote folder, if it has been listed.
     pub fn remote_names(&self, site_id: &str, dir: &str) -> Option<Vec<String>> {
         let tree = self.remote.get(site_id)?;
@@ -414,8 +465,7 @@ impl Sidebar {
             })
             .on_hover_text("Im Projekt suchen (Strg+Umschalt+F)");
             if search.clicked() {
-                self.tab = SidebarTab::Search;
-                self.search.focus_query = true;
+                self.open_search();
             }
             if self.has_extension_sidebars {
                 let ext = icons::icon_button(ui, theme, seg, self.tab == SidebarTab::Extensions, |p, c, col| icons::blocks(p, c, col))
