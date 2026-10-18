@@ -252,7 +252,7 @@ fn grammar_source(grammar: &str) -> Option<(tree_sitter::Language, String, Strin
         "yaml" => (tree_sitter_yaml::LANGUAGE.into(), s(tree_sitter_yaml::HIGHLIGHTS_QUERY), String::new(), String::new()),
         "toml" => (tree_sitter_toml_ng::LANGUAGE.into(), s(tree_sitter_toml_ng::HIGHLIGHTS_QUERY), String::new(), String::new()),
         "ini" => (tree_sitter_ini::LANGUAGE.into(), s(tree_sitter_ini::HIGHLIGHTS_QUERY), String::new(), String::new()),
-        "diff" => (tree_sitter_diff::LANGUAGE.into(), s(tree_sitter_diff::HIGHLIGHTS_QUERY), String::new(), String::new()),
+        "diff" => (tree_sitter_diff::LANGUAGE.into(), s(include_str!("queries/diff.scm")), String::new(), String::new()),
         _ => return None,
     })
 }

@@ -133,6 +133,8 @@ pub enum SidebarAction {
     Search(super::search::SearchAction),
     /// Project search limited to a folder (local or on a server).
     SearchIn(DirRef),
+    /// Compare two files, or one file with the active tab.
+    Compare(Vec<FileRef>),
 }
 
 #[derive(Clone, PartialEq)]
@@ -1060,12 +1062,25 @@ fn item_menu(
             }
             ui.separator();
         }
-    } else if menu_button(ui, "Öffnen", "") {
-        actions.push(match &item.file {
-            FileRef::Local(p) => SidebarAction::OpenLocal(p.clone()),
-            FileRef::Remote { site_id, path } => SidebarAction::OpenRemote { site_id: site_id.clone(), path: path.clone() },
-        });
-        close = true;
+    } else {
+        if menu_button(ui, "Öffnen", "") {
+            actions.push(match &item.file {
+                FileRef::Local(p) => SidebarAction::OpenLocal(p.clone()),
+                FileRef::Remote { site_id, path } => SidebarAction::OpenRemote { site_id: site_id.clone(), path: path.clone() },
+            });
+            close = true;
+        }
+        // Two selected files compare with each other, one with the active tab.
+        let files: Vec<&Item> = selection.iter().filter(|i| !i.is_dir).collect();
+        if files.len() == 2 {
+            if menu_button(ui, "Miteinander vergleichen", "") {
+                actions.push(SidebarAction::Compare(files.iter().map(|i| i.file.clone()).collect()));
+                close = true;
+            }
+        } else if menu_button(ui, "Mit aktivem Tab vergleichen", "") {
+            actions.push(SidebarAction::Compare(vec![item.file.clone()]));
+            close = true;
+        }
     }
     if menu_button(ui, "Ausschneiden", "Strg+X") {
         actions.push(SidebarAction::Clipboard { items: selection.to_vec(), cut: true });

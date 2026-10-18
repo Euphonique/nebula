@@ -20,6 +20,8 @@ pub(super) enum TabCmd {
     CopyPath,
     Reveal,
     History,
+    CompareHead,
+    CompareFile,
 }
 
 /// Context menu of a tab.
@@ -44,6 +46,8 @@ pub(super) fn tab_menu(ui: &mut egui::Ui, doc: &Document, i: usize, count: usize
     if !matches!(doc.source, DocSource::Untitled(_)) {
         ui.separator();
         item(ui, "Lokaler Verlauf…", "", true, TabCmd::History);
+        item(ui, "Mit letztem Commit vergleichen", "", matches!(doc.source, DocSource::Local(_)), TabCmd::CompareHead);
+        item(ui, "Vergleichen mit Datei…", "", true, TabCmd::CompareFile);
         item(ui, "Pfad kopieren", "", true, TabCmd::CopyPath);
         if matches!(doc.source, DocSource::Local(_)) {
             item(ui, "Im Explorer zeigen", "", true, TabCmd::Reveal);
@@ -80,6 +84,8 @@ impl NebulaApp {
                 }
             }
             TabCmd::History => self.open_history(i),
+            TabCmd::CompareHead => self.compare_with_head(i),
+            TabCmd::CompareFile => self.compare_with_file_dialog(i),
         }
     }
 

@@ -81,7 +81,8 @@ impl NebulaApp {
         let unsaved: Vec<usize> = (0..self.docs.len())
             .filter(|&i| {
                 let d = &self.docs[i];
-                d.is_dirty() || (matches!(d.source, DocSource::Untitled(_)) && d.len_chars() > 0)
+                // Comparisons are generated; nothing to recover.
+                !d.read_only && (d.is_dirty() || (matches!(d.source, DocSource::Untitled(_)) && d.len_chars() > 0))
             })
             .collect();
         let current: HashMap<u64, u64> = unsaved.iter().map(|&i| (self.docs[i].id, self.docs[i].version)).collect();

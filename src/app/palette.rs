@@ -54,6 +54,8 @@ pub enum Command {
     ToggleSplit,
     Print,
     LocalHistory,
+    CompareHead,
+    CompareFile,
     DuplicateDoc,
     CloseOthers,
     CloseAll,
@@ -111,6 +113,8 @@ impl Command {
             (DuplicateDoc, "Datei: Duplizieren"),
             (Print, "Datei: Drucken…"),
             (LocalHistory, "Datei: Lokaler Verlauf…"),
+            (CompareHead, "Vergleichen: Mit letztem Commit"),
+            (CompareFile, "Vergleichen: Mit Datei…"),
             (Find, "Suchen: In Datei suchen"),
             (Replace, "Suchen: Ersetzen"),
             (FindInProject, "Suchen: Im Projekt suchen"),
@@ -381,6 +385,16 @@ impl NebulaApp {
             Command::LocalHistory => {
                 if let Some(i) = self.active {
                     self.open_history(i);
+                }
+            }
+            Command::CompareHead => {
+                if let Some(i) = self.active {
+                    self.compare_with_head(i);
+                }
+            }
+            Command::CompareFile => {
+                if let Some(i) = self.active {
+                    self.compare_with_file_dialog(i);
                 }
             }
             Command::DuplicateDoc => {

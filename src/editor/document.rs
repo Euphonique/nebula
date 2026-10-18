@@ -301,6 +301,8 @@ pub struct Document {
     pub remote_stamp: Option<crate::remote::Stamp>,
     /// Name shown and proposed on "Save As" for an untitled copy of a file.
     pub suggested_name: Option<String>,
+    /// Generated content (e.g. a comparison) that edits must not change.
+    pub read_only: bool,
     /// State of the local file when it was loaded or last saved.
     pub disk_stamp: Option<DiskStamp>,
     /// Number of checks in a row that found the local file missing.
@@ -339,6 +341,7 @@ impl Document {
             saving: false,
             remote_stamp: None,
             suggested_name: None,
+            read_only: false,
             disk_stamp: None,
             disk_missing: 0,
             config: Default::default(),
@@ -601,6 +604,10 @@ impl Document {
     /// each insertion that covered them.
     pub fn apply(&mut self, mut changes: Vec<Change>, after: Option<Vec<Selection>>, kind: EditKind) {
         changes.retain(|c| !(c.range.is_empty() && c.text.is_empty()));
+        // Edits of a read-only document change nothing, not even the cursor.
+        if self.read_only && !changes.is_empty() {
+            return;
+        }
         if changes.is_empty() {
             if let Some(after) = after {
                 self.selections = after;

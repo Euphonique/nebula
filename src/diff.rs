@@ -188,9 +188,52 @@ pub fn unified(old: &str, new: &str, context: usize) -> Vec<DiffLine> {
     out
 }
 
+/// The differences as a standard unified diff (usable as a patch).
+pub fn patch(old: &str, new: &str, old_label: &str, new_label: &str, context: usize) -> String {
+    let rows = unified(old, new, context);
+    let mut out = format!("--- {old_label}\n+++ {new_label}\n");
+    let (mut o, mut n) = (0usize, 0usize); // lines consumed so far
+    let mut i = 0;
+    while i < rows.len() {
+        if let DiffLine::Skip(k) = rows[i] {
+            o += k;
+            n += k;
+            i += 1;
+            continue;
+        }
+        let end = rows[i..].iter().position(|r| matches!(r, DiffLine::Skip(_))).map_or(rows.len(), |p| i + p);
+        let group = &rows[i..end];
+        let old_count = group.iter().filter(|r| !matches!(r, DiffLine::Added(..))).count();
+        let new_count = group.iter().filter(|r| !matches!(r, DiffLine::Removed(..))).count();
+        // An empty side names the line before it (unified diff convention).
+        let start = |pos: usize, count: usize| if count == 0 { pos } else { pos + 1 };
+        out.push_str(&format!("@@ -{},{old_count} +{},{new_count} @@\n", start(o, old_count), start(n, new_count)));
+        for r in group {
+            match r {
+                DiffLine::Context(_, _, t) => out.push_str(&format!(" {t}\n")),
+                DiffLine::Removed(_, t) => out.push_str(&format!("-{t}\n")),
+                DiffLine::Added(_, t) => out.push_str(&format!("+{t}\n")),
+                DiffLine::Skip(_) => {}
+            }
+        }
+        o += old_count;
+        n += new_count;
+        i = end;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn patch_format() {
+        let p = patch("1\n2\n3\n4\n5\n6\n7\n8\n", "1\n2\n3\n4\nfünf\n6\n7\n8\nneun\n", "a/x", "b/x", 1);
+        assert_eq!(p, "--- a/x\n+++ b/x\n@@ -4,3 +4,3 @@\n 4\n-5\n+fünf\n 6\n@@ -8,1 +8,2 @@\n 8\n+neun\n");
+        assert_eq!(patch("a\n", "a\n", "x", "y", 3), "--- x\n+++ y\n");
+        assert_eq!(patch("", "neu\n", "x", "y", 3), "--- x\n+++ y\n@@ -0,0 +1,1 @@\n+neu\n");
+    }
 
     #[test]
     fn finds_changes() {

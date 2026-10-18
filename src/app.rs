@@ -39,6 +39,7 @@ mod right_panel;
 mod nav;
 mod jumpbar;
 mod history;
+mod difftab;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -148,6 +149,8 @@ pub struct NebulaApp {
     autosave: history::AutosaveState,
     /// The open "Lokaler Verlauf" window.
     history_view: Option<history::HistoryView>,
+    /// Comparisons waiting for server files.
+    diff_jobs: difftab::DiffJobs,
     preview: crate::preview::Preview,
     preview_state: preview::PreviewState,
     ext: extensions::ExtUi,
@@ -211,6 +214,7 @@ impl NebulaApp {
             jump_reveal: false,
             autosave: Default::default(),
             history_view: None,
+            diff_jobs: Default::default(),
             preview: Default::default(),
             preview_state: Default::default(),
             ext: extensions::ExtUi::new(&cc.egui_ctx, &settings.disabled_extensions),
@@ -572,6 +576,9 @@ impl NebulaApp {
                     if self.compare_read_done(ev.tag, Ok(&data)) {
                         continue;
                     }
+                    if self.diff_read_done(ev.tag, Ok(&data)) {
+                        continue;
+                    }
                     if let Some((doc_id, encoding)) = self.pending_reloads.remove(&ev.tag) {
                         if let Some(i) = self.doc_index(doc_id) {
                             let source = self.docs[i].source.clone();
@@ -668,6 +675,9 @@ impl NebulaApp {
                         continue;
                     }
                     if self.compare_read_done(ev.tag, Err(message.clone())) {
+                        continue;
+                    }
+                    if self.diff_read_done(ev.tag, Err(message.clone())) {
                         continue;
                     }
                     match &request {
@@ -860,6 +870,18 @@ impl NebulaApp {
             SidebarAction::Search(crate::ui::search::SearchAction::HostKey { site_id, prompt }) => {
                 self.host_keys.push_back((site_id, prompt));
             }
+            SidebarAction::Compare(files) => match files.as_slice() {
+                [a, b] => self.compare_files(a.clone(), b.clone()),
+                [file] => {
+                    let active = self.active.and_then(|i| self.docs.get(i)).map(|d| d.source.clone());
+                    match active {
+                        Some(DocSource::Local(p)) => self.compare_files(file.clone(), FileRef::Local(p)),
+                        Some(DocSource::Remote { site_id, path }) => self.compare_files(file.clone(), FileRef::Remote { site_id, path }),
+                        _ => self.info("Öffne zuerst die Datei, mit der verglichen werden soll."),
+                    }
+                }
+                _ => {}
+            },
             SidebarAction::SearchIn(dir) => {
                 self.open_project_search();
                 let scope = crate::ui::search::Scope::for_dir(&dir, self.sidebar.root.as_deref());

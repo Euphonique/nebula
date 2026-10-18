@@ -73,6 +73,17 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// The repository folder from the project folder and `git rev-parse --show-cdup` ("../../").
+fn repo_top(root: &Path, cdup: &str) -> PathBuf {
+    let mut top = root.to_path_buf();
+    for part in cdup.trim().split(['/', '\\']).filter(|p| !p.is_empty()) {
+        if part == ".." {
+            top.pop();
+        }
+    }
+    top
+}
+
 /// Contents of `path` in the current commit (`None` if it is not tracked).
 pub fn head_file(top: &Path, path: &Path) -> Option<Vec<u8>> {
     // Windows paths compare without regard to case (git may report "a:/" for "A:\").
@@ -137,8 +148,11 @@ impl GitStatus {
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             let snapshot = (|| {
-                let top = git(&root, &["rev-parse", "--show-toplevel"])?;
-                let top = PathBuf::from(top.trim().replace('/', "\\"));
+                // Relative to the project folder rather than `--show-toplevel`:
+                // on a mapped network drive git answers with the UNC path
+                // (//server/share/…), which would not match our `A:\…` paths.
+                let cdup = git(&root, &["rev-parse", "--show-cdup"])?;
+                let top = repo_top(&root, &cdup);
                 let branch = git(&root, &["rev-parse", "--abbrev-ref", "HEAD"]).map(|b| b.trim().to_string());
                 let head = git(&root, &["rev-parse", "HEAD"]).map(|b| b.trim().to_string());
                 let status = git(&root, &["status", "--porcelain=v1", "-z", "--untracked-files=all"])?;
@@ -213,5 +227,12 @@ mod tests {
         assert_eq!(files[&PathBuf::from(r"C:\p\b.js")], FileState::Renamed);
         assert_eq!(files[&PathBuf::from(r"C:\p\c.php")], FileState::Added);
         assert_eq!(files.len(), 4);
+    }
+
+    #[test]
+    fn repo_top_keeps_drive_letter() {
+        assert_eq!(repo_top(Path::new(r"A:\Dev\proj"), "\n"), PathBuf::from(r"A:\Dev\proj"));
+        assert_eq!(repo_top(Path::new(r"A:\Dev\proj\web"), "../\n"), PathBuf::from(r"A:\Dev\proj"));
+        assert_eq!(repo_top(Path::new(r"A:\Dev\proj\a\b"), "../../"), PathBuf::from(r"A:\Dev\proj"));
     }
 }
