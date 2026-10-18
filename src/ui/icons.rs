@@ -183,6 +183,28 @@ pub fn search(painter: &Painter, c: Pos2, color: Color32) {
     painter.line_segment([c + vec2(2.0, 2.0), c + vec2(5.0, 5.0)], Stroke::new(1.5, color));
 }
 
+/// Branch with two commits ("Git").
+pub fn branch(painter: &Painter, c: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    let (top, bottom, side) = (c + vec2(-3.5, -5.0), c + vec2(-3.5, 5.0), c + vec2(4.0, -2.5));
+    painter.line_segment([top + vec2(0.0, 2.0), bottom - vec2(0.0, 2.0)], stroke);
+    // Curve from the side commit down into the main line.
+    let curve: Vec<Pos2> = (0..=8)
+        .map(|i| {
+            let t = i as f32 / 8.0;
+            let p0 = side + vec2(0.0, 2.0);
+            let p1 = side + vec2(0.0, 6.0);
+            let p2 = c + vec2(-3.5, 3.0);
+            let u = 1.0 - t;
+            pos2(u * u * p0.x + 2.0 * u * t * p1.x + t * t * p2.x, u * u * p0.y + 2.0 * u * t * p1.y + t * t * p2.y)
+        })
+        .collect();
+    painter.add(Shape::line(curve, stroke));
+    for p in [top, bottom, side] {
+        painter.circle_stroke(p, 1.9, stroke);
+    }
+}
+
 /// Eye ("preview").
 pub fn eye(painter: &Painter, c: Pos2, color: Color32) {
     let stroke = Stroke::new(1.3, color);

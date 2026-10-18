@@ -4,3 +4,4 @@ pub mod icons;
 pub mod search;
 pub mod sidebar;
 pub mod wordmark;
+pub mod git_panel;

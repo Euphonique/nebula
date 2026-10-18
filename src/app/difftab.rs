@@ -84,20 +84,36 @@ impl NebulaApp {
             self.info("Nur lokale Dateien in einem Git-Projekt lassen sich mit dem letzten Commit vergleichen.");
             return;
         };
+        self.compare_path_with_head(&path);
+    }
+
+    /// A local file (its open tab if any, else the disk) against the last commit.
+    pub(super) fn compare_path_with_head(&mut self, path: &Path) {
         let Some(top) = self.sidebar.git.top.clone() else {
             self.info("Das Projekt ist kein Git-Repository.");
             return;
         };
-        let Some(bytes) = crate::ui::git::head_file(&top, &path) else {
-            self.info(format!("„{}“ ist im letzten Commit nicht enthalten.", self.docs[i].title()));
+        let file = FileRef::Local(path.to_path_buf());
+        let name = name_of(&file);
+        let Some(bytes) = crate::ui::git::head_file(&top, path) else {
+            self.info(format!("„{name}“ ist im letzten Commit nicht enthalten."));
             return;
         };
-        let doc = &mut self.docs[i];
-        let head = doc.encoding.decode(&bytes).replace("\r\n", "\n");
-        let mine = doc.text().to_string();
-        let label = self.diff_label(&FileRef::Local(path.clone()));
-        let title = format!("{} (Änderungen)", self.docs[i].title());
-        self.open_diff_tab(title, (&format!("a/{label} (letzter Commit)"), &head), (&format!("b/{label} (Arbeitsstand)"), &mine));
+        let head = decode(&bytes);
+        // A deleted file compares with nothing.
+        let mine = match self.open_text(&file) {
+            Some(text) => text,
+            None if !path.exists() => String::new(),
+            None => match read_local(path) {
+                Ok(text) => text,
+                Err(e) => {
+                    self.error(e);
+                    return;
+                }
+            },
+        };
+        let label = self.diff_label(&file);
+        self.open_diff_tab(format!("{name} (Änderungen)"), (&format!("a/{label} (letzter Commit)"), &head), (&format!("b/{label} (Arbeitsstand)"), &mine));
     }
 
     /// Tab `i` against a local file picked in a dialog.

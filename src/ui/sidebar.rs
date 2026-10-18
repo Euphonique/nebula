@@ -19,6 +19,7 @@ pub enum SidebarTab {
     Files,
     Servers,
     Search,
+    Git,
     /// Sidebars contributed by extensions.
     Extensions,
 }
@@ -135,6 +136,7 @@ pub enum SidebarAction {
     SearchIn(DirRef),
     /// Compare two files, or one file with the active tab.
     Compare(Vec<FileRef>),
+    Git(super::git_panel::GitAction),
 }
 
 #[derive(Clone, PartialEq)]
@@ -206,6 +208,7 @@ pub struct Sidebar {
     spring: Option<(String, Instant)>,
     pub search: super::search::SearchPanel,
     pub git: super::git::GitStatus,
+    pub git_panel: super::git_panel::GitPanel,
     /// Recent project folders for the switcher in the header.
     pub recent_folders: Vec<PathBuf>,
 }
@@ -232,6 +235,7 @@ impl Sidebar {
             spring: None,
             search: Default::default(),
             git: Default::default(),
+            git_panel: Default::default(),
             recent_folders: Vec::new(),
         }
     }
@@ -345,7 +349,7 @@ impl Sidebar {
             };
         }
         match self.tab {
-            SidebarTab::Files | SidebarTab::Search | SidebarTab::Extensions => self.root.clone().map(DirRef::Local),
+            SidebarTab::Files | SidebarTab::Search | SidebarTab::Git | SidebarTab::Extensions => self.root.clone().map(DirRef::Local),
             SidebarTab::Servers => self
                 .expanded_sites
                 .iter()
@@ -465,6 +469,16 @@ impl Sidebar {
             if search.clicked() {
                 self.open_search();
             }
+            let changes = self.git.changes.len();
+            let git_tip = if changes > 0 { format!("Git ({changes} Änderungen)") } else { "Git".to_string() };
+            let git = icons::icon_button(ui, theme, seg, self.tab == SidebarTab::Git, |p, c, col| icons::branch(p, c, col)).on_hover_text(git_tip);
+            if changes > 0 {
+                // Small dot: there is something to commit.
+                ui.painter().circle_filled(git.rect.right_top() + vec2(-7.0, 6.0), 3.0, theme.modified);
+            }
+            if git.clicked() {
+                self.tab = SidebarTab::Git;
+            }
             if self.has_extension_sidebars {
                 let ext = icons::icon_button(ui, theme, seg, self.tab == SidebarTab::Extensions, |p, c, col| icons::blocks(p, c, col))
                     .on_hover_text("Erweiterungen");
@@ -512,7 +526,7 @@ impl Sidebar {
                             actions.push(SidebarAction::EditSite(None));
                         }
                     }
-                    SidebarTab::Search | SidebarTab::Extensions => {}
+                    SidebarTab::Search | SidebarTab::Git | SidebarTab::Extensions => {}
                 }
             });
         }
@@ -540,6 +554,13 @@ impl Sidebar {
             ui.advance_cursor_after_rect(full);
             return;
         }
+        if self.tab == SidebarTab::Git {
+            let mut git_actions = Vec::new();
+            self.git_panel.show(&mut list_ui, &mut self.git, theme, &mut git_actions);
+            actions.extend(git_actions.into_iter().map(SidebarAction::Git));
+            ui.advance_cursor_after_rect(full);
+            return;
+        }
         if self.tab == SidebarTab::Search {
             let mut search_actions = Vec::new();
             let root = self.root.clone();
@@ -555,7 +576,7 @@ impl Sidebar {
             match self.tab {
                 SidebarTab::Files => self.show_local(ui, &rc, actions),
                 SidebarTab::Servers => self.show_servers(ui, sites, &rc, actions),
-                SidebarTab::Search | SidebarTab::Extensions => {}
+                SidebarTab::Search | SidebarTab::Git | SidebarTab::Extensions => {}
             }
             ui.add_space(8.0);
             // Empty space below the tree: click clears selection, drops go to the root.

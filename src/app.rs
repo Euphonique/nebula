@@ -870,6 +870,8 @@ impl NebulaApp {
             SidebarAction::Search(crate::ui::search::SearchAction::HostKey { site_id, prompt }) => {
                 self.host_keys.push_back((site_id, prompt));
             }
+            SidebarAction::Git(crate::ui::git_panel::GitAction::Compare(path)) => self.compare_path_with_head(&path),
+            SidebarAction::Git(crate::ui::git_panel::GitAction::Open(path)) => self.open_local(&path),
             SidebarAction::Compare(files) => match files.as_slice() {
                 [a, b] => self.compare_files(a.clone(), b.clone()),
                 [file] => {
@@ -2838,6 +2840,20 @@ impl eframe::App for NebulaApp {
             self.history_window(&ctx);
         }
         self.autosave_tick(&ctx);
+        // Outcome of a git operation from the Git panel.
+        if let Some((label, result)) = self.sidebar.git.op_done.take() {
+            match result {
+                Ok(out) => {
+                    if label == "Commit" {
+                        self.sidebar.git_panel.message.clear();
+                    }
+                    // Short git output (e.g. "Already up to date.") is worth showing.
+                    let detail = out.lines().last().filter(|l| l.len() < 120).map(|l| format!(": {l}")).unwrap_or_default();
+                    self.info(format!("Git – {label} erledigt{detail}"));
+                }
+                Err(e) => self.error(format!("Git – {label} fehlgeschlagen:\n{e}")),
+            }
+        }
         self.toasts(&ctx);
         self.ext_notices(&ctx);
         self.place_preview(&ctx, frame, preview_rect);
