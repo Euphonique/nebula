@@ -139,6 +139,20 @@ impl Encoding {
     }
 }
 
+/// Modification time and size of a local file, to notice changes made by other programs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DiskStamp {
+    pub modified: Option<std::time::SystemTime>,
+    pub len: u64,
+}
+
+impl DiskStamp {
+    pub fn of(path: &std::path::Path) -> Option<Self> {
+        let meta = std::fs::metadata(path).ok()?;
+        Some(Self { modified: meta.modified().ok(), len: meta.len() })
+    }
+}
+
 /// A selection in char indices. `anchor == head` is a plain cursor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Selection {
@@ -277,6 +291,10 @@ pub struct Document {
     pub remote_stamp: Option<crate::remote::Stamp>,
     /// Name shown and proposed on "Save As" for an untitled copy of a file.
     pub suggested_name: Option<String>,
+    /// State of the local file when it was loaded or last saved.
+    pub disk_stamp: Option<DiskStamp>,
+    /// Number of checks in a row that found the local file missing.
+    pub disk_missing: u8,
     undo: Vec<Transaction>,
     redo: Vec<Transaction>,
     next_tx_id: u64,
@@ -309,6 +327,8 @@ impl Document {
             saving: false,
             remote_stamp: None,
             suggested_name: None,
+            disk_stamp: None,
+            disk_missing: 0,
             undo: Vec::new(),
             redo: Vec::new(),
             next_tx_id: 1,
@@ -744,6 +764,44 @@ impl Document {
         }
     }
 
+    /// Replaces the content with new file contents (changed by another
+    /// program) as one undoable step. Only the differing middle part is
+    /// replaced, so cursors, folds and the scroll position stay in place.
+    pub fn reload_bytes(&mut self, bytes: &[u8]) {
+        let detected = Encoding::detect(bytes);
+        // Keep a chosen Latin-1 unless the file now has a BOM.
+        let encoding = match (self.encoding, detected) {
+            (Encoding::Latin1, Encoding::Utf8) => Encoding::Latin1,
+            _ => detected,
+        };
+        let text = encoding.decode(bytes);
+        self.encoding = encoding;
+        self.line_ending = if text.contains("\r\n") { LineEnding::CrLf } else { LineEnding::Lf };
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let old: Vec<char> = self.rope.chars().collect();
+        let new: Vec<char> = text.chars().collect();
+        let prefix = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+        let room = old.len().min(new.len()) - prefix;
+        let suffix = old.iter().rev().zip(new.iter().rev()).take(room).take_while(|(a, b)| a == b).count();
+        let (end, new_end) = (old.len() - suffix, new.len() - suffix);
+        let inserted: String = new[prefix..new_end].iter().collect();
+        let map = |p: usize| {
+            if p <= prefix {
+                p
+            } else if p >= end {
+                p - end + new_end
+            } else {
+                p.min(new_end)
+            }
+        };
+        let after = self.selections.iter().map(|s| Selection { anchor: map(s.anchor), head: map(s.head), goal: None }).collect();
+        self.break_undo_group();
+        self.apply(vec![Change::new(prefix..end, inserted)], Some(after), EditKind::Other);
+        self.break_undo_group();
+        self.view.scroll_to_cursor = false;
+        self.mark_saved();
+    }
+
     /// Prevents the next edit from being merged into the previous undo step.
     pub fn break_undo_group(&mut self) {
         if let Some(t) = self.undo.last_mut() {
@@ -888,5 +946,22 @@ mod tests {
         assert_eq!(d.column_of(1, 4), 4);
         assert_eq!(d.pos_at_column(0, 5, 4), 2);
         assert_eq!(d.pos_at_column(0, 1, 4), 0);
+    }
+
+    #[test]
+    fn reload_keeps_cursor_and_is_undoable() {
+        let mut d = doc("one\ntwo\nthree\n");
+        d.set_selection(Selection::cursor(10)); // in "three"
+        d.reload_bytes(b"one\nTWO and more\nthree\n");
+        assert_eq!(d.rope.to_string(), "one\nTWO and more\nthree\n");
+        assert_eq!(d.primary_selection().head, 19);
+        assert!(!d.is_dirty());
+        d.undo();
+        assert_eq!(d.rope.to_string(), "one\ntwo\nthree\n");
+        assert!(d.is_dirty());
+        d.redo();
+        d.reload_bytes(b"one\r\nTWO and more\r\nthree\r\n");
+        assert_eq!(d.line_ending, LineEnding::CrLf);
+        assert!(!d.is_dirty());
     }
 }

@@ -54,6 +54,7 @@ zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 ureq = { version = "3.4.2", default-features = false, features = ["native-tls", "gzip", "json"] }
 png = "0.18"
 vt100 = "0.17.0"
+notify = { version = "8.2.0", default-features = false }
 
 [profile.release]
 opt-level = 3

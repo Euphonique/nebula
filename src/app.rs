@@ -11,6 +11,7 @@ use eframe::egui::{
 };
 
 use crate::editor::{DocSource, Document, EditorView, FindState, editor_id};
+use crate::editor::document::DiskStamp;
 use crate::highlight::HighlightService;
 use crate::lang::Language;
 use crate::remote::{self, HostKeyPrompt, RemoteManager, Reply, Request};
@@ -28,6 +29,7 @@ mod session;
 mod settings_page;
 mod tabs;
 mod terminal;
+mod watch;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -63,7 +65,8 @@ enum Dialog {
     /// Unsaved changes when closing documents; `quit` closes the window afterwards.
     UnsavedChanges { doc_ids: Vec<u64>, quit: bool },
     /// The server file changed since it was opened.
-    Conflict { doc_id: u64, close_after: bool },
+    /// The file changed on the server or disk since it was opened; `saving`: while saving.
+    Conflict { doc_id: u64, close_after: bool, saving: bool },
     CommandPalette(palette::PaletteState),
     /// Linking the local project to a server folder.
     PublishSetup { root: PathBuf, target: crate::settings::PublishTarget },
@@ -129,6 +132,8 @@ pub struct NebulaApp {
     printing: Option<std::thread::JoinHandle<Result<usize, String>>>,
     /// SSH terminals in the bottom panel.
     terminals: terminal::Terminals,
+    /// Changes to open files and the project folder made by other programs.
+    disk: watch::DiskWatch,
 }
 
 impl NebulaApp {
@@ -171,6 +176,7 @@ impl NebulaApp {
             ext: extensions::ExtUi::new(&cc.egui_ctx, &settings.disabled_extensions),
             printing: None,
             terminals: Default::default(),
+            disk: Default::default(),
             settings,
         };
         app.restore_session();
@@ -263,7 +269,8 @@ impl NebulaApp {
                 self.error(format!("{} ist keine Textdatei.", path.display()));
             }
             Ok(bytes) => {
-                let doc = Document::from_bytes(DocSource::Local(path.clone()), &bytes);
+                let mut doc = Document::from_bytes(DocSource::Local(path.clone()), &bytes);
+                doc.disk_stamp = DiskStamp::of(&path);
                 self.add_doc(doc);
                 self.settings.recent_files.retain(|p| p != &path);
                 self.settings.recent_files.insert(0, path);
@@ -330,11 +337,19 @@ impl NebulaApp {
         match doc.source.clone() {
             DocSource::Untitled(_) => self.save_doc_as(index),
             DocSource::Local(path) => {
+                if !force && self.changed_on_disk(index) {
+                    let doc_id = self.docs[index].id;
+                    self.dialog = Some(Dialog::Conflict { doc_id, close_after, saving: true });
+                    return false;
+                }
+                let doc = &mut self.docs[index];
                 let doc_id = doc.id;
                 let bytes = doc.to_bytes();
                 match std::fs::write(&path, bytes) {
                     Ok(()) => {
                         doc.mark_saved();
+                        doc.disk_stamp = DiskStamp::of(&path);
+                        doc.disk_missing = 0;
                         if close_after {
                             self.docs.remove(index);
                             self.fix_active_after_remove(index);
@@ -383,6 +398,7 @@ impl NebulaApp {
         let doc = &mut self.docs[index];
         doc.source = DocSource::Local(path.clone());
         doc.suggested_name = None;
+        doc.disk_stamp = None;
         doc.language = Language::from_path(&path.to_string_lossy());
         doc.highlight_version = u64::MAX;
         let ok = self.save_doc(index, false);
@@ -514,7 +530,7 @@ impl NebulaApp {
                         && let Some(i) = self.doc_index(save.doc_id)
                     {
                         self.docs[i].saving = false;
-                        self.dialog = Some(Dialog::Conflict { doc_id: save.doc_id, close_after: save.close_after });
+                        self.dialog = Some(Dialog::Conflict { doc_id: save.doc_id, close_after: save.close_after, saving: true });
                     } else {
                         self.error(format!("{path} wurde auf dem Server geändert."));
                     }
@@ -639,6 +655,7 @@ impl NebulaApp {
                     let mut doc = Document::from_bytes_as(old.source.clone(), &bytes, Some(encoding));
                     doc.id = old.id;
                     doc.language = old.language;
+                    doc.disk_stamp = DiskStamp::of(&path);
                     let head = old.primary_selection().head.min(doc.len_chars());
                     doc.set_selection(crate::editor::document::Selection::cursor(head));
                     self.docs[i] = doc;
@@ -2276,24 +2293,34 @@ impl NebulaApp {
                 }
                 Dialog::UnsavedChanges { doc_ids, quit }
             }
-            Dialog::Conflict { doc_id, close_after } => {
-                let name = self.doc_index(doc_id).map(|i| self.docs[i].title()).unwrap_or_default();
+            Dialog::Conflict { doc_id, close_after, saving } => {
+                let index = self.doc_index(doc_id);
+                let name = index.map(|i| self.docs[i].title()).unwrap_or_default();
+                let local = index.is_some_and(|i| matches!(self.docs[i].source, DocSource::Local(_)));
+                let (place, theirs) = if local { ("auf der Festplatte", "Version von der Festplatte laden") } else { ("auf dem Server", "Server-Version laden") };
                 let mut choice = None;
                 modal(ctx, egui::Id::unique("conflict")).show(ctx, |ui| {
-                    ui.set_width(420.0);
-                    ui.heading("Datei auf dem Server geändert");
-                    ui.add(egui::Label::new(format!(
-                        "„{name}“ wurde auf dem Server verändert, seit du sie geöffnet hast. Beim Speichern würden diese Änderungen überschrieben."
-                    )).wrap());
+                    ui.set_width(440.0);
+                    ui.heading(format!("Datei {place} geändert"));
+                    let text = if saving {
+                        format!("„{name}“ wurde {place} verändert, seit du sie geöffnet hast. Beim Speichern würden diese Änderungen überschrieben.")
+                    } else {
+                        format!("„{name}“ wurde von einem anderen Programm verändert. Du hast hier ungespeicherte Änderungen.")
+                    };
+                    ui.add(egui::Label::new(text).wrap());
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        if ui.add(primary_button("Überschreiben", Color32::from_rgb(214, 58, 58))).clicked() {
-                            choice = Some(0);
+                        if saving {
+                            if ui.add(primary_button("Überschreiben", Color32::from_rgb(214, 58, 58))).clicked() {
+                                choice = Some(0);
+                            }
+                        } else if ui.add(primary_button("Meine Version behalten", self.theme.accent)).on_hover_text("Beim Speichern wird die Datei überschrieben").clicked() {
+                            choice = Some(2);
                         }
-                        if ui.button("Server-Version laden").on_hover_text("Lokale Änderungen verwerfen").clicked() {
+                        if ui.button(theirs).on_hover_text("Eigene Änderungen verwerfen (rückgängig machbar)").clicked() {
                             choice = Some(1);
                         }
-                        if ui.button("Abbrechen").clicked() {
+                        if saving && ui.button("Abbrechen").clicked() {
                             choice = Some(2);
                         }
                     });
@@ -2306,11 +2333,12 @@ impl NebulaApp {
                                 self.save_doc_with(i, close_after, true);
                             }
                         }
+                        1 if local => self.reload_local(doc_id),
                         1 => self.reload_remote(doc_id),
                         _ => {}
                     }
                 }
-                Dialog::Conflict { doc_id, close_after }
+                Dialog::Conflict { doc_id, close_after, saving }
             }
             Dialog::PublishSetup { root, mut target } => {
                 let mut save = false;
@@ -2657,6 +2685,7 @@ impl eframe::App for NebulaApp {
             self.backdrop_state = Some(backdrop);
         }
         self.process_remote_events();
+        self.poll_disk(&ctx);
         self.poll_terminals();
         self.poll_printing();
         self.serve_preview();
