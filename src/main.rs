@@ -6,6 +6,7 @@ mod editorconfig;
 mod diff;
 mod highlight;
 mod history;
+mod image_view;
 mod fonts;
 mod icon;
 mod ext;

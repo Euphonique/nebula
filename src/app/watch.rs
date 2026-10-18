@@ -137,6 +137,14 @@ impl NebulaApp {
             }
             let Ok(bytes) = std::fs::read(&path) else { continue };
             let doc = &mut self.docs[i];
+            // An image changed on disk: show the new picture.
+            if doc.image.is_some() {
+                doc.disk_stamp = Some(now);
+                if let Ok(image) = crate::image_view::decode(&bytes) {
+                    doc.image = Some(std::sync::Arc::new(image));
+                }
+                continue;
+            }
             if bytes.len() > MAX_OPEN_BYTES || is_binary(&bytes) {
                 doc.disk_stamp = Some(now);
                 continue;

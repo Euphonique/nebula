@@ -307,6 +307,8 @@ pub struct Document {
     pub suggested_name: Option<String>,
     /// Generated content (e.g. a comparison) that edits must not change.
     pub read_only: bool,
+    /// Image tab: the decoded picture (the text is empty).
+    pub image: Option<std::sync::Arc<crate::image_view::Image>>,
     /// State of the local file when it was loaded or last saved.
     pub disk_stamp: Option<DiskStamp>,
     /// Number of checks in a row that found the local file missing.
@@ -346,6 +348,7 @@ impl Document {
             remote_stamp: None,
             suggested_name: None,
             read_only: false,
+            image: None,
             disk_stamp: None,
             disk_missing: 0,
             config: Default::default(),

@@ -140,6 +140,13 @@ impl NebulaApp {
         let current_match = if matches.is_empty() { None } else { self.find.current };
         self.docs[index].view.find_scope = if self.find.visible { self.find.scope_in(&self.docs[index]) } else { None };
         let doc = &mut self.docs[index];
+        if let Some(image) = doc.image.clone() {
+            let id = egui::Id::unique(("image-pane", doc.id, pane));
+            ui.scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", pane)), |ui| {
+                crate::image_view::show(ui, rect, &image, &self.theme, id);
+            });
+            return EditorOutput::default();
+        }
         ui.scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", pane)), |ui| {
             EditorView { doc, settings: &settings, theme: &self.theme, matches, current_match, pane, follow }.show(ui)
         })

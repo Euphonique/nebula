@@ -321,6 +321,19 @@ impl NebulaApp {
         self.activate(at);
     }
 
+    /// Opens image data as a read-only image tab.
+    fn open_image(&mut self, source: DocSource, bytes: &[u8]) {
+        match crate::image_view::decode(bytes) {
+            Ok(image) => {
+                let mut doc = Document::new(source, "");
+                doc.read_only = true;
+                doc.image = Some(Arc::new(image));
+                self.add_doc(doc);
+            }
+            Err(e) => self.error(format!("{}: {e}", source.file_name())),
+        }
+    }
+
     fn open_local(&mut self, path: &Path) {
         let path = crate::ui::sidebar::normalize_path(path);
         if let Some(i) = self
@@ -332,6 +345,12 @@ impl NebulaApp {
             return;
         }
         match std::fs::read(&path) {
+            Ok(bytes) if crate::image_view::is_image_name(&path.to_string_lossy()) => {
+                self.open_image(DocSource::Local(path.clone()), &bytes);
+                if let Some(i) = self.active {
+                    self.docs[i].disk_stamp = DiskStamp::of(&path);
+                }
+            }
             Ok(bytes) if bytes.len() > MAX_OPEN_BYTES => self.error(format!("{} ist zu groß.", path.display())),
             Ok(bytes) if is_binary(&bytes) => {
                 self.error(format!("{} ist keine Textdatei.", path.display()));
@@ -397,6 +416,14 @@ impl NebulaApp {
 
     /// `force` overwrites the server file even if it changed in the meantime.
     fn save_doc_with(&mut self, index: usize, close_after: bool, force: bool) -> bool {
+        // An image tab has no text: saving would overwrite the picture.
+        if self.docs.get(index).is_some_and(|d| d.image.is_some()) {
+            if close_after {
+                self.docs.remove(index);
+                self.fix_active_after_remove(index);
+            }
+            return true;
+        }
         // Autosave leaves whitespace alone: trimming would fight the typing.
         if let Some(doc) = self.docs.get(index)
             && !matches!(doc.source, DocSource::Untitled(_))
@@ -606,6 +633,10 @@ impl NebulaApp {
                         continue;
                     }
                     let Some((site_id, _)) = self.pending_opens.remove(&ev.tag) else { continue };
+                    if crate::image_view::is_image_name(&path) {
+                        self.open_image(DocSource::Remote { site_id, path }, &data);
+                        continue;
+                    }
                     if is_binary(&data) {
                         self.error(format!("{path} ist keine Textdatei."));
                         continue;
@@ -1752,6 +1783,10 @@ impl NebulaApp {
                 ui.label(small(if connected { format!("Verbunden mit {site}") } else { site }));
             }
             let Some(i) = self.active else { return };
+            // Cursor, encoding and language mean nothing for a picture.
+            if self.docs[i].image.is_some() {
+                return;
+            }
             let e = self.settings.editor_for_doc(&self.docs[i]);
             let tab_size = e.tab_size;
             let doc = &mut self.docs[i];
