@@ -122,7 +122,7 @@ src/
   app/settings_page.rs Einstellungsfenster
   app/session.rs       Sitzung speichern und wiederherstellen
   app/tabs.rs          Tab-Kontextmenü, Duplizieren, Drucken
-  app/terminal.rs      SSH-Terminal-Panel: Tabs, Darstellung, Tastatur
+  app/terminal.rs      Terminal-Panel (lokal und SSH): Tabs, Darstellung, Tastatur
   print.rs             Druckdialog und Seitenaufbau (GDI)
   win32.rs             Mica, Andocklayouts, Datei-Zwischenablage, Cursorposition, Browser öffnen, Dateien hinausziehen
   ui/                  Titelleiste, Seitenleiste, Projektsuche, Git, Icons

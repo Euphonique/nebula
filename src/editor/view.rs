@@ -826,6 +826,33 @@ fn paint(
         paint_range(r.clone(), color, false);
     }
 
+    // Other occurrences of the word at the cursor (or of a selected word), in view.
+    if doc.selections.len() == 1 {
+        let word = if primary.is_empty() {
+            cmd::word_at(doc, primary.head)
+        } else {
+            let r = primary.range();
+            let text = doc.slice(r.clone());
+            (text.chars().all(cmd::is_word_char)).then_some(r)
+        };
+        if let Some(w) = word.filter(|w| (2..=100).contains(&w.len())) {
+            let needle = doc.slice(w);
+            let text = doc.slice(first_char..last_char);
+            let (mut byte, mut chars) = (0usize, 0usize);
+            for (i, _) in text.match_indices(&needle) {
+                chars += text[byte..i].chars().count();
+                byte = i;
+                let before = text[..i].chars().next_back();
+                let after = text[i + needle.len()..].chars().next();
+                if before.is_some_and(cmd::is_word_char) || after.is_some_and(cmd::is_word_char) {
+                    continue;
+                }
+                let start = first_char + chars;
+                paint_range(start..start + needle.chars().count(), theme.word_highlight, false);
+            }
+        }
+    }
+
     // Selections.
     let sel_color = if focused { theme.selection } else { theme.selection_inactive };
     for s in &doc.selections {
