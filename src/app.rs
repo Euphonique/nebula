@@ -1454,7 +1454,8 @@ impl NebulaApp {
                             ui.scroll_with_delta(vec2(dy, 0.0));
                         }
                     }
-                    ui.horizontal(|ui| {
+                    // Top-aligned: `horizontal` centers in a taller row and pushed the tabs down.
+                    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
                         for (i, doc) in self.docs.iter().enumerate() {
                             let w = (natural[i] * scale).max(90.0);
