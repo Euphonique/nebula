@@ -44,6 +44,8 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Wiederherstellung nach Absturz: Ungespeicherte Inhalte (auch unbenannte Tabs) werden alle paar Sekunden gesichert und nach einem Absturz beim nächsten Start zurückgeholt
 - Externe Änderungen: Wird eine geöffnete Datei von einem anderen Programm geändert (z. B. Git), lädt Nebula sie neu (rückgängig machbar); bei eigenen ungespeicherten Änderungen wird nachgefragt, mit Unterschiede-Ansicht. Gelöschte Dateien werden gemeldet, die Seitenleiste aktualisiert sich selbst.
 - Geteilte Ansicht (Knopf in der Titelleiste, Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
+- Gehe zu Symbol (Strg+R) als Schnellsuche und Navigationsverlauf: Alt+←/→ springt zu früheren Cursorpositionen, auch über Dateien hinweg
+- Passendes HTML-Tag wird hervorgehoben, beim Umbenennen ändert sich das schließende Tag mit; gleiche Wörter wie das unter dem Cursor werden dezent markiert
 - Gliederung im rechten Panel: Funktionen, Klassen, CSS-Regeln, Überschriften und Elemente mit ID der aktuellen Datei, filterbar; ein Klick springt hin, das Symbol am Cursor ist markiert
 - Blockauswahl mit Alt+Ziehen; Alt+Umschalt+I setzt Cursor an alle Zeilenenden der Auswahl
 - Git-Markierungen in der Zeilennummernleiste: neue, geänderte und gelöschte Zeilen gegenüber dem letzten Commit
@@ -87,7 +89,8 @@ Alle Kürzel lassen sich unter Einstellungen → Tastenkürzel ändern. Standard
 | Tab schließen / Tab wechseln | Strg+W / Strg+Tab |
 | Suchen / Ersetzen / Weitersuchen | Strg+F / Strg+H / F3, Umschalt+F3 |
 | Im Projekt suchen | Strg+Umschalt+F |
-| Gehe zu Zeile | Strg+G |
+| Gehe zu Zeile / Gehe zu Symbol | Strg+G / Strg+R |
+| Navigation zurück / vor | Alt+← / Alt+→ (auch Maustasten 4/5) |
 | Im Browser öffnen | F5 |
 | Rechtes Panel mit Live-Vorschau ein/aus | Strg+Umschalt+V |
 | Automatischer Zeilenumbruch | Alt+Z |

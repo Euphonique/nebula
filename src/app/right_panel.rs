@@ -110,13 +110,7 @@ impl NebulaApp {
     fn outline(&mut self, ui: &mut egui::Ui, body: Rect) {
         let theme = self.theme.clone();
         let Some(i) = self.active else { return };
-        let key = (self.docs[i].id, self.docs[i].version);
-        if self.right_state.symbols.as_ref().is_none_or(|(k, _)| *k != key) {
-            let doc = &mut self.docs[i];
-            let text = doc.text();
-            self.right_state.symbols = Some((key, Arc::new(symbols::symbols(&text, doc.language))));
-        }
-        let list = self.right_state.symbols.as_ref().map(|(_, s)| s.clone()).unwrap_or_default();
+        let list = self.doc_symbols(i);
         let doc = &self.docs[i];
         let cursor_line = doc.char_to_line(doc.primary_selection().head);
         let current = symbols::current(&list, cursor_line);
@@ -163,13 +157,28 @@ impl NebulaApp {
             });
         });
         if let Some(line) = jump {
-            let doc = &mut self.docs[i];
-            let pos = doc.line_to_char(line);
-            // Cursor at the first non-blank character of the line.
-            let indent = doc.line_text(line).chars().take_while(|c| c.is_whitespace() && *c != '\n').count();
-            doc.set_selection(Selection::cursor(pos + indent));
-            doc.view.center_line = Some(line);
-            self.focus_editor = true;
+            self.jump_to_line(i, line);
         }
+    }
+
+    /// Symbols of a document, cached per version.
+    pub(super) fn doc_symbols(&mut self, i: usize) -> Arc<Vec<Symbol>> {
+        let key = (self.docs[i].id, self.docs[i].version);
+        if self.right_state.symbols.as_ref().is_none_or(|(k, _)| *k != key) {
+            let doc = &mut self.docs[i];
+            let text = doc.text();
+            self.right_state.symbols = Some((key, Arc::new(symbols::symbols(&text, doc.language))));
+        }
+        self.right_state.symbols.as_ref().map(|(_, s)| s.clone()).unwrap_or_default()
+    }
+
+    /// Cursor to the first non-blank character of `line`, centered.
+    pub(super) fn jump_to_line(&mut self, i: usize, line: usize) {
+        let doc = &mut self.docs[i];
+        let pos = doc.line_to_char(line);
+        let indent = doc.line_text(line).chars().take_while(|c| c.is_whitespace() && *c != '\n').count();
+        doc.set_selection(Selection::cursor(pos + indent));
+        doc.view.center_line = Some(line);
+        self.focus_editor = true;
     }
 }

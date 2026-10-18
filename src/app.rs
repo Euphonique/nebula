@@ -36,6 +36,7 @@ mod compare;
 mod split;
 mod keys;
 mod right_panel;
+mod nav;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -80,6 +81,7 @@ enum Dialog {
     /// chmod for server files; `recurse` applies to folder contents too.
     Permissions { items: Vec<Item>, mode: u32, octal: String, recurse: Option<remote::Recurse> },
     QuickOpen { query: String, files: Arc<Vec<PathBuf>>, selected: usize, focus: bool },
+    GotoSymbol(nav::SymbolSearch),
     Settings,
 }
 
@@ -149,6 +151,8 @@ pub struct NebulaApp {
     /// Second editor beside the first.
     split: Option<split::SplitView>,
     right_state: right_panel::RightPanelState,
+    /// Earlier cursor positions for Alt+←/→.
+    nav: nav::NavHistory,
 }
 
 impl NebulaApp {
@@ -197,6 +201,7 @@ impl NebulaApp {
             compare: None,
             split: None,
             right_state: Default::default(),
+            nav: Default::default(),
             settings,
         };
         // The preview used to be a setting of its own; it now lives in the right panel.
@@ -917,6 +922,12 @@ impl NebulaApp {
         // In the terminal, keys like Strg+W or Strg+Z belong to the shell.
         if self.terminal_focused(ctx) {
             return;
+        }
+        // Mouse buttons 4 and 5 go back and forward.
+        if ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Extra1)) {
+            self.navigate(false);
+        } else if ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Extra2)) {
+            self.navigate(true);
         }
         // Undo/redo also work while the editor doesn't have keyboard focus,
         // e.g. after an extension command changed the document.
@@ -2582,6 +2593,10 @@ impl NebulaApp {
                 keep = self.command_palette(ctx, &mut state);
                 Dialog::CommandPalette(state)
             }
+            Dialog::GotoSymbol(mut state) => {
+                keep = self.goto_symbol_dialog(ctx, &mut state);
+                Dialog::GotoSymbol(state)
+            }
         };
         if keep && self.dialog.is_none() {
             self.dialog = Some(dialog);
@@ -2795,6 +2810,7 @@ impl eframe::App for NebulaApp {
 
             let matches = if self.find.visible { std::mem::take(&mut self.find.matches) } else { Vec::new() };
             let out = self.editor_area(ui, editor_rect, &matches);
+            self.track_navigation();
             if self.find.visible {
                 self.find.matches = matches;
             }

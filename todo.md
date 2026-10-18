@@ -13,10 +13,7 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 - **B** Minimap bzw. Markierungen in der Scrollleiste (Suchtreffer, Fehler, geänderte Zeilen, Cursor).
 - **B** Textwerkzeuge: Zeilen sortieren, Duplikate entfernen, GROSS/klein/Titel, Zeilen verbinden, Auswahl umschließen (Klammern/Anführungszeichen/Tag um markierten Text), Zeilen umkehren.
 - **B** Lesezeichen (Strg+F2 setzen, F2 springen) mit Markierung in der Leiste.
-- **B** Gehe zu Symbol als Schnellsuche (Strg+R / Strg+Umschalt+O wie in VS Code) – die Symbolliste der Gliederung (`editor/symbols.rs`) ist schon da.
 - **B** Klickbare Pfadleiste: Klick auf ein Element zeigt Geschwister zum Springen (wie Nova).
-- **B** Passendes HTML-Tag hervorheben und beim Umbenennen des öffnenden Tags das schließende mit ändern.
-- **B** Wort unter dem Cursor überall im Dokument dezent hervorheben.
 - **B** Eigene Snippets pro Sprache in den Einstellungen anlegen/bearbeiten (mit Platzhaltern `$1`, `${2:name}`).
 - **C** Makros aufnehmen und abspielen.
 - **C** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
@@ -27,7 +24,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 - **B** Projektsuche mit Ein-/Ausschlussmustern (`*.php`, `!vendor/**`) und Berücksichtigung der `.gitignore`.
 - **B** Suchen/Ersetzen nur in der Auswahl; Regex-Ersetzung mit Vorschau.
-- **B** Navigationsverlauf: Zurück/Vor zur letzten Cursorposition (Alt+←/→), auch über Dateien hinweg.
 - **B** „Schnell öffnen“ (Strg+P) auch für Dateien auf dem Server (aus bereits geladenen Ordnern) und mit `:Zeile`-Suffix.
 - **C** Gehe zu Definition ohne Language Server für einfache Fälle (CSS-Klassen, PHP-Funktionen im Projekt).
 
