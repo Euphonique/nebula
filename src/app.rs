@@ -35,6 +35,7 @@ mod gitdiff;
 mod compare;
 mod split;
 mod keys;
+mod right_panel;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -147,6 +148,7 @@ pub struct NebulaApp {
     compare: Option<(u64, compare::Compare)>,
     /// Second editor beside the first.
     split: Option<split::SplitView>,
+    right_state: right_panel::RightPanelState,
 }
 
 impl NebulaApp {
@@ -194,8 +196,14 @@ impl NebulaApp {
             git_bases: Default::default(),
             compare: None,
             split: None,
+            right_state: Default::default(),
             settings,
         };
+        // The preview used to be a setting of its own; it now lives in the right panel.
+        if app.settings.preview && !app.settings.right_panel {
+            app.settings.right_panel = true;
+            app.settings.right_tab = crate::settings::RightTab::Preview;
+        }
         app.restore_session();
         if let Some(root) = app.sidebar.root.clone() {
             app.remember_folder(&root);
@@ -1324,9 +1332,9 @@ impl NebulaApp {
         });
         row.add_space(6.0);
 
-        // Tabs as rounded pills.
+        // Tabs as rounded pills; room is left for the + and the panel buttons.
         let count = self.docs.len();
-        let available = row.available_width() - 60.0;
+        let available = row.available_width() - 60.0 - 72.0;
         let font = FontId::proportional(13.0);
         let natural: Vec<f32> = self
             .docs
@@ -1459,6 +1467,23 @@ impl NebulaApp {
         {
             self.new_document();
         }
+        // Split view and right panel, mirroring the sidebar button on the left.
+        row.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            let tip = format!("Rechtes Panel: Vorschau und Gliederung ({})", self.shortcut_label(palette::Command::TogglePreview));
+            if icons::icon_button(ui, &theme, btn, self.settings.right_panel, |p, c, col| icons::panel_right(p, c, col))
+                .on_hover_text(tip)
+                .clicked()
+            {
+                self.toggle_right_panel();
+            }
+            let tip = format!("Geteilte Ansicht ({})", self.shortcut_label(palette::Command::ToggleSplit));
+            let resp = ui.add_enabled_ui(self.active.is_some(), |ui| {
+                icons::icon_button(ui, &theme, btn, self.split.is_some(), |p, c, col| icons::split_view(p, c, col))
+            });
+            if resp.inner.on_hover_text(tip).clicked() {
+                self.toggle_split();
+            }
+        });
         if let Some(i) = activate {
             self.sidebar.focused = false;
             self.activate(i);
@@ -1574,26 +1599,11 @@ impl NebulaApp {
             let w = g.size().x;
             painter.galley(pos2(x, cy - g.size().y / 2.0), g, color);
             x += w;
-            if x > bar.right() - 44.0 {
+            if x > bar.right() - 12.0 {
                 break;
             }
         }
 
-        // Live preview toggle at the right end.
-        let r = Rect::from_center_size(pos2(bar.right() - 20.0, cy), vec2(28.0, 24.0));
-        let resp = ui
-            .interact(r, egui::Id::unique("jump_preview"), Sense::click())
-            .on_hover_text("Live-Vorschau (Strg+Umschalt+V)");
-        if self.settings.preview {
-            ui.painter().rect_filled(r, 6.0, theme.hover.gamma_multiply(2.2));
-        } else if resp.hovered() {
-            ui.painter().rect_filled(r, 6.0, theme.hover);
-        }
-        let color = if self.settings.preview || resp.hovered() { theme.foreground } else { theme.text_muted };
-        icons::preview(ui.painter(), r.center(), color);
-        if resp.clicked() {
-            self.toggle_preview();
-        }
     }
 
     fn find_bar(&mut self, ui: &mut egui::Ui) {
@@ -2771,6 +2781,8 @@ impl eframe::App for NebulaApp {
                 .show_separator_line(false)
                 .frame(egui::Frame::new().fill(self.theme.jumpbar_bg).inner_margin(egui::Margin::symmetric(12, 0)))
                 .show(ui, |ui| self.status_bar(ui));
+            // Preview or outline on the right, from the tabs down to the status bar.
+            preview_rect = self.right_panel(ui);
             self.terminal_panel(ui);
             self.jump_bar(ui);
             if self.find.visible {
@@ -2779,16 +2791,7 @@ impl eframe::App for NebulaApp {
             if self.active.is_none() {
                 return;
             }
-            // Editor and, optionally, the live preview side by side.
-            let full = ui.available_rect_before_wrap();
-            let mut editor_rect = full;
-            if self.settings.preview && full.width() > 420.0 {
-                let w = (full.width() * self.settings.preview_split).clamp(200.0, full.width() - 200.0);
-                let split = (full.right() - w).round();
-                editor_rect.max.x = split;
-                let pane = Rect::from_min_max(pos2(split, full.top()), full.max);
-                preview_rect = self.preview_pane(ui, pane, full);
-            }
+            let editor_rect = ui.available_rect_before_wrap();
 
             let matches = if self.find.visible { std::mem::take(&mut self.find.matches) } else { Vec::new() };
             let out = self.editor_area(ui, editor_rect, &matches);

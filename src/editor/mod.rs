@@ -6,6 +6,7 @@ pub mod find;
 pub mod folding;
 pub mod outline;
 pub mod snippet;
+pub mod symbols;
 pub mod view;
 
 pub use document::{DocSource, Document};

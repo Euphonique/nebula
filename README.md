@@ -43,13 +43,14 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Die Sitzung wird beim nächsten Start wiederhergestellt (geöffnete Dateien und Cursor)
 - Wiederherstellung nach Absturz: Ungespeicherte Inhalte (auch unbenannte Tabs) werden alle paar Sekunden gesichert und nach einem Absturz beim nächsten Start zurückgeholt
 - Externe Änderungen: Wird eine geöffnete Datei von einem anderen Programm geändert (z. B. Git), lädt Nebula sie neu (rückgängig machbar); bei eigenen ungespeicherten Änderungen wird nachgefragt, mit Unterschiede-Ansicht. Gelöschte Dateien werden gemeldet, die Seitenleiste aktualisiert sich selbst.
-- Geteilte Ansicht (Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
+- Geteilte Ansicht (Knopf in der Titelleiste, Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
+- Gliederung im rechten Panel: Funktionen, Klassen, CSS-Regeln, Überschriften und Elemente mit ID der aktuellen Datei, filterbar; ein Klick springt hin, das Symbol am Cursor ist markiert
 - Blockauswahl mit Alt+Ziehen; Alt+Umschalt+I setzt Cursor an alle Zeilenenden der Auswahl
 - Git-Markierungen in der Zeilennummernleiste: neue, geänderte und gelöschte Zeilen gegenüber dem letzten Commit
 - `.editorconfig` wird ausgewertet (Einrückung, Zeilenenden, Kodierung, Leerzeichen am Zeilenende, Zeilenumbruch am Dateiende); beides auch als Einstellung beim Speichern. Einrückung lässt sich zwischen Tabs und Leerzeichen umwandeln.
 
 **Live-Vorschau**
-- HTML-, PHP- und Markdown-Seiten neben dem Editor (WebView2), aktualisiert beim Tippen, auch mit ungespeicherten Änderungen
+- HTML-, PHP- und Markdown-Seiten im rechten Panel (Knopf rechts in der Titelleiste, Strg+Umschalt+V; WebView2), aktualisiert beim Tippen, auch mit ungespeicherten Änderungen
 - Geänderte CSS-Dateien werden ohne Neuladen der Seite übernommen, die Scrollposition bleibt erhalten
 - Funktioniert auch für Dateien auf dem Server: Bilder, CSS und Skripte werden über die Serververbindung geladen
 - PHP-Dateien mit hinterlegter Web-URL zeigen die Live-Seite und laden nach dem Speichern neu
@@ -88,7 +89,7 @@ Alle Kürzel lassen sich unter Einstellungen → Tastenkürzel ändern. Standard
 | Im Projekt suchen | Strg+Umschalt+F |
 | Gehe zu Zeile | Strg+G |
 | Im Browser öffnen | F5 |
-| Live-Vorschau ein/aus | Strg+Umschalt+V |
+| Rechtes Panel mit Live-Vorschau ein/aus | Strg+Umschalt+V |
 | Automatischer Zeilenumbruch | Alt+Z |
 | Drucken | Strg+Alt+P |
 | Geteilte Ansicht | Strg+Alt+T |

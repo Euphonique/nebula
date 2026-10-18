@@ -83,6 +83,10 @@ pub struct AppSettings {
     /// Live preview shown next to the editor, and its share of the width.
     pub preview: bool,
     pub preview_split: f32,
+    /// Panel right of the editor (preview, outline), its tab and width.
+    pub right_panel: bool,
+    pub right_tab: RightTab,
+    pub right_width: f32,
     /// Height of the SSH terminal panel.
     pub terminal_height: f32,
     /// Changed keyboard shortcuts: command -> "Ctrl+Shift+P, F1" (empty: none).
@@ -150,6 +154,9 @@ impl Default for AppSettings {
             preview: false,
             preview_split: 0.45,
             terminal_height: 260.0,
+            right_panel: false,
+            right_tab: RightTab::Preview,
+            right_width: 460.0,
             disabled_extensions: Vec::new(),
             keybindings: Default::default(),
         }
@@ -403,4 +410,12 @@ mod keyring_tests {
         let site = super::Site { id: id.into(), user: user.into(), ..Default::default() };
         site.set_password(&std::env::var("NEBULA_PASS").unwrap_or_default()).unwrap();
     }
+}
+
+/// Content of the right panel.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RightTab {
+    #[default]
+    Preview,
+    Outline,
 }

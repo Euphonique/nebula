@@ -50,8 +50,22 @@ pub(super) struct PreviewState {
 const DEBOUNCE: Duration = Duration::from_millis(250);
 
 impl NebulaApp {
+    /// Shows the preview in the right panel, or closes the panel if it shows the preview.
     pub(super) fn toggle_preview(&mut self) {
-        self.settings.preview = !self.settings.preview;
+        use crate::settings::RightTab;
+        if self.settings.right_panel && self.settings.right_tab == RightTab::Preview {
+            self.settings.right_panel = false;
+        } else {
+            self.settings.right_panel = true;
+            self.settings.right_tab = RightTab::Preview;
+        }
+        self.sync_preview_flag();
+    }
+
+    /// The preview runs while the right panel shows it.
+    pub(super) fn sync_preview_flag(&mut self) {
+        use crate::settings::RightTab;
+        self.settings.preview = self.settings.right_panel && self.settings.right_tab == RightTab::Preview;
         if !self.settings.preview {
             self.preview.place(None, 1.0);
         }
@@ -357,51 +371,21 @@ impl NebulaApp {
         }
     }
 
-    /// Draws the preview pane's header and the divider; returns the area for
-    /// the web view.
-    pub(super) fn preview_pane(&mut self, ui: &mut egui::Ui, pane: Rect, full: Rect) -> Option<Rect> {
+    /// The preview in the right panel: buttons in the panel header (from
+    /// `right` leftwards, a LIVE badge at `badge_x`); returns the area for the web view.
+    pub(super) fn preview_pane(&mut self, ui: &mut egui::Ui, header: Rect, body: Rect, right: f32, badge_x: f32) -> Option<Rect> {
         let theme = self.theme.clone();
-        // Divider between editor and preview.
-        let handle = Rect::from_center_size(pos2(pane.left(), pane.center().y), vec2(8.0, pane.height()));
-        let resp = ui.interact(handle, egui::Id::unique("preview_divider"), Sense::drag());
-        if resp.hovered() || resp.dragged() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-        }
-        if resp.dragged()
-            && let Some(p) = resp.interact_pointer_pos()
-        {
-            self.settings.preview_split = ((full.right() - p.x) / full.width()).clamp(0.15, 0.85);
-        }
-        ui.painter().line_segment(
-            [pane.left_top(), pane.left_bottom()],
-            egui::Stroke::new(1.0, theme.separator),
-        );
-
-        let header = Rect::from_min_size(pane.min + vec2(1.0, 0.0), vec2(pane.width() - 1.0, 30.0));
-        let painter = ui.painter().with_clip_rect(header);
-        painter.rect_filled(header, 0.0, theme.jumpbar_bg);
-        painter.line_segment([header.left_bottom(), header.right_bottom()], egui::Stroke::new(1.0, theme.separator));
         let cy = header.center().y;
-        icons::preview(&painter, pos2(header.left() + 16.0, cy), theme.text_muted);
-        let (title, live) = match &self.preview_state.page {
-            Some(p) => (p.title.clone(), p.live),
-            None => ("Vorschau".to_string(), false),
-        };
-        let g = painter.layout_no_wrap(title, FontId::proportional(12.5), theme.foreground);
-        let tw = g.size().x;
-        painter.galley(pos2(header.left() + 30.0, cy - g.size().y / 2.0), g, theme.foreground);
-        if live {
-            painter.text(
-                pos2(header.left() + 38.0 + tw, cy),
-                Align2::LEFT_CENTER,
-                "LIVE",
-                FontId::proportional(10.0),
-                theme.success,
-            );
+        if let Some(page) = &self.preview_state.page {
+            let r = Rect::from_min_size(pos2(badge_x, header.top()), vec2(40.0, header.height()));
+            if page.live {
+                ui.painter().text(pos2(badge_x, cy), Align2::LEFT_CENTER, "LIVE", FontId::proportional(10.0), theme.success);
+            }
+            ui.interact(r, egui::Id::unique("preview_title"), Sense::hover()).on_hover_text(&page.title);
         }
 
         // Buttons, right to left.
-        let mut x = header.right() - 18.0;
+        let mut x = right;
         let mut button = |ui: &mut egui::Ui, tip: &str, paint: fn(&egui::Painter, egui::Pos2, egui::Color32)| {
             let r = Rect::from_center_size(pos2(x, cy), vec2(26.0, 24.0));
             x -= 28.0;
@@ -412,9 +396,6 @@ impl NebulaApp {
             paint(ui.painter(), r.center(), if resp.hovered() { theme.foreground } else { theme.text_muted });
             resp.clicked()
         };
-        if button(ui, "Vorschau schließen", |p, c, col| icons::close(p, c, 8.0, col)) {
-            self.toggle_preview();
-        }
         if button(ui, "Entwicklertools", icons::devtools) {
             self.preview.open_devtools();
         }
@@ -426,7 +407,6 @@ impl NebulaApp {
             self.preview.reload();
         }
 
-        let body = Rect::from_min_max(pos2(pane.left() + 1.0, header.bottom() + 1.0), pane.max);
         if let Some(err) = &self.preview.error {
             ui.painter().rect_filled(body, 0.0, theme.background);
             ui.painter().text(body.center(), Align2::CENTER_CENTER, err, FontId::proportional(12.5), theme.text_muted);

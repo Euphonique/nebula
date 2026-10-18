@@ -250,21 +250,6 @@ pub fn upload(painter: &Painter, c: Pos2, color: Color32) {
     painter.line_segment([c + vec2(-6.0, 6.0), c + vec2(6.0, 6.0)], stroke);
 }
 
-/// An eye ("preview").
-pub fn preview(painter: &Painter, c: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.3, color);
-    let top: Vec<Pos2> = (0..=16)
-        .map(|i| {
-            let t = i as f32 / 16.0;
-            c + vec2(-7.0 + 14.0 * t, -4.2 * (std::f32::consts::PI * t).sin())
-        })
-        .collect();
-    let bottom: Vec<Pos2> = top.iter().map(|p| pos2(p.x, 2.0 * c.y - p.y)).collect();
-    painter.add(Shape::line(top, stroke));
-    painter.add(Shape::line(bottom, stroke));
-    painter.circle_stroke(c, 2.2, stroke);
-}
-
 /// Square with an arrow leaving it ("open externally").
 pub fn external(painter: &Painter, c: Pos2, color: Color32) {
     let stroke = Stroke::new(1.3, color);
@@ -323,4 +308,19 @@ pub fn language_item(ui: &mut egui::Ui, selected: bool, lang: crate::lang::Langu
     language(ui.painter(), pos2(rect.left() + 13.0, rect.center().y), lang);
     ui.painter().galley(pos2(rect.left() + 28.0, rect.center().y - galley.size().y / 2.0), galley, color);
     resp
+}
+
+/// Window with a filled strip on the right (right panel toggle).
+pub fn panel_right(painter: &Painter, c: Pos2, color: Color32) {
+    let r = Rect::from_center_size(c, vec2(16.0, 13.0));
+    painter.rect_stroke(r, 2.5, Stroke::new(1.3, color), eframe::egui::StrokeKind::Inside);
+    painter.rect_filled(Rect::from_min_max(pos2(r.right() - 5.5, r.top()), r.max), 2.0, color);
+}
+
+/// Window split into two halves (split view toggle).
+pub fn split_view(painter: &Painter, c: Pos2, color: Color32) {
+    let r = Rect::from_center_size(c, vec2(16.0, 13.0));
+    let stroke = Stroke::new(1.3, color);
+    painter.rect_stroke(r, 2.5, stroke, eframe::egui::StrokeKind::Inside);
+    painter.line_segment([pos2(c.x, r.top() + 1.0), pos2(c.x, r.bottom() - 1.0)], stroke);
 }
