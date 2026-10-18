@@ -11,7 +11,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 ## Editor
 
 - **C** Minimap (verkleinerte Code-Ansicht). Markierungen in der Scrollleiste sind erledigt.
-- **B** Klickbare Pfadleiste: Klick auf ein Element zeigt Geschwister zum Springen (wie Nova).
 - **B** Eigene Snippets pro Sprache in den Einstellungen anlegen/bearbeiten (mit Platzhaltern `$1`, `${2:name}`).
 - **C** Makros aufnehmen und abspielen.
 - **C** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
@@ -72,7 +71,7 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Nächste Schritte
 
-1. Rest Runde 1: klickbare Pfadleiste, Projektsuche mit Ein-/Ausschlussmustern und `.gitignore`.
+1. Rest Runde 1: Projektsuche mit Ein-/Ausschlussmustern und `.gitignore`.
 2. Runde 2 (Arbeitsfluss): automatisch speichern und lokaler Verlauf, Diff als Tab, Git-Aktionen, Übertragungsliste, gespeicherte Serverbefehle.
 3. Danach KI im rechten Panel (Agenten über ACP, eigener Chat).
 
@@ -80,4 +79,4 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 Externe Änderungen erkennen, Wiederherstellung nach Absturz, geteilte Ansicht, Blockauswahl, Formatieren beim Speichern und `.editorconfig`, zuletzt geöffnete Projekte, Git-Markierungen, Unterschiede im Konfliktdialog, eigene Tastenkürzel.
 
-Danach: Knöpfe für geteilte Ansicht und rechtes Panel, rechtes Panel mit Vorschau und Gliederung, lokales Terminal (PowerShell, Git Bash, cmd), Wort unter dem Cursor hervorheben, passendes HTML-Tag hervorheben und mit umbenennen, Gehe zu Symbol (Strg+R), Navigationsverlauf (Alt+←/→), Lesezeichen, Textwerkzeuge, Suchen/Ersetzen in der Auswahl, Markierungen am rechten Rand.
+Danach: Knöpfe für geteilte Ansicht und rechtes Panel, rechtes Panel mit Vorschau und Gliederung, lokales Terminal (PowerShell, Git Bash, cmd), Wort unter dem Cursor hervorheben, passendes HTML-Tag hervorheben und mit umbenennen, Gehe zu Symbol (Strg+R), Navigationsverlauf (Alt+←/→), Lesezeichen, Textwerkzeuge, Suchen/Ersetzen in der Auswahl, Markierungen am rechten Rand, klickbare Pfadleiste (auch Netzlaufwerke werden jetzt korrekt geöffnet).

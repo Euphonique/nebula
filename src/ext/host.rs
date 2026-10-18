@@ -147,7 +147,7 @@ struct Host {
 
 /// Forward-slash path for JavaScript.
 pub fn js_path(p: &Path) -> String {
-    p.to_string_lossy().trim_start_matches(r"\\?\").replace('\\', "/")
+    crate::ui::sidebar::strip_verbatim(p).to_string_lossy().replace('\\', "/")
 }
 
 fn native_path(p: &str) -> PathBuf {

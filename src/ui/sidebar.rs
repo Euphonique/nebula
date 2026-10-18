@@ -161,10 +161,10 @@ impl RemoteTree {
 }
 
 #[derive(Clone)]
-struct LocalEntry {
-    name: String,
-    path: PathBuf,
-    is_dir: bool,
+pub struct LocalEntry {
+    pub name: String,
+    pub path: PathBuf,
+    pub is_dir: bool,
 }
 
 /// Per-frame context for drawing tree rows.
@@ -301,7 +301,7 @@ impl Sidebar {
         }
     }
 
-    fn local_children(&mut self, dir: &Path) -> Vec<LocalEntry> {
+    pub fn local_children(&mut self, dir: &Path) -> Vec<LocalEntry> {
         if let Some(v) = self.local_dirs.get(dir) {
             return v.clone();
         }
@@ -1202,7 +1202,22 @@ fn indent_label(ui: &mut Ui, depth: usize, text: &str, color: Color32) {
 }
 
 /// Canonical form of a local path (no `\?` prefix, consistent separators).
+/// Mapped network drives keep their letter instead of becoming `\\server\share`.
 pub fn normalize_path(p: &Path) -> PathBuf {
-    let c = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
-    PathBuf::from(c.to_string_lossy().trim_start_matches(r"\\?\").to_string())
+    let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+    let c = match p.canonicalize() {
+        Ok(c) if c.to_string_lossy().starts_with(r"\\?\UNC\") && !abs.to_string_lossy().starts_with(r"\\") => abs,
+        Ok(c) => c,
+        Err(_) => abs,
+    };
+    strip_verbatim(&c)
+}
+
+/// `\\?\C:\x` → `C:\x`, `\\?\UNC\server\x` → `\\server\x`.
+pub fn strip_verbatim(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    match s.strip_prefix(r"\\?\UNC\") {
+        Some(rest) => PathBuf::from(format!(r"\\{rest}")),
+        None => PathBuf::from(s.trim_start_matches(r"\\?\")),
+    }
 }

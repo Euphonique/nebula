@@ -37,6 +37,7 @@ mod split;
 mod keys;
 mod right_panel;
 mod nav;
+mod jumpbar;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -133,6 +134,10 @@ pub struct NebulaApp {
     reveal_active_tab: bool,
     /// Jump bar symbols for (doc id, version, cursor).
     outline_cache: Option<((u64, u64, usize), Vec<String>)>,
+    /// Folder shown in the open jump bar popup.
+    jump_nav: Option<crate::ui::sidebar::DirRef>,
+    /// Scroll the jump bar popup to the current entry.
+    jump_reveal: bool,
     preview: crate::preview::Preview,
     preview_state: preview::PreviewState,
     ext: extensions::ExtUi,
@@ -190,6 +195,8 @@ impl NebulaApp {
             pending_publish: HashMap::new(),
             reveal_active_tab: true,
             outline_cache: None,
+            jump_nav: None,
+            jump_reveal: false,
             preview: Default::default(),
             preview_state: Default::default(),
             ext: extensions::ExtUi::new(&cc.egui_ctx, &settings.disabled_extensions),
@@ -287,8 +294,7 @@ impl NebulaApp {
     }
 
     fn open_local(&mut self, path: &Path) {
-        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-        let path = PathBuf::from(path.to_string_lossy().trim_start_matches(r"\\?\"));
+        let path = crate::ui::sidebar::normalize_path(path);
         if let Some(i) = self
             .docs
             .iter()
@@ -1515,110 +1521,6 @@ impl NebulaApp {
             [bar.left_bottom(), bar.right_bottom()],
             egui::Stroke::new(1.0, theme.separator),
         );
-    }
-
-    /// Breadcrumbs for the active document, like Nova's jump bar.
-    fn jump_bar(&mut self, ui: &mut egui::Ui) {
-        let Some(i) = self.active else { return };
-        let theme = self.theme.clone();
-        let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
-        let painter = ui.painter().with_clip_rect(bar);
-        painter.rect_filled(bar, 0.0, theme.jumpbar_bg);
-        painter.line_segment(
-            [bar.left_bottom(), bar.right_bottom()],
-            egui::Stroke::new(1.0, theme.separator.gamma_multiply(if theme.dark { 0.8 } else { 0.5 })),
-        );
-
-        let doc = &self.docs[i];
-        let head = doc.primary_selection().head;
-        let key = (doc.id, doc.version, head);
-        if self.outline_cache.as_ref().is_none_or(|(k, _)| *k != key) {
-            let path = crate::editor::outline::symbol_path(doc, head);
-            self.outline_cache = Some((key, path));
-        }
-        let symbols = self.outline_cache.as_ref().map(|(_, p)| p.clone()).unwrap_or_default();
-
-        // (label, kind): 0 = location root, 1 = folder, 2 = file, 3 = symbol
-        let mut parts: Vec<(String, u8)> = Vec::new();
-        match &doc.source {
-            DocSource::Remote { site_id, path } => {
-                let site = self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_default();
-                parts.push((site, 0));
-                let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-                for (n, s) in segs.iter().enumerate() {
-                    parts.push((s.to_string(), if n + 1 == segs.len() { 2 } else { 1 }));
-                }
-            }
-            DocSource::Local(p) => {
-                let rel = self
-                    .sidebar
-                    .root
-                    .as_ref()
-                    .and_then(|root| p.strip_prefix(root).ok().map(|r| (root, r)));
-                match rel {
-                    Some((root, r)) => {
-                        let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                        parts.push((name, 0));
-                        let comps: Vec<String> =
-                            r.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
-                        for (n, c) in comps.iter().enumerate() {
-                            parts.push((c.clone(), if n + 1 == comps.len() { 2 } else { 1 }));
-                        }
-                    }
-                    None => {
-                        if let Some(parent) = p.parent().and_then(|p| p.file_name()) {
-                            parts.push((parent.to_string_lossy().into_owned(), 0));
-                        }
-                        parts.push((doc.title(), 2));
-                    }
-                }
-            }
-            DocSource::Untitled(_) => parts.push((doc.title(), 2)),
-        }
-        parts.extend(symbols.into_iter().map(|s| (s, 3)));
-
-        let mut x = bar.left() + 14.0;
-        let cy = bar.center().y;
-        let font = FontId::proportional(12.5);
-        for (n, (label, kind)) in parts.iter().enumerate() {
-            if n > 0 {
-                icons::chevron_thin(&painter, pos2(x + 9.0, cy), theme.text_faint);
-                x += 21.0;
-            }
-            match kind {
-                0 => {
-                    if matches!(doc.source, DocSource::Remote { .. }) {
-                        icons::server(&painter, pos2(x + 7.0, cy), theme.text_muted);
-                    } else {
-                        icons::folder(&painter, pos2(x + 8.0, cy), theme.text_muted, false);
-                    }
-                    x += 20.0;
-                }
-                2 => {
-                    icons::file(&painter, pos2(x + 6.0, cy), label);
-                    x += 17.0;
-                }
-                3 => {
-                    painter.rect_stroke(
-                        Rect::from_center_size(pos2(x + 5.0, cy), vec2(8.0, 8.0)),
-                        2.0,
-                        egui::Stroke::new(1.2, theme.color_of("tag.name")),
-                        egui::StrokeKind::Inside,
-                    );
-                    x += 15.0;
-                }
-                _ => {}
-            }
-            let color = if *kind == 2 { theme.foreground } else { theme.text_muted };
-            let g = painter.layout_no_wrap(label.clone(), font.clone(), color);
-            let w = g.size().x;
-            painter.galley(pos2(x, cy - g.size().y / 2.0), g, color);
-            x += w;
-            if x > bar.right() - 12.0 {
-                break;
-            }
-        }
-
     }
 
     fn find_bar(&mut self, ui: &mut egui::Ui) {

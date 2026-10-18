@@ -38,7 +38,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Automatischer Zeilenumbruch (Ansicht, Alt+Z); Fortsetzungszeilen behalten die Einrückung und haben keine eigene Zeilennummer
 - Drucken mit Syntaxfarben, Zeilennummern und Seitenzahlen (Strg+Alt+P)
 - Farbvorschau unter CSS-Farbwerten
-- Pfadleiste mit Position im Dokument (z. B. `body › main#content › ul`)
+- Pfadleiste mit Position im Dokument (z. B. `body › main#content › ul`, sonst die Funktion/Klasse am Cursor); Klick auf Ordner oder Datei zeigt die Nachbarn zum Springen (auch auf dem Server), Klick auf das Symbol die Gliederung
 - HTML-Tags und Klammern werden automatisch geschlossen
 - Die Sitzung wird beim nächsten Start wiederhergestellt (geöffnete Dateien und Cursor)
 - Wiederherstellung nach Absturz: Ungespeicherte Inhalte (auch unbenannte Tabs) werden alle paar Sekunden gesichert und nach einem Absturz beim nächsten Start zurückgeholt
