@@ -1,6 +1,6 @@
 //! Vector icons drawn with the painter, crisp at any scale.
 
-use eframe::egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke, pos2, vec2};
+use eframe::egui::{self, Align2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke, pos2, vec2};
 
 use crate::theme::{Theme, bold_family};
 
@@ -23,6 +23,15 @@ pub fn file_kind(name: &str) -> (Color32, &'static str) {
         "rs" => (Color32::from_rgb(222, 120, 70), "rs"),
         "py" => (Color32::from_rgb(60, 120, 190), "py"),
         "sql" => (Color32::from_rgb(220, 150, 40), "sql"),
+        "go" => (Color32::from_rgb(60, 170, 200), "go"),
+        "java" => (Color32::from_rgb(200, 90, 60), "jv"),
+        "c" | "h" => (Color32::from_rgb(90, 110, 190), "C"),
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => (Color32::from_rgb(70, 100, 180), "C++"),
+        "cs" => (Color32::from_rgb(110, 80, 180), "C#"),
+        "sh" | "bash" | "zsh" => (Color32::from_rgb(80, 150, 90), "sh"),
+        "rb" | "erb" => (Color32::from_rgb(200, 60, 70), "rb"),
+        "lua" => (Color32::from_rgb(40, 60, 160), "lua"),
+        "diff" | "patch" => (Color32::from_rgb(100, 160, 120), "+-"),
         "woff" | "woff2" | "ttf" | "otf" => (Color32::from_rgb(150, 150, 160), "Aa"),
         _ => (Color32::from_rgb(140, 146, 156), ""),
     }
@@ -289,4 +298,29 @@ pub fn blocks(painter: &Painter, c: Pos2, color: Color32) {
     }
     let r = Rect::from_center_size(c + vec2(4.5, -4.5), vec2(5.5, 5.5));
     painter.rect_filled(r, 1.5, color);
+}
+
+/// The file icon of a language (as for a file with its main extension).
+pub fn language(painter: &Painter, center: Pos2, lang: crate::lang::Language) {
+    let ext = lang.default_extensions().first().copied().unwrap_or("txt");
+    file(painter, center, &format!("x.{ext}"));
+}
+
+/// A selectable list entry with the language's icon in front of `label`.
+pub fn language_item(ui: &mut egui::Ui, selected: bool, lang: crate::lang::Language, label: &str) -> egui::Response {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let galley = ui.painter().layout_no_wrap(label.to_string(), font, ui.visuals().text_color());
+    // Popups offer far more width than a short name needs.
+    let width = ui.available_width().min(220.0).max(galley.size().x + 40.0);
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 24.0), egui::Sense::click());
+    let visuals = ui.visuals();
+    if selected {
+        ui.painter().rect_filled(rect, 4.0, visuals.selection.bg_fill);
+    } else if resp.hovered() {
+        ui.painter().rect_filled(rect, 4.0, visuals.widgets.hovered.weak_bg_fill);
+    }
+    let color = if selected { visuals.selection.stroke.color } else { visuals.text_color() };
+    language(ui.painter(), pos2(rect.left() + 13.0, rect.center().y), lang);
+    ui.painter().galley(pos2(rect.left() + 28.0, rect.center().y - galley.size().y / 2.0), galley, color);
+    resp
 }

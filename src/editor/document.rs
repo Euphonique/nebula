@@ -61,15 +61,81 @@ pub enum Encoding {
     Utf8Bom,
     /// Windows-1252 / Latin-1, used when a file is not valid UTF-8.
     Latin1,
+    Utf16Le,
+    Utf16Be,
 }
 
 impl Encoding {
+    pub const ALL: [Encoding; 5] = [Encoding::Utf8, Encoding::Utf8Bom, Encoding::Latin1, Encoding::Utf16Le, Encoding::Utf16Be];
+
     pub fn label(self) -> &'static str {
         match self {
             Encoding::Utf8 => "UTF-8",
             Encoding::Utf8Bom => "UTF-8 BOM",
             Encoding::Latin1 => "Latin-1",
+            Encoding::Utf16Le => "UTF-16 LE",
+            Encoding::Utf16Be => "UTF-16 BE",
         }
+    }
+
+    /// Longer name for menus.
+    pub fn description(self) -> &'static str {
+        match self {
+            Encoding::Utf8 => "UTF-8",
+            Encoding::Utf8Bom => "UTF-8 mit BOM",
+            Encoding::Latin1 => "Westeuropäisch (Windows-1252 / Latin-1)",
+            Encoding::Utf16Le => "UTF-16 Little Endian",
+            Encoding::Utf16Be => "UTF-16 Big Endian",
+        }
+    }
+
+    /// Detects the encoding of file contents (BOM, then UTF-8, else Windows-1252).
+    pub fn detect(bytes: &[u8]) -> Encoding {
+        if bytes.starts_with(b"\xEF\xBB\xBF") {
+            Encoding::Utf8Bom
+        } else if bytes.starts_with(b"\xFF\xFE") {
+            Encoding::Utf16Le
+        } else if bytes.starts_with(b"\xFE\xFF") {
+            Encoding::Utf16Be
+        } else if std::str::from_utf8(bytes).is_ok() {
+            Encoding::Utf8
+        } else {
+            Encoding::Latin1
+        }
+    }
+
+    /// Decodes bytes in this encoding (a matching BOM is skipped).
+    pub fn decode(self, bytes: &[u8]) -> String {
+        let utf16 = |rest: &[u8], le: bool| {
+            let units: Vec<u16> = rest
+                .chunks_exact(2)
+                .map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) })
+                .collect();
+            String::from_utf16_lossy(&units)
+        };
+        match self {
+            Encoding::Utf8 | Encoding::Utf8Bom => {
+                String::from_utf8_lossy(bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes)).into_owned()
+            }
+            Encoding::Latin1 => decode_latin1(bytes),
+            Encoding::Utf16Le => utf16(bytes.strip_prefix(b"\xFF\xFE").unwrap_or(bytes), true),
+            Encoding::Utf16Be => utf16(bytes.strip_prefix(b"\xFE\xFF").unwrap_or(bytes), false),
+        }
+    }
+
+    pub fn encode(self, text: &str) -> Vec<u8> {
+        match self {
+            Encoding::Utf8 => text.as_bytes().to_vec(),
+            Encoding::Utf8Bom => [b"\xEF\xBB\xBF".as_slice(), text.as_bytes()].concat(),
+            Encoding::Latin1 => encode_latin1(text),
+            Encoding::Utf16Le => [0xFF, 0xFE].into_iter().chain(text.encode_utf16().flat_map(u16::to_le_bytes)).collect(),
+            Encoding::Utf16Be => [0xFE, 0xFF].into_iter().chain(text.encode_utf16().flat_map(u16::to_be_bytes)).collect(),
+        }
+    }
+
+    /// Characters this encoding cannot represent (they would be lost on saving).
+    pub fn can_encode(self, text: &str) -> bool {
+        self != Encoding::Latin1 || !text.chars().any(|c| c != '?' && encode_latin1(c.encode_utf8(&mut [0; 4])) == b"?")
     }
 }
 
@@ -259,14 +325,13 @@ impl Document {
 
     /// Decodes raw file bytes, detecting BOM, encoding and line endings.
     pub fn from_bytes(source: DocSource, bytes: &[u8]) -> Self {
-        let (text, encoding) = if let Some(rest) = bytes.strip_prefix(b"\xEF\xBB\xBF") {
-            (String::from_utf8_lossy(rest).into_owned(), Encoding::Utf8Bom)
-        } else {
-            match std::str::from_utf8(bytes) {
-                Ok(s) => (s.to_owned(), Encoding::Utf8),
-                Err(_) => (decode_latin1(bytes), Encoding::Latin1),
-            }
-        };
+        Self::from_bytes_as(source, bytes, None)
+    }
+
+    /// Like [`Self::from_bytes`], but with a given encoding instead of detecting it.
+    pub fn from_bytes_as(source: DocSource, bytes: &[u8], encoding: Option<Encoding>) -> Self {
+        let encoding = encoding.unwrap_or_else(|| Encoding::detect(bytes));
+        let text = encoding.decode(bytes);
         let line_ending = if text.contains("\r\n") {
             LineEnding::CrLf
         } else {
@@ -284,15 +349,7 @@ impl Document {
         if self.line_ending == LineEnding::CrLf {
             text = text.replace('\n', "\r\n");
         }
-        match self.encoding {
-            Encoding::Utf8 => text.into_bytes(),
-            Encoding::Utf8Bom => {
-                let mut out = b"\xEF\xBB\xBF".to_vec();
-                out.extend_from_slice(text.as_bytes());
-                out
-            }
-            Encoding::Latin1 => encode_latin1(&text),
-        }
+        self.encoding.encode(&text)
     }
 
     pub fn title(&self) -> String {
@@ -809,6 +866,20 @@ mod tests {
         assert_eq!(d.line_ending, LineEnding::CrLf);
         assert_eq!(d.rope.to_string(), "café\nok\n");
         assert_eq!(d.to_bytes(), bytes);
+    }
+
+    #[test]
+    fn utf16_roundtrip_and_forced_encoding() {
+        let bytes = Encoding::Utf16Le.encode("äb\r\n");
+        let d = Document::from_bytes(DocSource::Untitled(1), &bytes);
+        assert_eq!(d.encoding, Encoding::Utf16Le);
+        assert_eq!(d.rope.to_string(), "äb\n");
+        assert_eq!(d.to_bytes(), bytes);
+        // UTF-8 bytes read as Windows-1252 show the two bytes of "ä".
+        let d = Document::from_bytes_as(DocSource::Untitled(1), "ä".as_bytes(), Some(Encoding::Latin1));
+        assert_eq!(d.rope.to_string(), "Ã¤");
+        assert!(!Encoding::Latin1.can_encode("€ und 😀"));
+        assert!(Encoding::Latin1.can_encode("€ und ä?"));
     }
 
     #[test]

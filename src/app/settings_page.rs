@@ -373,7 +373,7 @@ impl NebulaApp {
                     for l in Language::ALL {
                         let customized = self.settings.languages.get(l.id()).is_some_and(|s| *s != LanguageSettings::default());
                         let label = if customized { format!("{} •", l.name()) } else { l.name().to_string() };
-                        if ui.selectable_label(l == lang, label).clicked() && l != lang {
+                        if crate::ui::icons::language_item(ui, l == lang, l, &label).clicked() && l != lang {
                             select(state, l, &self.settings);
                         }
                     }

@@ -103,8 +103,8 @@ pub struct NebulaApp {
     host_keys: VecDeque<(String, HostKeyPrompt)>,
     pending_opens: HashMap<u64, (String, String)>,
     pending_saves: HashMap<u64, PendingSave>,
-    /// Remote reads that replace an open document (tag -> doc id).
-    pending_reloads: HashMap<u64, u64>,
+    /// Remote reads that replace an open document (tag -> doc id, forced encoding).
+    pending_reloads: HashMap<u64, (u64, Option<crate::editor::document::Encoding>)>,
     /// Actions to run after a transfer succeeded (e.g. deleting a moved source).
     pending_followups: HashMap<u64, FollowUp>,
     allow_close: bool,
@@ -483,9 +483,9 @@ impl NebulaApp {
                         self.preview_read_done(ev.tag, &path, Some(data));
                         continue;
                     }
-                    if let Some(doc_id) = self.pending_reloads.remove(&ev.tag) {
+                    if let Some((doc_id, encoding)) = self.pending_reloads.remove(&ev.tag) {
                         if let Some(i) = self.doc_index(doc_id) {
-                            let mut doc = Document::from_bytes(self.docs[i].source.clone(), &data);
+                            let mut doc = Document::from_bytes_as(self.docs[i].source.clone(), &data, encoding);
                             doc.id = doc_id;
                             doc.remote_stamp = stamp;
                             self.docs[i] = doc;
@@ -622,12 +622,41 @@ impl NebulaApp {
 
     /// Reloads a remote document from the server, discarding local changes.
     fn reload_remote(&mut self, doc_id: u64) {
+        self.reload_remote_as(doc_id, None);
+    }
+
+    /// Reads the active document again from disk or server with an encoding.
+    fn reload_with_encoding(&mut self, encoding: crate::editor::document::Encoding) {
+        let Some(i) = self.active else { return };
+        match self.docs[i].source.clone() {
+            DocSource::Local(path) => match std::fs::read(&path) {
+                Ok(bytes) => {
+                    let old = &self.docs[i];
+                    let mut doc = Document::from_bytes_as(old.source.clone(), &bytes, Some(encoding));
+                    doc.id = old.id;
+                    doc.language = old.language;
+                    let head = old.primary_selection().head.min(doc.len_chars());
+                    doc.set_selection(crate::editor::document::Selection::cursor(head));
+                    self.docs[i] = doc;
+                }
+                Err(e) => self.error(format!("{} konnte nicht gelesen werden: {e}", path.display())),
+            },
+            DocSource::Remote { .. } => {
+                let id = self.docs[i].id;
+                self.reload_remote_as(id, Some(encoding));
+            }
+            DocSource::Untitled(_) => {}
+        }
+    }
+
+    /// Reloads a remote document, decoding it with `encoding` (or detecting it).
+    fn reload_remote_as(&mut self, doc_id: u64, encoding: Option<crate::editor::document::Encoding>) {
         let Some(i) = self.doc_index(doc_id) else { return };
         let DocSource::Remote { site_id, path } = self.docs[i].source.clone() else { return };
         let Some(site) = self.sites.get(&site_id).cloned() else { return };
         self.ensure_tree(&site);
         let tag = self.remote.send(&site, Request::Read(path));
-        self.pending_reloads.insert(tag, doc_id);
+        self.pending_reloads.insert(tag, (doc_id, encoding));
     }
 
     fn fail_pending_for_site(&mut self, site_id: &str) {
@@ -1634,6 +1663,9 @@ impl NebulaApp {
             [rect.left_top(), rect.right_top()],
             egui::Stroke::new(1.0, theme.separator.gamma_multiply(if theme.dark { 0.8 } else { 0.5 })),
         );
+        // Done after drawing, as they need the whole app.
+        let mut goto_line = false;
+        let mut reload_as: Option<crate::editor::document::Encoding> = None;
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 16.0;
             let small = |s: String| RichText::new(s).size(11.5).color(theme.text_muted);
@@ -1660,14 +1692,55 @@ impl NebulaApp {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(4.0);
                 let lang = clickable(ui, doc.language.name().to_string()).on_hover_text("Sprache");
+                icons::language(ui.painter(), pos2(lang.rect.left() - 13.0, lang.rect.center().y), doc.language);
+                ui.add_space(16.0);
                 egui::Popup::menu(&lang).show(|ui| {
-                    for l in Language::ALL {
-                        if ui.selectable_value(&mut doc.language, l, l.name()).clicked() {
-                            doc.highlight_version = u64::MAX;
+                    egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                        ui.set_min_width(170.0);
+                        for l in Language::ALL {
+                            if icons::language_item(ui, doc.language == l, l, l.name()).clicked() {
+                                doc.language = l;
+                                doc.highlight_version = u64::MAX;
+                                ui.close();
+                            }
+                        }
+                    });
+                });
+                let enc = clickable(ui, doc.encoding.label().to_string()).on_hover_text("Kodierung");
+                egui::Popup::menu(&enc).show(|ui| {
+                    use crate::editor::document::Encoding;
+                    ui.set_min_width(280.0);
+                    ui.label(RichText::new("Speichern mit Kodierung").small().color(theme.text_faint));
+                    let text = doc.text();
+                    for e in Encoding::ALL {
+                        let fits = e.can_encode(&text);
+                        let resp = ui.add_enabled(fits, egui::Button::selectable(doc.encoding == e, e.description()));
+                        if resp.clicked() && doc.encoding != e {
+                            doc.encoding = e;
+                            doc.mark_unsaved();
+                            ui.close();
+                        }
+                        if !fits {
+                            resp.on_disabled_hover_text("Der Text enthält Zeichen, die diese Kodierung nicht darstellen kann.");
+                        }
+                    }
+                    let reloadable = !matches!(doc.source, DocSource::Untitled(_));
+                    if reloadable {
+                        ui.separator();
+                        ui.label(RichText::new("Neu laden mit Kodierung").small().color(theme.text_faint));
+                        let dirty = doc.is_dirty();
+                        for e in Encoding::ALL {
+                            let resp = ui.add_enabled(!dirty, egui::Button::new(e.description()));
+                            if resp.clicked() {
+                                reload_as = Some(e);
+                                ui.close();
+                            }
+                            if dirty {
+                                resp.on_disabled_hover_text("Erst speichern oder Änderungen verwerfen");
+                            }
                         }
                     }
                 });
-                ui.label(small(doc.encoding.label().to_string()));
                 if clickable(ui, doc.line_ending.label().to_string())
                     .on_hover_text("Zeilenenden umschalten")
                     .clicked()
@@ -1694,7 +1767,9 @@ impl NebulaApp {
                 } else if !sel.is_empty() {
                     info = format!("{} ausgewählt  ·  {info}", sel.range().len());
                 }
-                ui.label(small(info));
+                if clickable(ui, info).on_hover_text("Gehe zu Zeile (Strg+G)").clicked() {
+                    goto_line = true;
+                }
 
                 // Problems reported by extensions for this document.
                 if !doc.view.diagnostics.is_empty() {
@@ -1724,6 +1799,12 @@ impl NebulaApp {
                 }
             });
         });
+        if goto_line {
+            self.dialog = Some(Dialog::GotoLine { value: String::new(), focus: true });
+        }
+        if let Some(e) = reload_as {
+            self.reload_with_encoding(e);
+        }
     }
 
     fn welcome(&mut self, ui: &mut egui::Ui) {
@@ -2717,6 +2798,10 @@ fn confirm(ctx: &egui::Context, title: &str, text: &str, action: &str, yes: &mut
 }
 
 fn is_binary(bytes: &[u8]) -> bool {
+    // UTF-16 text is full of zero bytes.
+    if bytes.starts_with(b"\xFF\xFE") || bytes.starts_with(b"\xFE\xFF") {
+        return false;
+    }
     bytes[..bytes.len().min(8192)].contains(&0)
 }
 
