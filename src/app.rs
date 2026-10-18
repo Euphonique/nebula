@@ -40,6 +40,7 @@ mod nav;
 mod jumpbar;
 mod history;
 mod difftab;
+mod transfers_ui;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -530,7 +531,7 @@ impl NebulaApp {
     }
 
     fn process_remote_events(&mut self) {
-        let events: Vec<_> = self.remote.poll().collect();
+        let events = self.remote.poll();
         for ev in events {
             let site_name = self
                 .sites
@@ -712,6 +713,8 @@ impl NebulaApp {
                 Reply::HostKeyUnknown(prompt) => {
                     self.host_keys.push_back((ev.site_id, prompt));
                 }
+                // Applied to the transfer list by the manager already.
+                Reply::Progress { .. } => {}
             }
         }
     }
@@ -1720,9 +1723,13 @@ impl NebulaApp {
                 }
                 r
             };
-            if pending > 0 {
+            // Uploads/downloads first; other server requests only as a spinner.
+            let transfers_shown = self.transfers_status(ui);
+            if transfers_shown {
+                // The transfer list says enough.
+            } else if pending > 0 {
                 ui.add(egui::Spinner::new().size(11.0).color(theme.accent));
-                ui.label(small(format!("{pending} Übertragung(en)…")));
+                ui.label(small("Server …".to_string()));
             } else if let Some(DocSource::Remote { site_id, .. }) = self.active.and_then(|i| self.docs.get(i)).map(|d| &d.source) {
                 let connected = self.remote.is_connected(site_id);
                 let (rect, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());

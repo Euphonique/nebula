@@ -71,12 +71,24 @@ fn exercise(b: &mut dyn Backend, root: &str) {
     std::fs::create_dir_all(local.path().join("assets/img")).unwrap();
     std::fs::write(local.path().join("assets/a.css"), "a{}").unwrap();
     std::fs::write(local.path().join("assets/img/b.svg"), "<svg/>").unwrap();
+    let (events, events_rx) = crossbeam_channel::unbounded();
+    let (ctx, cancel) = (eframe::egui::Context::default(), std::sync::atomic::AtomicBool::new(false));
+    let mut p = super::Progress { events: &events, ctx: &ctx, site_id: "test", tag: 1, cancel: &cancel, done: 0 };
     let up = super::join(&dir, "assets");
-    assert_eq!(super::upload_recursive(b, &local.path().join("assets"), &up).unwrap(), 2);
+    assert_eq!(super::upload_recursive(b, &local.path().join("assets"), &up, &mut p).unwrap(), 2);
     let copy = super::join(&dir, "assets2");
-    assert_eq!(super::copy_recursive(b, &up, &copy, true).unwrap(), 2);
+    assert_eq!(super::copy_recursive(b, &up, &copy, true, &mut p).unwrap(), 2);
     let back = local.path().join("back");
-    assert_eq!(super::download_recursive(b, &copy, &back, true).unwrap(), 2);
+    assert_eq!(super::download_recursive(b, &copy, &back, true, &mut p).unwrap(), 2);
+    // One progress message per file: 2 up, 2 copied, 2 down.
+    assert_eq!(events_rx.try_iter().count(), 6);
+    // A cancelled transfer stops before the next file.
+    cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    let err = super::upload_recursive(b, &local.path().join("assets"), &super::join(&dir, "assets3"), &mut p).unwrap_err();
+    assert_eq!(err.to_string(), "Abgebrochen");
+    assert_eq!(events_rx.try_iter().count(), 0);
+    // The folder was created before the first file was refused.
+    b.remove_dir(&super::join(&dir, "assets3")).unwrap();
     assert_eq!(std::fs::read_to_string(back.join("img/b.svg")).unwrap(), "<svg/>");
     super::remove_recursive(b, &up).unwrap();
     super::remove_recursive(b, &copy).unwrap();
@@ -493,6 +505,71 @@ fn ssh_terminal_runs_a_shell() {
     assert_eq!(screen.cell(0, 0).unwrap().fgcolor(), vt100::Color::Idx(2));
     term.resize(30, 100);
     assert_eq!(term.parser.lock().unwrap().screen().size(), (30, 100));
+}
+
+/// The transfer list: a failed copy is listed as failed and succeeds on retry.
+#[test]
+fn transfer_list_failure_and_retry() {
+    use super::transfers::TransferState;
+    isolated_config();
+    let home = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let server = SshServer { root: home.path().to_path_buf() };
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.spawn(async move {
+        let config = russh::server::Config {
+            keys: vec![russh::keys::decode_secret_key(HOST_KEY, None).unwrap()],
+            auth_rejection_time: Duration::from_millis(10),
+            ..Default::default()
+        };
+        let mut server = server;
+        server.run_on_address(Arc::new(config), ("127.0.0.1", port)).await.unwrap();
+    });
+    std::thread::sleep(Duration::from_millis(300));
+
+    let site = Site {
+        id: format!("transfer-test-{}", std::process::id()),
+        protocol: Protocol::Sftp,
+        host: "127.0.0.1".into(),
+        port,
+        user: "test".into(),
+        key_file: Some(PathBuf::from("does-not-exist")),
+        ..Default::default()
+    };
+    // The manager reads the password from the credential store.
+    site.set_password("secret").unwrap();
+
+    let mut manager = super::RemoteManager::new(eframe::egui::Context::default());
+    // Waits until the transfer `tag` has finished, answering host key questions.
+    let wait = |manager: &mut super::RemoteManager, tag: u64| -> TransferState {
+        for _ in 0..200 {
+            for ev in manager.poll() {
+                if let super::Reply::HostKeyUnknown(prompt) = ev.reply {
+                    prompt.answer(true);
+                }
+            }
+            let t = manager.transfers.items.iter().find(|t| t.tag == tag).expect("listed");
+            if t.state.finished() {
+                return t.state.clone();
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("transfer did not finish");
+    };
+
+    // The source does not exist yet: the copy fails.
+    let copy = super::Request::Copy { from: "/a.txt".into(), to: "/b.txt".into(), is_dir: false };
+    let tag = manager.send(&site, copy);
+    assert!(matches!(wait(&mut manager, tag), TransferState::Failed(_)));
+
+    // With the file in place, retrying replaces the entry and succeeds.
+    std::fs::write(home.path().join("a.txt"), "hallo").unwrap();
+    let retry = manager.retry(&site, tag).expect("retryable");
+    assert!(matches!(wait(&mut manager, retry), TransferState::Done(_)));
+    assert_eq!(manager.transfers.items.len(), 1);
+    assert_eq!(std::fs::read_to_string(home.path().join("b.txt")).unwrap(), "hallo");
+
+    site.set_password("").unwrap();
 }
 
 /// Serves `NEBULA_SFTP_ROOT` on 127.0.0.1:2222 (user `test`, password

@@ -9,6 +9,7 @@ mod ftp;
 mod sftp;
 pub mod terminal;
 pub mod search;
+pub mod transfers;
 #[cfg(test)]
 mod integration_tests;
 
@@ -136,6 +137,8 @@ pub enum Reply {
     Disconnected,
     /// SFTP host key not yet trusted; the UI must answer through `answer`.
     HostKeyUnknown(HostKeyPrompt),
+    /// A transfer started or finished another file (handled by the manager).
+    Progress { done: usize },
 }
 
 pub struct HostKeyPrompt {
@@ -162,8 +165,34 @@ pub struct RemoteEvent {
 }
 
 enum Command {
-    Run { tag: u64, request: Request },
+    Run { tag: u64, request: Request, cancel: Arc<std::sync::atomic::AtomicBool> },
     Disconnect,
+}
+
+/// Reports per-file progress of a transfer and stops it when cancelled.
+struct Progress<'a> {
+    events: &'a Sender<RemoteEvent>,
+    ctx: &'a egui::Context,
+    site_id: &'a str,
+    tag: u64,
+    cancel: &'a std::sync::atomic::AtomicBool,
+    done: usize,
+}
+
+impl Progress<'_> {
+    /// Called before each file; errors out if the transfer was cancelled.
+    fn file(&mut self) -> Result<()> {
+        if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            anyhow::bail!("Abgebrochen");
+        }
+        Ok(())
+    }
+
+    fn finished_file(&mut self) {
+        self.done += 1;
+        let _ = self.events.send(RemoteEvent { site_id: self.site_id.to_string(), tag: self.tag, reply: Reply::Progress { done: self.done } });
+        self.ctx.request_repaint();
+    }
 }
 
 struct Connection {
@@ -178,6 +207,8 @@ pub struct RemoteManager {
     events_rx: Receiver<RemoteEvent>,
     ctx: egui::Context,
     next_tag: u64,
+    /// Uploads, downloads, copies and saves for the transfer list.
+    pub transfers: transfers::Transfers,
 }
 
 impl RemoteManager {
@@ -189,6 +220,7 @@ impl RemoteManager {
             events_rx,
             ctx,
             next_tag: 1,
+            transfers: Default::default(),
         }
     }
 
@@ -237,16 +269,68 @@ impl RemoteManager {
         self.connect(site);
         let tag = self.next_tag;
         self.next_tag += 1;
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        if transfers::is_transfer(&request) {
+            self.transfers.add(transfers::Transfer {
+                tag,
+                site_id: site.id.clone(),
+                site_name: site.display_name(),
+                request: request.clone(),
+                state: transfers::TransferState::Queued,
+                started: std::time::Instant::now(),
+                finished: None,
+                cancel: cancel.clone(),
+            });
+        }
         let conn = &self.connections[&site.id];
         conn.busy.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if conn.tx.send(Command::Run { tag, request }).is_err() {
+        if conn.tx.send(Command::Run { tag, request, cancel }).is_err() {
             conn.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         }
         tag
     }
 
-    pub fn poll(&self) -> impl Iterator<Item = RemoteEvent> + '_ {
-        self.events_rx.try_iter()
+    /// Sends a failed transfer again; the old entry is replaced.
+    pub fn retry(&mut self, site: &Site, tag: u64) -> Option<u64> {
+        let request = self.transfers.items.iter().find(|t| t.tag == tag && t.can_retry())?.request.clone();
+        self.transfers.remove(tag);
+        Some(self.send(site, request))
+    }
+
+    /// Events from the connections; progress is applied to the transfer list here.
+    pub fn poll(&mut self) -> Vec<RemoteEvent> {
+        use transfers::TransferState as S;
+        let mut out = Vec::new();
+        for ev in self.events_rx.try_iter() {
+            if let Some(t) = self.transfers.get_mut(ev.tag) {
+                match &ev.reply {
+                    Reply::Progress { done } => {
+                        // Counted once, when the transfer starts.
+                        let total = match t.state {
+                            S::Running { total, .. } => total,
+                            _ => match &t.request {
+                                Request::Upload { local, .. } => Some(transfers::count_local(local)),
+                                Request::Download { is_dir: true, .. } | Request::Copy { is_dir: true, .. } => None,
+                                _ => Some(1),
+                            },
+                        };
+                        t.state = S::Running { done: *done, total };
+                    }
+                    Reply::Transferred { message, .. } => t.state = S::Done(message.clone()),
+                    Reply::Written { bytes, .. } => t.state = S::Done(format!("{bytes} Bytes gespeichert")),
+                    Reply::Conflict { .. } => t.state = S::Failed("Auf dem Server geändert – nicht überschrieben".into()),
+                    Reply::Failed { message, .. } => t.state = S::Failed(message.clone()),
+                    _ => {}
+                }
+                if t.state.finished() && t.finished.is_none() {
+                    t.finished = Some(std::time::Instant::now());
+                }
+            }
+            if !matches!(ev.reply, Reply::Progress { .. }) {
+                out.push(ev);
+            }
+        }
+        out
     }
 
     /// Removes connections whose worker has stopped.
@@ -308,7 +392,7 @@ impl Worker {
             self.emit(0, Reply::ConnectFailed { message: format!("{e:#}") });
             // Fail everything still queued so the UI doesn't wait forever.
             for cmd in rx.try_iter() {
-                if let Command::Run { tag, request } = cmd {
+                if let Command::Run { tag, request, .. } = cmd {
                     self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                     self.emit(tag, Reply::Failed { request, message: "Keine Verbindung".into() });
                 }
@@ -330,24 +414,42 @@ impl Worker {
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
             };
-            let (tag, request) = match cmd {
+            let (tag, request, cancel) = match cmd {
                 Command::Disconnect => break,
-                Command::Run { tag, request } => (tag, request),
+                Command::Run { tag, request, cancel } => (tag, request, cancel),
             };
-            let mut result = self.execute(&request);
+            // Cancelled while waiting in the queue.
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                self.emit(tag, Reply::Failed { request, message: "Abgebrochen".into() });
+                continue;
+            }
+            let (events, ctx, site_id) = (self.events.clone(), self.ctx.clone(), self.site.id.clone());
+            let mut progress = Progress { events: &events, ctx: &ctx, site_id: &site_id, tag, cancel: &cancel, done: 0 };
+            if transfers::is_transfer(&request) {
+                // Marks the transfer as running in the list.
+                let _ = events.send(RemoteEvent { site_id: site_id.clone(), tag, reply: Reply::Progress { done: 0 } });
+                ctx.request_repaint();
+            }
+            let mut result = self.execute(&request, &mut progress);
             if let Err(e) = &result
                 && is_connection_error(e)
             {
                 // Reconnect once and retry.
                 self.backend = None;
+                progress.done = 0;
                 result = match self.open() {
-                    Ok(()) => self.execute(&request),
+                    Ok(()) => self.execute(&request, &mut progress),
                     Err(e) => Err(e),
                 };
             }
             self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
             match result {
                 Ok(reply) => self.emit(tag, reply),
+                Err(_) if cancel.load(std::sync::atomic::Ordering::Relaxed) => {
+                    let message = format!("{} abgebrochen ({} Datei(en) fertig)", request.describe(), progress.done);
+                    self.emit(tag, Reply::Failed { request, message });
+                }
                 Err(e) => {
                     let message = format!("{} fehlgeschlagen: {e:#}", request.describe());
                     self.emit(tag, Reply::Failed { request, message });
@@ -357,7 +459,7 @@ impl Worker {
         self.emit(0, Reply::Disconnected);
     }
 
-    fn execute(&mut self, request: &Request) -> Result<Reply> {
+    fn execute(&mut self, request: &Request, progress: &mut Progress) -> Result<Reply> {
         if self.backend.is_none() {
             self.open()?;
         }
@@ -389,7 +491,7 @@ impl Worker {
                 Reply::Written { path: path.clone(), bytes: data.len(), stamp }
             }
             Request::Upload { local, remote } => {
-                let n = upload_recursive(b.as_mut(), local, remote)?;
+                let n = upload_recursive(b.as_mut(), local, remote, progress)?;
                 Reply::Transferred {
                     message: format!("{n} Datei(en) hochgeladen"),
                     remote_dir: Some(parent(remote)),
@@ -397,7 +499,7 @@ impl Worker {
                 }
             }
             Request::Download { remote, local, is_dir } => {
-                let n = download_recursive(b.as_mut(), remote, local, *is_dir)?;
+                let n = download_recursive(b.as_mut(), remote, local, *is_dir, progress)?;
                 Reply::Transferred {
                     message: format!("{n} Datei(en) heruntergeladen"),
                     remote_dir: None,
@@ -405,7 +507,7 @@ impl Worker {
                 }
             }
             Request::Copy { from, to, is_dir } => {
-                let n = copy_recursive(b.as_mut(), from, to, *is_dir)?;
+                let n = copy_recursive(b.as_mut(), from, to, *is_dir, progress)?;
                 Reply::Transferred {
                     message: format!("{n} Datei(en) kopiert"),
                     remote_dir: Some(parent(to)),
@@ -449,7 +551,7 @@ impl Worker {
     }
 }
 
-fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str) -> Result<usize> {
+fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str, p: &mut Progress) -> Result<usize> {
     if local.is_dir() {
         // The folder may already exist; a real failure shows up on the files.
         let _ = b.mkdir(remote);
@@ -457,10 +559,11 @@ fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str) 
         for entry in std::fs::read_dir(local)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            n += upload_recursive(b, &entry.path(), &join(remote, &name))?;
+            n += upload_recursive(b, &entry.path(), &join(remote, &name), p)?;
         }
         Ok(n)
     } else {
+        p.file()?;
         let data = std::fs::read(local)?;
         if b.write(remote, &data).is_err() {
             // The target folder may not exist yet: create its parents and retry.
@@ -471,36 +574,41 @@ fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str) 
             }
             b.write(remote, &data)?;
         }
+        p.finished_file();
         Ok(1)
     }
 }
 
-fn download_recursive(b: &mut dyn Backend, remote: &str, local: &std::path::Path, is_dir: bool) -> Result<usize> {
+fn download_recursive(b: &mut dyn Backend, remote: &str, local: &std::path::Path, is_dir: bool, p: &mut Progress) -> Result<usize> {
     if is_dir {
         std::fs::create_dir_all(local)?;
         let mut n = 0;
         for e in b.list(remote)? {
-            n += download_recursive(b, &e.path, &local.join(&e.name), e.is_dir)?;
+            n += download_recursive(b, &e.path, &local.join(&e.name), e.is_dir, p)?;
         }
         Ok(n)
     } else {
+        p.file()?;
         let data = b.read(remote)?;
         std::fs::write(local, data)?;
+        p.finished_file();
         Ok(1)
     }
 }
 
-fn copy_recursive(b: &mut dyn Backend, from: &str, to: &str, is_dir: bool) -> Result<usize> {
+fn copy_recursive(b: &mut dyn Backend, from: &str, to: &str, is_dir: bool, p: &mut Progress) -> Result<usize> {
     if is_dir {
         let _ = b.mkdir(to);
         let mut n = 0;
         for e in b.list(from)? {
-            n += copy_recursive(b, &e.path, &join(to, &e.name), e.is_dir)?;
+            n += copy_recursive(b, &e.path, &join(to, &e.name), e.is_dir, p)?;
         }
         Ok(n)
     } else {
+        p.file()?;
         let data = b.read(from)?;
         b.write(to, &data)?;
+        p.finished_file();
         Ok(1)
     }
 }
@@ -555,6 +663,8 @@ fn is_connection_error(e: &anyhow::Error) -> bool {
         text.contains("connection") && (text.contains("closed") || text.contains("reset"))
             || text.contains("disconnected")
             || text.contains("channel closed")
+            // russh-sftp after the server dropped the connection.
+            || text.contains("session closed")
             || text.contains("421")
     })
 }

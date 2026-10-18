@@ -54,6 +54,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Git-Markierungen in der Zeilennummernleiste: neue, geänderte und gelöschte Zeilen gegenüber dem letzten Commit
 - Vergleichen als eigener Tab (Unified-Diff, schreibgeschützt, mit Strg+S als .diff speicherbar): Arbeitsstand gegen den letzten Commit, Tab gegen eine Datei, zwei Dateien aus der Seitenleiste (lokal und auf dem Server gemischt) – offene Tabs werden mit ihrem aktuellen Stand verglichen
 - Git-Tab in der Seitenleiste: Dateien vormerken und zurücknehmen, Commit mit Nachricht (Strg+Enter; ohne Vormerkung werden alle Änderungen committet), Pull/Push mit Anzeige der Commits, Abrufen, Branch wechseln und neu anlegen; Klick auf eine Datei zeigt ihre Änderungen
+- Übertragungsliste in der Statusleiste: Uploads, Downloads, Kopien und Speichervorgänge auf Servern mit Fortschritt (Dateien), Abbrechen, Wiederholen bei Fehlern und „Erledigte entfernen“
 - Übersicht am rechten Rand: Suchtreffer, Probleme, Git-Änderungen, Lesezeichen und Cursor der ganzen Datei
 - `.editorconfig` wird ausgewertet (Einrückung, Zeilenenden, Kodierung, Leerzeichen am Zeilenende, Zeilenumbruch am Dateiende); beides auch als Einstellung beim Speichern. Einrückung lässt sich zwischen Tabs und Leerzeichen umwandeln.
 
