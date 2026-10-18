@@ -69,6 +69,7 @@ impl NebulaApp {
     pub(super) fn poll_disk(&mut self, ctx: &egui::Context) {
         self.disk.watch(self.sidebar.root.as_deref(), ctx);
         let mut changed_docs = false;
+        let mut config_changed = false;
         let mut dirs = Vec::new();
         while let Ok(path) = self.disk.rx.try_recv() {
             if in_git_dir(&path) {
@@ -80,10 +81,18 @@ impl NebulaApp {
                 dirs.push(parent.to_path_buf());
             }
             dirs.push(path.clone());
+            config_changed |= path.file_name().is_some_and(|n| n == ".editorconfig");
             changed_docs |= self.docs.iter().any(|d| d.source == DocSource::Local(path.clone()));
         }
         for d in &dirs {
             self.sidebar.refresh_local(Some(d));
+        }
+        if config_changed {
+            for doc in &mut self.docs {
+                if let DocSource::Local(p) = &doc.source {
+                    doc.config = crate::editorconfig::for_file(p);
+                }
+            }
         }
 
         let focused = ctx.input(|i| i.focused);

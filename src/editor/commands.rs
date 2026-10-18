@@ -1152,3 +1152,93 @@ pub fn expand_emmet(doc: &mut Document, settings: &EditorSettings) -> bool {
     doc.apply(vec![Change::new(start..pos, text)], Some(vec![Selection::cursor(cursor)]), EditKind::Other);
     true
 }
+
+/// Applies line-wise changes as one undo step, keeping cursors on their lines.
+fn apply_keeping_cursors(doc: &mut Document, changes: Vec<Change>) {
+    if changes.is_empty() {
+        return;
+    }
+    let map = |pos: usize| {
+        let mut shift: isize = 0;
+        for c in &changes {
+            let new_len = c.text.chars().count();
+            if pos < c.range.start {
+                break;
+            }
+            if pos < c.range.end {
+                return (c.range.start as isize + shift) as usize + (pos - c.range.start).min(new_len);
+            }
+            shift += new_len as isize - c.range.len() as isize;
+        }
+        (pos as isize + shift) as usize
+    };
+    let after = doc.selections.iter().map(|s| Selection { anchor: map(s.anchor), head: map(s.head), goal: None }).collect();
+    doc.break_undo_group();
+    doc.apply(changes, Some(after), EditKind::Other);
+    doc.break_undo_group();
+}
+
+/// Removes spaces and tabs at line ends and/or ends the text with a line break.
+pub fn tidy_whitespace(doc: &mut Document, trim: bool, final_newline: bool) {
+    let mut changes = Vec::new();
+    if trim {
+        for line in 0..doc.len_lines() {
+            let start = doc.line_to_char(line);
+            let len = doc.line_len(line);
+            let slice = doc.slice(start..start + len);
+            let kept = len - slice.chars().rev().take_while(|c| *c == ' ' || *c == '\t').count();
+            if kept < len {
+                changes.push(Change::new(start + kept..start + len, ""));
+            }
+        }
+    }
+    let n = doc.len_chars();
+    if final_newline && n > 0 && doc.char_at(n - 1) != Some('\n') {
+        changes.push(Change::new(n..n, "\n"));
+    }
+    apply_keeping_cursors(doc, changes);
+}
+
+/// Rewrites the indentation of all lines with spaces or with tabs.
+pub fn convert_indentation(doc: &mut Document, to_spaces: bool, tab_size: usize) {
+    let tab_size = tab_size.max(1);
+    let mut changes = Vec::new();
+    for line in 0..doc.len_lines() {
+        let start = doc.line_to_char(line);
+        let indent: String = doc.rope.line(line).chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        if indent.is_empty() {
+            continue;
+        }
+        let cols = indent.chars().fold(0, |col, c| if c == '\t' { col / tab_size * tab_size + tab_size } else { col + 1 });
+        let new = if to_spaces {
+            " ".repeat(cols)
+        } else {
+            format!("{}{}", "\t".repeat(cols / tab_size), " ".repeat(cols % tab_size))
+        };
+        if new != indent {
+            changes.push(Change::new(start..start + indent.chars().count(), new));
+        }
+    }
+    apply_keeping_cursors(doc, changes);
+}
+
+#[cfg(test)]
+mod whitespace_tests {
+    use super::*;
+    use crate::editor::DocSource;
+
+    #[test]
+    fn tidy_and_convert() {
+        let mut d = Document::new(DocSource::Untitled(1), "a  \n\tb\t\nc");
+        d.set_selection(Selection::cursor(3)); // after "a "
+        tidy_whitespace(&mut d, true, true);
+        assert_eq!(d.rope.to_string(), "a\n\tb\nc\n");
+        assert_eq!(d.primary_selection().head, 1);
+        convert_indentation(&mut d, true, 4);
+        assert_eq!(d.rope.to_string(), "a\n    b\nc\n");
+        convert_indentation(&mut d, false, 4);
+        assert_eq!(d.rope.to_string(), "a\n\tb\nc\n");
+        d.undo();
+        assert_eq!(d.rope.to_string(), "a\n    b\nc\n");
+    }
+}

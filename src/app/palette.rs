@@ -48,6 +48,9 @@ pub enum Command {
     SelectAllOccurrences,
     LineEndingLf,
     LineEndingCrLf,
+    TrimWhitespace,
+    IndentToSpaces,
+    IndentToTabs,
     FoldToggle,
     FoldAll,
     UnfoldAll,
@@ -108,6 +111,9 @@ impl Command {
             (UnfoldAll, "Faltung: Alles ausklappen", ""),
             (LineEndingLf, "Zeilenenden: LF (Unix)", ""),
             (LineEndingCrLf, "Zeilenenden: CRLF (Windows)", ""),
+            (TrimWhitespace, "Text: Leerzeichen am Zeilenende entfernen", ""),
+            (IndentToSpaces, "Text: Einrückung in Leerzeichen umwandeln", ""),
+            (IndentToTabs, "Text: Einrückung in Tabs umwandeln", ""),
         ]
         .into_iter()
         .map(|(c, l, s)| (c, l.to_string(), s))
@@ -302,6 +308,13 @@ impl NebulaApp {
             Command::DuplicateLine => with_doc(self, cmd::duplicate_lines),
             Command::DeleteLine => with_doc(self, cmd::delete_lines),
             Command::SelectAllOccurrences => with_doc(self, cmd::select_all_occurrences),
+            Command::TrimWhitespace => with_doc(self, |d| cmd::tidy_whitespace(d, true, false)),
+            Command::IndentToSpaces | Command::IndentToTabs => {
+                if let Some(i) = self.active {
+                    let tab = self.settings.editor_for_doc(&self.docs[i]).tab_size;
+                    cmd::convert_indentation(&mut self.docs[i], c == Command::IndentToSpaces, tab);
+                }
+            }
             Command::LineEndingLf | Command::LineEndingCrLf => {
                 if let Some(i) = self.active {
                     let doc = &mut self.docs[i];
@@ -311,7 +324,7 @@ impl NebulaApp {
             }
             Command::FoldToggle | Command::FoldAll | Command::UnfoldAll => {
                 if let Some(i) = self.active {
-                    let tab = self.settings.editor_for(self.docs[i].language).tab_size;
+                    let tab = self.settings.editor_for_doc(&self.docs[i]).tab_size;
                     let doc = &mut self.docs[i];
                     match c {
                         Command::FoldToggle => crate::editor::folding::toggle_at_cursor(doc, tab),

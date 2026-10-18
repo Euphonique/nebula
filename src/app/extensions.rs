@@ -245,7 +245,7 @@ impl NebulaApp {
             }
             DocSource::Untitled(n) => (format!("unsaved://{}/Ohne%20Titel%20{n}", doc.id), None, false),
         };
-        let editor = self.settings.editor_for(doc.language);
+        let editor = self.settings.editor_for_doc(doc);
         DocInfo {
             id: doc.id,
             uri,

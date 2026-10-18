@@ -137,6 +137,10 @@ impl NebulaApp {
             ui.end_row();
         });
         ui.label(RichText::new("Pro Sprache lässt sich das unter „Sprachen“ abweichend einstellen.").small().color(self.theme.text_faint));
+        section(ui, "Beim Speichern");
+        ui.checkbox(&mut e.trim_trailing_whitespace, "Leerzeichen am Zeilenende entfernen (nicht in Markdown)");
+        ui.checkbox(&mut e.insert_final_newline, "Zeilenumbruch am Dateiende sicherstellen");
+        ui.label(RichText::new("Eine .editorconfig im Projekt hat Vorrang vor diesen Einstellungen (Einrückung, Leerzeichen, Dateiende).").small().color(self.theme.text_faint));
         section(ui, "Eingabehilfen");
         ui.checkbox(&mut e.auto_pair, "Klammern und Anführungszeichen automatisch schließen");
         ui.checkbox(&mut e.auto_close_tags, "HTML-Tags automatisch schließen");

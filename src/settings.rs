@@ -32,6 +32,10 @@ pub struct EditorSettings {
     pub emmet: bool,
     /// Wrap long lines at the window edge.
     pub word_wrap: bool,
+    /// Remove spaces and tabs at line ends when saving.
+    pub trim_trailing_whitespace: bool,
+    /// End the file with a line break when saving.
+    pub insert_final_newline: bool,
 }
 
 impl Default for EditorSettings {
@@ -47,6 +51,8 @@ impl Default for EditorSettings {
             highlight_current_line: true,
             emmet: true,
             word_wrap: false,
+            trim_trailing_whitespace: false,
+            insert_final_newline: false,
         }
     }
 }
@@ -320,6 +326,29 @@ impl AppSettings {
             if let Some(s) = l.use_spaces {
                 e.use_spaces = s;
             }
+        }
+        e
+    }
+
+    /// Editor settings for a document: language settings, then its `.editorconfig`.
+    pub fn editor_for_doc(&self, doc: &crate::editor::Document) -> EditorSettings {
+        let mut e = self.editor_for(doc.language);
+        // Two trailing spaces are a line break in Markdown.
+        if doc.language == crate::lang::Language::Markdown {
+            e.trim_trailing_whitespace = false;
+        }
+        let c = &doc.config;
+        if let Some(v) = c.use_spaces {
+            e.use_spaces = v;
+        }
+        if let Some(v) = c.tab_size {
+            e.tab_size = v;
+        }
+        if let Some(v) = c.trim_trailing_whitespace {
+            e.trim_trailing_whitespace = v;
+        }
+        if let Some(v) = c.insert_final_newline {
+            e.insert_final_newline = v;
         }
         e
     }

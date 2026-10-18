@@ -2,6 +2,7 @@
 
 mod app;
 mod editor;
+mod editorconfig;
 mod highlight;
 mod icon;
 mod ext;

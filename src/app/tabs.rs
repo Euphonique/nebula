@@ -135,7 +135,7 @@ impl NebulaApp {
             self.info("Es wird bereits gedruckt …");
             return;
         }
-        let tab = self.settings.editor_for(self.docs[i].language).tab_size;
+        let tab = self.settings.editor_for_doc(&self.docs[i]).tab_size;
         let doc = &self.docs[i];
         // Colors of the light theme read well on paper.
         let paper = crate::theme::Theme::light();

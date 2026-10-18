@@ -295,6 +295,8 @@ pub struct Document {
     pub disk_stamp: Option<DiskStamp>,
     /// Number of checks in a row that found the local file missing.
     pub disk_missing: u8,
+    /// Settings from `.editorconfig` files for this file.
+    pub config: crate::editorconfig::Props,
     undo: Vec<Transaction>,
     redo: Vec<Transaction>,
     next_tx_id: u64,
@@ -329,6 +331,7 @@ impl Document {
             suggested_name: None,
             disk_stamp: None,
             disk_missing: 0,
+            config: Default::default(),
             undo: Vec::new(),
             redo: Vec::new(),
             next_tx_id: 1,

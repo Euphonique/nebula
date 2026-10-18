@@ -276,6 +276,7 @@ impl NebulaApp {
             Ok(bytes) => {
                 let mut doc = Document::from_bytes(DocSource::Local(path.clone()), &bytes);
                 doc.disk_stamp = DiskStamp::of(&path);
+                doc.config = crate::editorconfig::for_file(&path);
                 self.add_doc(doc);
                 self.settings.recent_files.retain(|p| p != &path);
                 self.settings.recent_files.insert(0, path);
@@ -338,6 +339,12 @@ impl NebulaApp {
 
     /// `force` overwrites the server file even if it changed in the meantime.
     fn save_doc_with(&mut self, index: usize, close_after: bool, force: bool) -> bool {
+        if let Some(doc) = self.docs.get(index)
+            && !matches!(doc.source, DocSource::Untitled(_))
+        {
+            let e = self.settings.editor_for_doc(doc);
+            crate::editor::commands::tidy_whitespace(&mut self.docs[index], e.trim_trailing_whitespace, e.insert_final_newline);
+        }
         let Some(doc) = self.docs.get_mut(index) else { return false };
         match doc.source.clone() {
             DocSource::Untitled(_) => self.save_doc_as(index),
@@ -401,9 +408,15 @@ impl NebulaApp {
         }
         let Some(path) = dialog.save_file() else { return false };
         let doc = &mut self.docs[index];
+        let was_untitled = matches!(doc.source, DocSource::Untitled(_));
         doc.source = DocSource::Local(path.clone());
-        doc.suggested_name = None;
         doc.disk_stamp = None;
+        doc.config = crate::editorconfig::for_file(&path);
+        if was_untitled {
+            doc.line_ending = doc.config.end_of_line.unwrap_or(doc.line_ending);
+            doc.encoding = doc.config.charset.unwrap_or(doc.encoding);
+        }
+        doc.suggested_name = None;
         doc.language = Language::from_path(&path.to_string_lossy());
         doc.highlight_version = u64::MAX;
         let ok = self.save_doc(index, false);
@@ -1743,7 +1756,8 @@ impl NebulaApp {
                 ui.label(small(if connected { format!("Verbunden mit {site}") } else { site }));
             }
             let Some(i) = self.active else { return };
-            let tab_size = self.settings.editor.tab_size;
+            let e = self.settings.editor_for_doc(&self.docs[i]);
+            let tab_size = e.tab_size;
             let doc = &mut self.docs[i];
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(4.0);
@@ -1814,7 +1828,6 @@ impl NebulaApp {
                     };
                     doc.mark_unsaved();
                 }
-                let e = &self.settings.editor;
                 ui.label(small(format!(
                     "{} {}",
                     if e.use_spaces { "Leerzeichen:" } else { "Tabs:" },
@@ -2797,7 +2810,7 @@ impl eframe::App for NebulaApp {
                 preview_rect = self.preview_pane(ui, pane, full);
             }
             let matches = if self.find.visible { std::mem::take(&mut self.find.matches) } else { Vec::new() };
-            let editor_settings = self.settings.editor_for(self.docs[i].language);
+            let editor_settings = self.settings.editor_for_doc(&self.docs[i]);
             let doc = &mut self.docs[i];
             let doc_id = doc.id;
             let out = ui
