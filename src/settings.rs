@@ -262,6 +262,15 @@ pub struct Site {
     pub accept_invalid_certs: bool,
     /// Public URL that corresponds to `root_path`, used for "Open in browser".
     pub web_url: String,
+    /// Commands run in the SSH terminal with one click (cache, deploy, …).
+    pub commands: Vec<ServerCommand>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerCommand {
+    pub name: String,
+    pub command: String,
 }
 
 impl Default for Site {
@@ -278,6 +287,7 @@ impl Default for Site {
             passive: true,
             accept_invalid_certs: false,
             web_url: String::new(),
+            commands: Vec::new(),
         }
     }
 }
@@ -445,4 +455,18 @@ pub enum RightTab {
     #[default]
     Preview,
     Outline,
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn sites_without_commands_still_load() {
+        let old = r#"{"sites":[{"id":"a","name":"Alt","protocol":"Sftp","host":"h","port":22,"user":"u","root_path":"/"}]}"#;
+        let sites: super::Sites = serde_json::from_str(old).unwrap();
+        assert!(sites.sites[0].commands.is_empty());
+        let mut site = sites.sites[0].clone();
+        site.commands.push(super::ServerCommand { name: "Cache".into(), command: "php artisan cache:clear".into() });
+        let back: super::Site = serde_json::from_str(&serde_json::to_string(&site).unwrap()).unwrap();
+        assert_eq!(back.commands, site.commands);
+    }
 }

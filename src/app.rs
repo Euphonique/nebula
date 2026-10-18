@@ -873,6 +873,7 @@ impl NebulaApp {
             SidebarAction::Search(crate::ui::search::SearchAction::HostKey { site_id, prompt }) => {
                 self.host_keys.push_back((site_id, prompt));
             }
+            SidebarAction::RunCommand { site_id, command } => self.run_server_command(ctx, &site_id, &command),
             SidebarAction::Git(crate::ui::git_panel::GitAction::Compare(path)) => self.compare_path_with_head(&path),
             SidebarAction::Git(crate::ui::git_panel::GitAction::Open(path)) => self.open_local(&path),
             SidebarAction::Compare(files) => match files.as_slice() {

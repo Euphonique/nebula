@@ -90,6 +90,8 @@ pub enum Command {
     LocalTerminal,
     /// SSH terminal for the server at this index.
     Terminal(usize),
+    /// Saved server command: (site index, command index).
+    ServerCommand(usize, usize),
     SwitchProject(usize),
 }
 
@@ -222,6 +224,9 @@ impl NebulaApp {
         }
         for (n, s) in self.sites.sites.iter().enumerate() {
             all.push((Command::Terminal(n), format!("Terminal: SSH-Terminal für {}", s.display_name())));
+            for (k, c) in s.commands.iter().enumerate() {
+                all.push((Command::ServerCommand(n, k), format!("Serverbefehl: {} ({})", c.name, s.display_name())));
+            }
         }
         for (n, p) in self.settings.recent_folders.iter().enumerate().skip(1) {
             let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -374,6 +379,14 @@ impl NebulaApp {
             Command::Terminal(n) => {
                 if let Some(id) = self.sites.sites.get(n).map(|s| s.id.clone()) {
                     self.open_terminal(ctx, &id);
+                }
+            }
+            Command::ServerCommand(n, k) => {
+                if let Some(site) = self.sites.sites.get(n)
+                    && let Some(c) = site.commands.get(k)
+                {
+                    let (id, cmd) = (site.id.clone(), c.command.clone());
+                    self.run_server_command(ctx, &id, &cmd);
                 }
             }
             Command::SwitchProject(n) => {

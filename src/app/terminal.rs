@@ -24,6 +24,8 @@ pub(super) struct TermTab {
     local: Option<(LocalShell, Option<std::path::PathBuf>)>,
     /// Take the keyboard focus when drawn next (a closing menu would steal it now).
     want_focus: bool,
+    /// Saved commands to run once the session is in the start folder.
+    queued: Vec<String>,
 }
 
 #[derive(Default)]
@@ -31,6 +33,9 @@ pub(super) struct Terminals {
     tabs: Vec<TermTab>,
     active: usize,
     pub visible: bool,
+    /// Form for a new saved command in the "Befehle" menu.
+    new_name: String,
+    new_command: String,
 }
 
 impl Terminals {
@@ -56,10 +61,36 @@ impl NebulaApp {
         let title = if same == 0 { name } else { format!("{name} ({})", same + 1) };
         let mut term = Terminal::open(&site, ctx, 24, 80);
         term.site_id = site.id.clone();
-        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: false, local: None, want_focus: true });
+        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: false, local: None, want_focus: true, queued: Vec::new() });
         self.terminals.active = self.terminals.tabs.len() - 1;
         self.terminals.visible = true;
         let id = self.terminals.tabs[self.terminals.active].term.id;
+        ctx.memory_mut(|m| m.request_focus(term_id(id)));
+    }
+
+    /// Runs a saved command in an SSH terminal of the server: the active one
+    /// if it belongs to the server, else another one, else a new one.
+    pub(super) fn run_server_command(&mut self, ctx: &egui::Context, site_id: &str, command: &str) {
+        let is_site = |t: &TermTab| t.local.is_none() && t.term.site_id == site_id && !matches!(t.term.status, TermStatus::Closed(_));
+        let index = match self.terminals.tabs.get(self.terminals.active) {
+            Some(t) if is_site(t) => Some(self.terminals.active),
+            _ => self.terminals.tabs.iter().position(is_site),
+        };
+        let index = match index {
+            Some(i) => i,
+            None => {
+                self.open_terminal(ctx, site_id);
+                self.terminals.tabs.len() - 1
+            }
+        };
+        let tab = &mut self.terminals.tabs[index];
+        tab.queued.push(command.to_string());
+        // Shown at once if the session is ready; otherwise after connecting.
+        tab.scroll = 0;
+        self.terminals.active = index;
+        self.terminals.visible = true;
+        self.poll_terminals();
+        let id = self.terminals.tabs[index].term.id;
         ctx.memory_mut(|m| m.request_focus(term_id(id)));
     }
 
@@ -81,7 +112,7 @@ impl NebulaApp {
         let same = self.terminals.tabs.iter().filter(|t| t.local.as_ref().is_some_and(|(s, _)| s.name == shell.name)).count();
         let title = if same == 0 { shell.name.clone() } else { format!("{} ({})", shell.name, same + 1) };
         let term = Terminal::open_local(&shell, cwd.as_deref(), ctx, 24, 80);
-        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: true, local: Some((shell, cwd)), want_focus: true });
+        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: true, local: Some((shell, cwd)), want_focus: true, queued: Vec::new() });
         self.terminals.active = self.terminals.tabs.len() - 1;
         self.terminals.visible = true;
         let id = self.terminals.tabs[self.terminals.active].term.id;
@@ -129,6 +160,12 @@ impl NebulaApp {
                     if !root.is_empty() {
                         tab.term.send(format!("cd '{}'\r", root.replace('\'', "'\\''")).into_bytes());
                     }
+                }
+            }
+            // Saved commands wait until the session is in its start folder.
+            if tab.entered_root {
+                for cmd in tab.queued.drain(..) {
+                    tab.term.send(format!("{cmd}\r").into_bytes());
                 }
             }
         }
@@ -244,6 +281,10 @@ impl NebulaApp {
                 }
             }
         });
+        // Saved commands of the server behind the active SSH terminal.
+        let site_id = self.terminals.tabs.get(self.terminals.active).filter(|t| t.local.is_none()).map(|t| t.term.site_id.clone());
+        let mut run: Option<String> = None;
+        let mut sites_changed = false;
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if icons::icon_button(ui, &theme, vec2(24.0, 24.0), false, |p, c, col| icons::close(p, c, 7.0, col))
                 .on_hover_text("Terminal ausblenden (Strg+Ö)")
@@ -252,7 +293,51 @@ impl NebulaApp {
                 self.terminals.visible = false;
                 self.focus_editor = true;
             }
+            let Some(site) = site_id.as_ref().and_then(|id| self.sites.sites.iter_mut().find(|s| &s.id == id)) else { return };
+            let menu = ui.add(egui::Button::new(egui::RichText::new("Befehle ▾").size(12.0)).frame(false)).on_hover_text("Gespeicherte Befehle für diesen Server");
+            let form = (&mut self.terminals.new_name, &mut self.terminals.new_command);
+            egui::Popup::menu(&menu).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+                ui.set_width(320.0);
+                if site.commands.is_empty() {
+                    ui.label(egui::RichText::new("Noch keine Befehle gespeichert.").small().color(theme.text_faint));
+                }
+                let mut remove = None;
+                for (n, c) in site.commands.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        let w = ui.available_width() - 28.0;
+                        if ui.add(egui::Button::new(&c.name).min_size(vec2(w, 24.0))).on_hover_text(&c.command).clicked() {
+                            run = Some(c.command.clone());
+                            ui.close();
+                        }
+                        if ui.small_button("✕").on_hover_text("Befehl löschen").clicked() {
+                            remove = Some(n);
+                        }
+                    });
+                }
+                if let Some(n) = remove {
+                    site.commands.remove(n);
+                    sites_changed = true;
+                }
+                ui.separator();
+                ui.label(egui::RichText::new("Neuer Befehl").small().color(theme.text_faint));
+                ui.add(egui::TextEdit::singleline(form.0).hint_text("Name, z. B. Cache leeren").desired_width(f32::INFINITY));
+                ui.add(egui::TextEdit::singleline(form.1).hint_text("Befehl, z. B. php artisan cache:clear").desired_width(f32::INFINITY).font(egui::TextStyle::Monospace));
+                let (name, command) = (form.0.trim().to_string(), form.1.trim().to_string());
+                if ui.add_enabled(!command.is_empty(), egui::Button::new("Speichern")).clicked() {
+                    let name = if name.is_empty() { command.clone() } else { name };
+                    site.commands.push(crate::settings::ServerCommand { name, command });
+                    form.0.clear();
+                    form.1.clear();
+                    sites_changed = true;
+                }
+            });
         });
+        if sites_changed && let Err(e) = self.sites.save() {
+            self.error(format!("Server konnten nicht gespeichert werden: {e}"));
+        }
+        if let (Some(site_id), Some(command)) = (site_id, run) {
+            self.run_server_command(&ui.ctx().clone(), &site_id, &command);
+        }
         if let Some(i) = activate {
             self.terminals.active = i;
             let id = self.terminals.tabs[i].term.id;

@@ -137,6 +137,8 @@ pub enum SidebarAction {
     /// Compare two files, or one file with the active tab.
     Compare(Vec<FileRef>),
     Git(super::git_panel::GitAction),
+    /// A saved command in the server's SSH terminal.
+    RunCommand { site_id: String, command: String },
 }
 
 #[derive(Clone, PartialEq)]
@@ -936,6 +938,16 @@ impl Sidebar {
                 if ui.button("SSH-Terminal öffnen").clicked() {
                     actions.push(SidebarAction::OpenTerminal(site.id.clone()));
                     ui.close();
+                }
+                if !site.commands.is_empty() {
+                    ui.menu_button("Befehl ausführen", |ui| {
+                        for c in &site.commands {
+                            if ui.button(&c.name).on_hover_text(&c.command).clicked() {
+                                actions.push(SidebarAction::RunCommand { site_id: site.id.clone(), command: c.command.clone() });
+                                ui.close();
+                            }
+                        }
+                    });
                 }
                 if ui.button("Auf dem Server suchen…").clicked() {
                     let path = home.clone().unwrap_or_else(|| site.root_path.trim().to_string());

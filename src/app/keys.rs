@@ -84,7 +84,7 @@ fn needs_editor(c: Command) -> bool {
 pub(super) fn bindable() -> Vec<(Command, String)> {
     Command::all()
         .into_iter()
-        .filter(|(c, _)| !matches!(c, Command::Language(_) | Command::Ext(_) | Command::Clip(_) | Command::Terminal(_) | Command::SwitchProject(_)))
+        .filter(|(c, _)| !matches!(c, Command::Language(_) | Command::Ext(_) | Command::Clip(_) | Command::Terminal(_) | Command::ServerCommand(..) | Command::SwitchProject(_)))
         .collect()
 }
 
