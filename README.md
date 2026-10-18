@@ -38,7 +38,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Code-Faltung mit +/−-Knöpfen in der Zeilennummernleiste: nach Klammern und HTML-Tags (auch über PHP-Abschnitte hinweg), sonst nach Einrückung
 - Automatischer Zeilenumbruch (Ansicht, Alt+Z); Fortsetzungszeilen behalten die Einrückung und haben keine eigene Zeilennummer
 - Drucken mit Syntaxfarben, Zeilennummern und Seitenzahlen (Strg+Alt+P)
-- Farbvorschau unter CSS-Farbwerten
+- Farbvorschau unter CSS-Farbwerten; ein Klick darauf öffnet einen Farbwähler, der den Wert in seiner Schreibweise (Hex, rgb(), hsl()) zurückschreibt
 - Pfadleiste mit Position im Dokument (z. B. `body › main#content › ul`, sonst die Funktion/Klasse am Cursor); Klick auf Ordner oder Datei zeigt die Nachbarn zum Springen (auch auf dem Server), Klick auf das Symbol die Gliederung
 - HTML-Tags und Klammern werden automatisch geschlossen
 - Die Sitzung wird beim nächsten Start wiederhergestellt (geöffnete Dateien und Cursor)

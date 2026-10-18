@@ -267,6 +267,10 @@ pub struct ViewState {
     pub git_marks: Option<(u64, Arc<Vec<u8>>)>,
     /// Matching tag names around the cursor for (version, cursor).
     pub tag_pair: Option<((u64, usize), Option<(Range<usize>, Range<usize>)>)>,
+    /// Click areas of the color bars under CSS color values (last frame).
+    pub color_hits: Vec<(eframe::egui::Rect, Range<usize>)>,
+    /// Open color picker: the value and where the picker sits.
+    pub color_edit: Option<(Range<usize>, eframe::egui::Pos2)>,
 }
 
 /// A problem shown in the editor (squiggle and gutter marker).

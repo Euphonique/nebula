@@ -1,3 +1,4 @@
+pub mod colors;
 pub mod commands;
 pub mod complete;
 pub mod document;

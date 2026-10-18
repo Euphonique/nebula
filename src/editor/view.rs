@@ -274,6 +274,7 @@ impl EditorView<'_> {
                 );
 
                 show_hover(ui, &response, doc, theme, id, &hit, visible, &m);
+                super::colors::show(ui, doc, id);
 
                 if !focused {
                     doc.view.completion = None;
@@ -365,6 +366,10 @@ fn handle_pointer(
 
     if pressed && response.hovered() {
         let Some(p) = pos else { return };
+        // A click on the color bar under a CSS color opens the picker.
+        if super::colors::click(doc, p) {
+            return;
+        }
         doc.view.completion = None;
         response.request_focus();
         let in_gutter = p.x < visible.left() + m.gutter_w;
@@ -853,9 +858,6 @@ fn paint(
     focused: bool,
     rows: &Rows,
 ) {
-    let painter = ui.painter_at(visible);
-    let tab = settings.tab_size;
-    let fold_ranges = folding::fold_ranges(doc, tab);
     // Matching tag names at the cursor (cached per version and cursor).
     let head = doc.primary_selection().head;
     let tag_key = (doc.version, head);
@@ -864,7 +866,30 @@ fn paint(
     } else if doc.view.tag_pair.as_ref().is_none_or(|(k, _)| *k != tag_key) {
         doc.view.tag_pair = Some((tag_key, tags::pair_at(doc, head)));
     }
-    let doc: &Document = doc;
+    let fold_ranges = folding::fold_ranges(doc, settings.tab_size);
+    let mut color_hits = Vec::new();
+    paint_doc(ui, doc, settings, theme, matches, current_match, m, origin, visible, focused, rows, &fold_ranges, &mut color_hits);
+    doc.view.color_hits = color_hits;
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_doc(
+    ui: &Ui,
+    doc: &Document,
+    settings: &EditorSettings,
+    theme: &Theme,
+    matches: &[Range<usize>],
+    current_match: Option<usize>,
+    m: &Metrics,
+    origin: Pos2,
+    visible: Rect,
+    focused: bool,
+    rows: &Rows,
+    fold_ranges: &[(usize, usize)],
+    color_hits: &mut Vec<(Rect, Range<usize>)>,
+) {
+    let painter = ui.painter_at(visible);
+    let tab = settings.tab_size;
     let row_count = rows.count();
     let first_row = (((visible.top() - origin.y) / m.row_h).floor().max(0.0) as usize).min(row_count);
     let last_row = (((visible.bottom() - origin.y) / m.row_h).ceil() as usize + 1).min(row_count);
@@ -1088,6 +1113,8 @@ fn paint(
             let x1 = if er == r { g.at(doc, e).x } else { g.col_x(rows.row_width(doc, r, tab)) };
             let bar = Rect::from_min_max(pos2(x0, y + m.row_h - 4.0), pos2(x1, y + m.row_h - 1.0));
             painter.rect_filled(bar, 1.5, color);
+            // A little taller than the bar so it is easy to hit.
+            color_hits.push((bar.expand2(vec2(0.0, 3.0)).intersect(visible), s..e));
         }
     }
 
