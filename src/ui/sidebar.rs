@@ -124,6 +124,8 @@ pub enum SidebarAction {
     DownloadTo(Item),
     /// Change permissions of server files (chmod).
     Permissions(Vec<Item>),
+    /// Open an SSH terminal on a server.
+    OpenTerminal(String),
     Publish,
     PublishSetup,
     Search(super::search::SearchAction),
@@ -830,6 +832,10 @@ impl Sidebar {
                 } else if ui.button("Verbinden").clicked() {
                     self.expanded_sites.insert(site.id.clone());
                     actions.push(SidebarAction::Connect(site.id.clone()));
+                    ui.close();
+                }
+                if ui.button("SSH-Terminal öffnen").clicked() {
+                    actions.push(SidebarAction::OpenTerminal(site.id.clone()));
                     ui.close();
                 }
                 ui.separator();

@@ -73,6 +73,8 @@ pub struct AppSettings {
     /// Live preview shown next to the editor, and its share of the width.
     pub preview: bool,
     pub preview_split: f32,
+    /// Height of the SSH terminal panel.
+    pub terminal_height: f32,
     /// Identifiers of installed extensions that are turned off.
     pub disabled_extensions: Vec<String>,
 }
@@ -126,6 +128,7 @@ impl Default for AppSettings {
             session_active: None,
             preview: false,
             preview_split: 0.45,
+            terminal_height: 260.0,
             disabled_extensions: Vec::new(),
         }
     }

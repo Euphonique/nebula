@@ -27,6 +27,7 @@ mod publish;
 mod session;
 mod settings_page;
 mod tabs;
+mod terminal;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -126,6 +127,8 @@ pub struct NebulaApp {
     ext: extensions::ExtUi,
     /// Print job running in the background; yields the number of pages.
     printing: Option<std::thread::JoinHandle<Result<usize, String>>>,
+    /// SSH terminals in the bottom panel.
+    terminals: terminal::Terminals,
 }
 
 impl NebulaApp {
@@ -167,6 +170,7 @@ impl NebulaApp {
             preview_state: Default::default(),
             ext: extensions::ExtUi::new(&cc.egui_ctx, &settings.disabled_extensions),
             printing: None,
+            terminals: Default::default(),
             settings,
         };
         app.restore_session();
@@ -702,6 +706,7 @@ impl NebulaApp {
             SidebarAction::Duplicate(items) => self.duplicate(items),
             SidebarAction::UploadFiles { site_id, dir } => self.upload_files_dialog(site_id, dir),
             SidebarAction::DownloadTo(item) => self.download_dialog(item),
+            SidebarAction::OpenTerminal(site_id) => self.open_terminal(ctx, &site_id),
             SidebarAction::Permissions(items) => {
                 let items: Vec<Item> = items.into_iter().filter(|i| matches!(i.file, FileRef::Remote { .. })).collect();
                 let Some(first) = items.first() else { return };
@@ -835,6 +840,20 @@ impl NebulaApp {
         let ctrl = Modifiers::COMMAND;
         let ctrl_shift = Modifiers::COMMAND | Modifiers::SHIFT;
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(m, k)));
+
+        // Strg+Ö: German keyboards report the key by its US position (`;`),
+        // US keyboards use Strg+` as in other editors.
+        if pressed(ctrl, Key::Semicolon) || pressed(ctrl, Key::Backtick) {
+            self.toggle_terminal(ctx);
+            return;
+        }
+        // In the terminal, keys like Strg+W or Strg+S belong to the shell.
+        if self.terminal_focused(ctx) {
+            if pressed(ctrl_shift, Key::P) {
+                self.dialog = Some(Dialog::CommandPalette(palette::PaletteState { query: String::new(), selected: 0, focus: true }));
+            }
+            return;
+        }
 
         if pressed(ctrl_shift, Key::S) {
             if let Some(i) = self.active {
@@ -1165,6 +1184,13 @@ impl NebulaApp {
                     self.show_sidebar = !self.show_sidebar;
                     ui.close();
                 }
+                if ui
+                    .add(egui::Button::new("SSH-Terminal").shortcut_text("Strg+Ö").selected(self.terminals.visible))
+                    .clicked()
+                {
+                    self.toggle_terminal(&ui.ctx().clone());
+                    ui.close();
+                }
                 let e = &mut self.settings.editor;
                 if ui
                     .add(egui::Button::new("Automatischer Zeilenumbruch").shortcut_text("Alt+Z").selected(e.word_wrap))
@@ -1215,6 +1241,10 @@ impl NebulaApp {
                             if let Some(site) = self.sites.get(&id).cloned() {
                                 self.ensure_tree(&site);
                             }
+                            ui.close();
+                        }
+                        if ui.button("SSH-Terminal öffnen").clicked() {
+                            self.open_terminal(&ui.ctx().clone(), &id);
                             ui.close();
                         }
                         if ui.button("Bearbeiten…").clicked() {
@@ -2621,6 +2651,7 @@ impl eframe::App for NebulaApp {
             self.backdrop_state = Some(backdrop);
         }
         self.process_remote_events();
+        self.poll_terminals();
         self.poll_printing();
         self.serve_preview();
         self.sync_extensions(&ctx);
@@ -2651,7 +2682,9 @@ impl eframe::App for NebulaApp {
 
         if self.dialog.is_none() && self.host_keys.is_empty() {
             self.handle_shortcuts(&ctx);
-            self.ext_shortcuts(&ctx);
+            if !self.terminal_focused(&ctx) {
+                self.ext_shortcuts(&ctx);
+            }
         }
         self.update_highlights();
 
@@ -2693,6 +2726,7 @@ impl eframe::App for NebulaApp {
             // Below the (translucent) title bar everything sits on the document color.
             ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, self.theme.background);
             if self.docs.is_empty() {
+                self.terminal_panel(ui);
                 self.welcome(ui);
                 return;
             }
@@ -2701,6 +2735,7 @@ impl eframe::App for NebulaApp {
                 .show_separator_line(false)
                 .frame(egui::Frame::new().fill(self.theme.jumpbar_bg).inner_margin(egui::Margin::symmetric(12, 0)))
                 .show(ui, |ui| self.status_bar(ui));
+            self.terminal_panel(ui);
             self.jump_bar(ui);
             if self.find.visible {
                 self.find_bar(ui);

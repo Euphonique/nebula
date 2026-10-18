@@ -18,6 +18,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 
 **Server und Dateien**
 - Server-Verwaltung für SFTP, FTP und FTPS (explizites TLS über Windows SChannel)
+- SSH-Terminal im Panel unter dem Editor (Strg+Ö, Kontextmenü eines Servers oder Befehlspalette): mehrere Sitzungen als Tabs, 256 Farben, Scrollback per Mausrad, Markieren und Kopieren, Einfügen, Neuverbinden mit Enter. Nutzt Zugangsdaten und Host-Key-Prüfung der Server (bei FTP-Servern Port 22) und wechselt in den Startpfad.
 - Berechtigungen (chmod) für Dateien und Ordner auf dem Server, auf Wunsch rekursiv (nur Dateien, nur Ordner oder alles); die aktuellen Rechte stehen im Tooltip
 - Dateien auf dem Server öffnen und mit Strg+S direkt hochladen
 - Konflikterkennung: Wurde eine Datei auf dem Server inzwischen geändert, fragt Nebula nach (Überschreiben, Server-Version laden oder Abbrechen)
@@ -80,6 +81,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 | Live-Vorschau ein/aus | Strg+Umschalt+V |
 | Automatischer Zeilenumbruch | Alt+Z |
 | Drucken | Strg+Alt+P |
+| SSH-Terminal ein/aus | Strg+Ö |
 | Gehe zu Definition (Erweiterungen) | F12 / Strg+Klick |
 | Vervollständigung / Emmet | Strg+Leertaste / Tab |
 | Nächstes / alle Vorkommen auswählen | Strg+D / Strg+Umschalt+L |
@@ -107,13 +109,14 @@ src/
   app/settings_page.rs Einstellungsfenster
   app/session.rs       Sitzung speichern und wiederherstellen
   app/tabs.rs          Tab-Kontextmenü, Duplizieren, Drucken
+  app/terminal.rs      SSH-Terminal-Panel: Tabs, Darstellung, Tastatur
   print.rs             Druckdialog und Seitenaufbau (GDI)
   win32.rs             Mica, Andocklayouts, Datei-Zwischenablage, Cursorposition, Browser öffnen, Dateien hinausziehen
   ui/                  Titelleiste, Seitenleiste, Projektsuche, Git, Icons
   editor/              Dokument, Befehle, Vervollständigung, Emmet, Faltung, Suche, Widget
   highlight.rs         tree-sitter-Highlighting (Grammatiken werden bei Bedarf geladen)
   queries/             Eigene Abfragen für HTML und CSS mit Nova-Kategorien
-  remote/              FTP/FTPS (suppaftp) und SFTP (russh), Worker pro Server
+  remote/              FTP/FTPS (suppaftp) und SFTP (russh), Worker pro Server, SSH-Shell (terminal.rs, vt100)
   theme.rs             Themes, Theme-Dateien
   theme_import.rs      Import von Nova-Themes
   settings.rs          Einstellungen, Server, Sprachen, Veröffentlichen

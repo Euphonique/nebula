@@ -56,6 +56,9 @@ pub enum Command {
     Ext(usize),
     /// Index into `available_clips()`.
     Clip(usize),
+    ToggleTerminal,
+    /// SSH terminal for the server at this index.
+    Terminal(usize),
 }
 
 impl Command {
@@ -84,6 +87,7 @@ impl Command {
             (FontSmaller, "Ansicht: Schrift kleiner", "Strg+-"),
             (ToggleInvisibles, "Ansicht: Unsichtbare Zeichen ein/aus", ""),
             (ToggleWordWrap, "Ansicht: Automatischer Zeilenumbruch ein/aus", "Alt+Z"),
+            (ToggleTerminal, "Terminal: SSH-Terminal ein/aus", "Strg+Ö"),
             (Settings, "Einstellungen: Editor", "Strg+,"),
             (Themes, "Einstellungen: Design und Themes", ""),
             (Languages, "Einstellungen: Sprachen", ""),
@@ -152,6 +156,9 @@ impl NebulaApp {
         }
         for (n, (ext, c)) in self.available_clips().iter().enumerate() {
             all.push((Command::Clip(n), format!("Clip: {} ({ext})", c.name), ""));
+        }
+        for (n, s) in self.sites.sites.iter().enumerate() {
+            all.push((Command::Terminal(n), format!("Terminal: SSH-Terminal für {}", s.display_name()), ""));
         }
         let mut items: Vec<(Command, String, &'static str, i32)> = all
             .into_iter()
@@ -273,6 +280,12 @@ impl NebulaApp {
             Command::FontSmaller => self.settings.editor.font_size = (self.settings.editor.font_size - 1.0).max(8.0),
             Command::ToggleInvisibles => self.settings.editor.show_invisibles = !self.settings.editor.show_invisibles,
             Command::ToggleWordWrap => self.settings.editor.word_wrap = !self.settings.editor.word_wrap,
+            Command::ToggleTerminal => self.toggle_terminal(ctx),
+            Command::Terminal(n) => {
+                if let Some(id) = self.sites.sites.get(n).map(|s| s.id.clone()) {
+                    self.open_terminal(ctx, &id);
+                }
+            }
             Command::Print => self.print_active(ctx),
             Command::DuplicateDoc => {
                 if let Some(i) = self.active {

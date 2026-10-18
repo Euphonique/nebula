@@ -7,6 +7,7 @@
 
 mod ftp;
 mod sftp;
+pub mod terminal;
 #[cfg(test)]
 mod integration_tests;
 

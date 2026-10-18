@@ -133,6 +133,7 @@ impl russh::server::Server for SshServer {
         SshSession {
             root: self.root.clone(),
             channels: HashMap::new(),
+            shells: Vec::new(),
         }
     }
 }
@@ -140,6 +141,8 @@ impl russh::server::Server for SshServer {
 struct SshSession {
     root: PathBuf,
     channels: HashMap<ChannelId, Channel<Msg>>,
+    /// Channels running the test shell.
+    shells: Vec<ChannelId>,
 }
 
 impl russh::server::Handler for SshSession {
@@ -161,6 +164,22 @@ impl russh::server::Handler for SshSession {
     ) -> Result<(), Self::Error> {
         self.channels.insert(channel.id(), channel);
         reply.accept().await;
+        Ok(())
+    }
+
+    // A tiny shell for the terminal test: a prompt, then echo.
+    async fn shell_request(&mut self, id: ChannelId, session: &mut Session) -> Result<(), Self::Error> {
+        self.shells.push(id);
+        session.data(id, b"\x1b[32mtest$\x1b[0m ".to_vec())?;
+        Ok(())
+    }
+
+    async fn data(&mut self, id: ChannelId, data: &[u8], session: &mut Session) -> Result<(), Self::Error> {
+        if !self.shells.contains(&id) {
+            return Ok(());
+        }
+        let echo: Vec<u8> = data.iter().flat_map(|&b| if b == b'\r' { b"\r\n".to_vec() } else { vec![b] }).collect();
+        session.data(id, echo)?;
         Ok(())
     }
 
@@ -421,6 +440,59 @@ fn sftp_roundtrip_and_host_key_trust() {
         .err()
         .expect("must fail");
     assert!(format!("{err:#}").contains("Anmeldung fehlgeschlagen"), "{err:#}");
+}
+
+#[test]
+fn ssh_terminal_runs_a_shell() {
+    use super::terminal::{TermStatus, Terminal};
+    isolated_config();
+    let home = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let server = SshServer { root: home.path().to_path_buf() };
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.spawn(async move {
+        let config = russh::server::Config {
+            keys: vec![russh::keys::decode_secret_key(HOST_KEY, None).unwrap()],
+            auth_rejection_time: Duration::from_millis(10),
+            ..Default::default()
+        };
+        let mut server = server;
+        server.run_on_address(Arc::new(config), ("127.0.0.1", port)).await.unwrap();
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    let site = Site {
+        protocol: Protocol::Sftp,
+        host: "127.0.0.1".into(),
+        port,
+        user: "test".into(),
+        key_file: Some(PathBuf::from("does-not-exist")),
+        ..Default::default()
+    };
+    let ctx = eframe::egui::Context::default();
+    let mut term = Terminal::open_with(&site, &ctx, 24, 80, Some("secret".into()));
+    let wait = |term: &mut Terminal, done: &dyn Fn(&Terminal) -> bool| {
+        for _ in 0..100 {
+            for p in term.poll() {
+                p.answer(true);
+            }
+            if done(term) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("timed out: connected={} screen={:?}", term.status == TermStatus::Connected, term.parser.lock().unwrap().screen().contents());
+    };
+    wait(&mut term, &|t| t.status == TermStatus::Connected && t.parser.lock().unwrap().screen().contents().contains("test$"));
+    term.send(b"hello\r".to_vec());
+    wait(&mut term, &|t| {
+        let p = t.parser.lock().unwrap();
+        p.screen().contents().contains("test$ hello") && p.screen().cursor_position() == (1, 0)
+    });
+    // The prompt was green.
+    let screen = term.parser.lock().unwrap().screen().clone();
+    assert_eq!(screen.cell(0, 0).unwrap().fgcolor(), vt100::Color::Idx(2));
+    term.resize(30, 100);
+    assert_eq!(term.parser.lock().unwrap().screen().size(), (30, 100));
 }
 
 /// Serves `NEBULA_SFTP_ROOT` on 127.0.0.1:2222 (user `test`, password

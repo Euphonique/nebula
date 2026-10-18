@@ -18,7 +18,7 @@ use crate::settings::{Site, config_dir};
 
 const TIMEOUT: Duration = Duration::from_secs(20);
 
-static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+pub(super) static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .thread_name("ssh")
@@ -54,7 +54,7 @@ impl KnownHosts {
     }
 }
 
-struct Handler {
+pub(super) struct Handler {
     host: String,
     port: u16,
     prompt: Arc<PromptFn>,
@@ -116,32 +116,7 @@ impl SftpBackend {
     }
 
     async fn connect_async(site: &Site, password: &str, prompt: Arc<PromptFn>) -> Result<Self> {
-        let config = Arc::new(client::Config {
-            keepalive_interval: Some(Duration::from_secs(30)),
-            keepalive_max: 3,
-            nodelay: true,
-            ..Default::default()
-        });
-        let socket = tokio::time::timeout(
-            TIMEOUT,
-            tokio::net::TcpStream::connect((site.host.as_str(), site.port)),
-        )
-        .await
-        .map_err(|_| anyhow!("Zeitüberschreitung beim Verbinden mit {}:{}", site.host, site.port))?
-        .with_context(|| format!("Verbindung zu {}:{} fehlgeschlagen", site.host, site.port))?;
-        socket.set_nodelay(true).ok();
-
-        let handler = Handler {
-            host: site.host.clone(),
-            port: site.port,
-            prompt,
-        };
-        let mut session = client::connect_stream(config, socket, handler)
-            .await
-            .map_err(|e| anyhow!("SSH-Verbindung fehlgeschlagen: {e}"))?;
-
-        authenticate(&mut session, site, password).await?;
-
+        let session = open_session(site, password, prompt).await?;
         let channel = session.channel_open_session().await?;
         channel.request_subsystem(true, "sftp").await?;
         let sftp = SftpSession::new(channel.into_stream())
@@ -153,6 +128,35 @@ impl SftpBackend {
             sftp,
         })
     }
+}
+
+/// Connects and logs in over SSH (host key checked against the trusted keys).
+pub(super) async fn open_session(site: &Site, password: &str, prompt: Arc<PromptFn>) -> Result<client::Handle<Handler>> {
+    let config = Arc::new(client::Config {
+        keepalive_interval: Some(Duration::from_secs(30)),
+        keepalive_max: 3,
+        nodelay: true,
+        ..Default::default()
+    });
+    let socket = tokio::time::timeout(
+        TIMEOUT,
+        tokio::net::TcpStream::connect((site.host.as_str(), site.port)),
+    )
+    .await
+    .map_err(|_| anyhow!("Zeitüberschreitung beim Verbinden mit {}:{}", site.host, site.port))?
+    .with_context(|| format!("Verbindung zu {}:{} fehlgeschlagen", site.host, site.port))?;
+    socket.set_nodelay(true).ok();
+
+    let handler = Handler {
+        host: site.host.clone(),
+        port: site.port,
+        prompt,
+    };
+    let mut session = client::connect_stream(config, socket, handler)
+        .await
+        .map_err(|e| anyhow!("SSH-Verbindung fehlgeschlagen: {e}"))?;
+    authenticate(&mut session, site, password).await?;
+    Ok(session)
 }
 
 async fn authenticate(session: &mut client::Handle<Handler>, site: &Site, password: &str) -> Result<()> {
