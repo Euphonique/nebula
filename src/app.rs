@@ -34,6 +34,7 @@ mod backup;
 mod gitdiff;
 mod compare;
 mod split;
+mod keys;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -904,109 +905,10 @@ impl NebulaApp {
         let ctrl_shift = Modifiers::COMMAND | Modifiers::SHIFT;
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(m, k)));
 
-        // Strg+Ö: German keyboards report the key by its US position (`;`),
-        // US keyboards use Strg+` as in other editors.
-        if pressed(ctrl, Key::Semicolon) || pressed(ctrl, Key::Backtick) {
-            self.toggle_terminal(ctx);
-            return;
-        }
-        // In the terminal, keys like Strg+W or Strg+S belong to the shell.
+        self.dispatch_shortcuts(ctx);
+        // In the terminal, keys like Strg+W or Strg+Z belong to the shell.
         if self.terminal_focused(ctx) {
-            if pressed(ctrl_shift, Key::P) {
-                self.dialog = Some(Dialog::CommandPalette(palette::PaletteState { query: String::new(), selected: 0, focus: true }));
-            }
             return;
-        }
-
-        if pressed(ctrl_shift, Key::S) {
-            if let Some(i) = self.active {
-                self.save_doc_as(i);
-            }
-        } else if pressed(ctrl | Modifiers::ALT, Key::S) {
-            self.save_all();
-        } else if pressed(ctrl, Key::S) {
-            if let Some(i) = self.active {
-                self.save_doc(i, false);
-            }
-        }
-        if pressed(ctrl, Key::N) {
-            self.new_document();
-        }
-        if pressed(ctrl_shift, Key::O) {
-            self.pick_and_open_folder();
-        } else if pressed(ctrl, Key::O) {
-            self.pick_and_open_file();
-        }
-        if pressed(ctrl, Key::W) || pressed(ctrl, Key::F4) {
-            if let Some(i) = self.active {
-                self.close_doc(i, false);
-            }
-        }
-        if pressed(ctrl_shift, Key::Tab) || pressed(ctrl, Key::PageUp) {
-            if let Some(i) = self.active
-                && !self.docs.is_empty()
-            {
-                self.activate((i + self.docs.len() - 1) % self.docs.len());
-            }
-        } else if (pressed(ctrl, Key::Tab) || pressed(ctrl, Key::PageDown))
-            && let Some(i) = self.active
-            && !self.docs.is_empty()
-        {
-            self.activate((i + 1) % self.docs.len());
-        }
-        if pressed(ctrl_shift, Key::F) {
-            self.open_project_search();
-        } else if pressed(ctrl, Key::F) {
-            self.open_find(false);
-        }
-        if pressed(ctrl, Key::H) {
-            self.open_find(true);
-        }
-        if pressed(Modifiers::SHIFT, Key::F3) {
-            self.find_step(false);
-        } else if pressed(Modifiers::NONE, Key::F3) {
-            self.find_step(true);
-        }
-        if pressed(Modifiers::NONE, Key::F5) {
-            self.open_in_browser(ctx);
-        }
-        if pressed(ctrl_shift, Key::V) {
-            self.toggle_preview();
-        }
-        if pressed(ctrl, Key::G) {
-            self.dialog = Some(Dialog::GotoLine { value: String::new(), focus: true });
-        }
-        // Extra modifiers don't keep a shortcut from matching, so the longer
-        // combinations come first.
-        if pressed(ctrl | Modifiers::ALT, Key::P) {
-            self.print_active(ctx);
-        } else if pressed(ctrl_shift, Key::P) {
-            self.dialog = Some(Dialog::CommandPalette(palette::PaletteState { query: String::new(), selected: 0, focus: true }));
-        } else if pressed(ctrl, Key::P) {
-            self.open_quick_open();
-        }
-        if pressed(ctrl, Key::Comma) {
-            self.open_settings(Page::Editor);
-        }
-        if pressed(ctrl, Key::B) {
-            self.show_sidebar = !self.show_sidebar;
-        }
-        if pressed(ctrl, Key::Plus) || pressed(ctrl, Key::Equals) {
-            self.settings.editor.font_size = (self.settings.editor.font_size + 1.0).min(40.0);
-        }
-        if pressed(ctrl, Key::Minus) {
-            self.settings.editor.font_size = (self.settings.editor.font_size - 1.0).max(8.0);
-        }
-        if pressed(ctrl, Key::Num0) {
-            self.settings.editor.font_size = 14.0;
-        }
-        if pressed(ctrl | Modifiers::ALT, Key::T) || pressed(ctrl, Key::Backslash) {
-            self.toggle_split();
-        }
-        if pressed(Modifiers::ALT, Key::Z) {
-            self.settings.editor.word_wrap = !self.settings.editor.word_wrap;
-            // Alt+letter may also arrive as typed text.
-            ctx.input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Text(t) if t.eq_ignore_ascii_case("z"))));
         }
         // Undo/redo also work while the editor doesn't have keyboard focus,
         // e.g. after an extension command changed the document.
@@ -1106,22 +1008,22 @@ impl NebulaApp {
     fn menu_contents(&mut self, ui: &mut egui::Ui) {
         {
             ui.menu_button("Datei", |ui| {
-                if ui.add(egui::Button::new("Neu").shortcut_text("Strg+N")).clicked() {
+                if ui.add(egui::Button::new("Neu").shortcut_text(self.shortcut_label(palette::Command::NewFile))).clicked() {
                     self.new_document();
                     ui.close();
                 }
-                if ui.add(egui::Button::new("Öffnen…").shortcut_text("Strg+O")).clicked() {
+                if ui.add(egui::Button::new("Öffnen…").shortcut_text(self.shortcut_label(palette::Command::OpenFile))).clicked() {
                     ui.close();
                     self.pick_and_open_file();
                 }
                 if ui
-                    .add(egui::Button::new("Ordner öffnen…").shortcut_text("Strg+Umschalt+O"))
+                    .add(egui::Button::new("Ordner öffnen…").shortcut_text(self.shortcut_label(palette::Command::OpenFolder)))
                     .clicked()
                 {
                     ui.close();
                     self.pick_and_open_folder();
                 }
-                if ui.add(egui::Button::new("Schnell öffnen…").shortcut_text("Strg+P")).clicked() {
+                if ui.add(egui::Button::new("Schnell öffnen…").shortcut_text(self.shortcut_label(palette::Command::QuickOpen))).clicked() {
                     ui.close();
                     self.open_quick_open();
                 }
@@ -1150,7 +1052,7 @@ impl NebulaApp {
                 ui.separator();
                 let has_doc = self.active.is_some();
                 if ui
-                    .add_enabled(has_doc, egui::Button::new("Speichern").shortcut_text("Strg+S"))
+                    .add_enabled(has_doc, egui::Button::new("Speichern").shortcut_text(self.shortcut_label(palette::Command::Save)))
                     .clicked()
                 {
                     ui.close();
@@ -1161,7 +1063,7 @@ impl NebulaApp {
                 if ui
                     .add_enabled(
                         has_doc,
-                        egui::Button::new("Speichern unter…").shortcut_text("Strg+Umschalt+S"),
+                        egui::Button::new("Speichern unter…").shortcut_text(self.shortcut_label(palette::Command::SaveAs)),
                     )
                     .clicked()
                 {
@@ -1170,7 +1072,7 @@ impl NebulaApp {
                         self.save_doc_as(i);
                     }
                 }
-                if ui.add(egui::Button::new("Alle speichern").shortcut_text("Strg+Alt+S")).clicked() {
+                if ui.add(egui::Button::new("Alle speichern").shortcut_text(self.shortcut_label(palette::Command::SaveAll))).clicked() {
                     ui.close();
                     self.save_all();
                 }
@@ -1182,7 +1084,7 @@ impl NebulaApp {
                 }
                 ui.separator();
                 if ui
-                    .add_enabled(has_doc && self.printing.is_none(), egui::Button::new("Drucken…").shortcut_text("Strg+Alt+P"))
+                    .add_enabled(has_doc && self.printing.is_none(), egui::Button::new("Drucken…").shortcut_text(self.shortcut_label(palette::Command::Print)))
                     .clicked()
                 {
                     ui.close();
@@ -1190,7 +1092,7 @@ impl NebulaApp {
                 }
                 ui.separator();
                 if ui
-                    .add_enabled(has_doc, egui::Button::new("Tab schließen").shortcut_text("Strg+W"))
+                    .add_enabled(has_doc, egui::Button::new("Tab schließen").shortcut_text(self.shortcut_label(palette::Command::CloseTab)))
                     .clicked()
                 {
                     ui.close();
@@ -1219,15 +1121,15 @@ impl NebulaApp {
                         ui.close();
                     }
                     ui.separator();
-                    if ui.add(egui::Button::new("Suchen…").shortcut_text("Strg+F")).clicked() {
+                    if ui.add(egui::Button::new("Suchen…").shortcut_text(self.shortcut_label(palette::Command::Find))).clicked() {
                         self.open_find(false);
                         ui.close();
                     }
-                    if ui.add(egui::Button::new("Ersetzen…").shortcut_text("Strg+H")).clicked() {
+                    if ui.add(egui::Button::new("Ersetzen…").shortcut_text(self.shortcut_label(palette::Command::Replace))).clicked() {
                         self.open_find(true);
                         ui.close();
                     }
-                    if ui.add(egui::Button::new("Gehe zu Zeile…").shortcut_text("Strg+G")).clicked() {
+                    if ui.add(egui::Button::new("Gehe zu Zeile…").shortcut_text(self.shortcut_label(palette::Command::GotoLine))).clicked() {
                         self.dialog = Some(Dialog::GotoLine { value: String::new(), focus: true });
                         ui.close();
                     }
@@ -1255,29 +1157,30 @@ impl NebulaApp {
             });
             ui.menu_button("Ansicht", |ui| {
                 if ui
-                    .add(egui::Button::new("Seitenleiste").shortcut_text("Strg+B").selected(self.show_sidebar))
+                    .add(egui::Button::new("Seitenleiste").shortcut_text(self.shortcut_label(palette::Command::ToggleSidebar)).selected(self.show_sidebar))
                     .clicked()
                 {
                     self.show_sidebar = !self.show_sidebar;
                     ui.close();
                 }
                 if ui
-                    .add(egui::Button::new("SSH-Terminal").shortcut_text("Strg+Ö").selected(self.terminals.visible))
+                    .add(egui::Button::new("SSH-Terminal").shortcut_text(self.shortcut_label(palette::Command::ToggleTerminal)).selected(self.terminals.visible))
                     .clicked()
                 {
                     self.toggle_terminal(&ui.ctx().clone());
                     ui.close();
                 }
                 if ui
-                    .add(egui::Button::new("Geteilte Ansicht").shortcut_text("Strg+Alt+T").selected(self.split.is_some()))
+                    .add(egui::Button::new("Geteilte Ansicht").shortcut_text(self.shortcut_label(palette::Command::ToggleSplit)).selected(self.split.is_some()))
                     .clicked()
                 {
                     self.toggle_split();
                     ui.close();
                 }
+                let wrap_key = self.shortcut_label(palette::Command::ToggleWordWrap);
                 let e = &mut self.settings.editor;
                 if ui
-                    .add(egui::Button::new("Automatischer Zeilenumbruch").shortcut_text("Alt+Z").selected(e.word_wrap))
+                    .add(egui::Button::new("Automatischer Zeilenumbruch").shortcut_text(wrap_key).selected(e.word_wrap))
                     .clicked()
                 {
                     e.word_wrap = !e.word_wrap;
@@ -1294,10 +1197,10 @@ impl NebulaApp {
                     ui.close();
                 }
                 ui.separator();
-                if ui.add(egui::Button::new("Schrift größer").shortcut_text("Strg++")).clicked() {
+                if ui.add(egui::Button::new("Schrift größer").shortcut_text(self.shortcut_label(palette::Command::FontBigger))).clicked() {
                     self.settings.editor.font_size = (self.settings.editor.font_size + 1.0).min(40.0);
                 }
-                if ui.add(egui::Button::new("Schrift kleiner").shortcut_text("Strg+-")).clicked() {
+                if ui.add(egui::Button::new("Schrift kleiner").shortcut_text(self.shortcut_label(palette::Command::FontSmaller))).clicked() {
                     self.settings.editor.font_size = (self.settings.editor.font_size - 1.0).max(8.0);
                 }
             });
@@ -1339,8 +1242,9 @@ impl NebulaApp {
                 }
             });
             ui.menu_button("Einstellungen", |ui| {
-                for (label, page) in [("Editor…", Page::Editor), ("Design und Themes…", Page::Design), ("Sprachen…", Page::Languages), ("Erweiterungen…", Page::Extensions)] {
-                    if ui.add(egui::Button::new(label).shortcut_text(if page == Page::Editor { "Strg+," } else { "" })).clicked() {
+                let settings_key = self.shortcut_label(palette::Command::Settings);
+                for (label, page) in [("Editor…", Page::Editor), ("Design und Themes…", Page::Design), ("Sprachen…", Page::Languages), ("Tastenkürzel…", Page::Keys), ("Erweiterungen…", Page::Extensions)] {
+                    if ui.add(egui::Button::new(label).shortcut_text(if page == Page::Editor { settings_key.as_str() } else { "" })).clicked() {
                         self.open_settings(page);
                         ui.close();
                     }
@@ -1443,6 +1347,8 @@ impl NebulaApp {
         let mut close = None;
         let mut activate = None;
         let mut tab_cmd: Option<(usize, tabs::TabCmd)> = None;
+        use palette::Command as C;
+        let tab_keys = [C::Save, C::SaveAs, C::Print, C::CloseTab].map(|c| self.shortcut_label(c));
         let mut reorder: Option<(usize, usize)> = None;
         let reveal = std::mem::take(&mut self.reveal_active_tab);
         row.allocate_ui(vec2(strip_w, 30.0), |ui| {
@@ -1523,7 +1429,7 @@ impl NebulaApp {
                             let count = self.docs.len();
                             resp.context_menu(|ui| {
                                 ui.set_min_width(220.0);
-                                tabs::tab_menu(ui, doc, i, count, &mut tab_cmd);
+                                tabs::tab_menu(ui, doc, i, count, &tab_keys, &mut tab_cmd);
                             });
                             resp.on_hover_text(match &doc.source {
                                 DocSource::Remote { site_id, path } => format!(

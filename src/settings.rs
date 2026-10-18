@@ -85,6 +85,8 @@ pub struct AppSettings {
     pub preview_split: f32,
     /// Height of the SSH terminal panel.
     pub terminal_height: f32,
+    /// Changed keyboard shortcuts: command -> "Ctrl+Shift+P, F1" (empty: none).
+    pub keybindings: std::collections::BTreeMap<String, String>,
     /// Identifiers of installed extensions that are turned off.
     pub disabled_extensions: Vec<String>,
 }
@@ -149,6 +151,7 @@ impl Default for AppSettings {
             preview_split: 0.45,
             terminal_height: 260.0,
             disabled_extensions: Vec::new(),
+            keybindings: Default::default(),
         }
     }
 }

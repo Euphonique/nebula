@@ -22,20 +22,21 @@ pub(super) enum TabCmd {
 }
 
 /// Context menu of a tab.
-pub(super) fn tab_menu(ui: &mut egui::Ui, doc: &Document, i: usize, count: usize, out: &mut Option<(usize, TabCmd)>) {
+/// `keys`: shortcuts of Save, Save As, Print and Close.
+pub(super) fn tab_menu(ui: &mut egui::Ui, doc: &Document, i: usize, count: usize, keys: &[String; 4], out: &mut Option<(usize, TabCmd)>) {
     let mut item = |ui: &mut egui::Ui, label: &str, shortcut: &str, enabled: bool, cmd: TabCmd| {
         if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(shortcut)).clicked() {
             *out = Some((i, cmd));
             ui.close();
         }
     };
-    item(ui, "Speichern", "Strg+S", true, TabCmd::Save);
-    item(ui, "Speichern unter…", "Strg+Umschalt+S", true, TabCmd::SaveAs);
+    item(ui, "Speichern", &keys[0], true, TabCmd::Save);
+    item(ui, "Speichern unter…", &keys[1], true, TabCmd::SaveAs);
     item(ui, "Duplizieren", "", true, TabCmd::Duplicate);
     item(ui, "In geteilter Ansicht öffnen", "", true, TabCmd::Split);
-    item(ui, "Drucken…", "Strg+Alt+P", true, TabCmd::Print);
+    item(ui, "Drucken…", &keys[2], true, TabCmd::Print);
     ui.separator();
-    item(ui, "Schließen", "Strg+W", true, TabCmd::Close);
+    item(ui, "Schließen", &keys[3], true, TabCmd::Close);
     item(ui, "Andere schließen", "", count > 1, TabCmd::CloseOthers);
     item(ui, "Rechts davon schließen", "", i + 1 < count, TabCmd::CloseRight);
     item(ui, "Alle schließen", "", true, TabCmd::CloseAll);

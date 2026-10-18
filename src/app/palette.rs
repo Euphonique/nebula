@@ -10,6 +10,12 @@ use crate::lang::Language;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Command {
     NewFile,
+    CommandPalette,
+    NextTab,
+    PrevTab,
+    FindNext,
+    FindPrevious,
+    FontReset,
     OpenFile,
     OpenFolder,
     QuickOpen,
@@ -68,63 +74,69 @@ pub enum Command {
 }
 
 impl Command {
-    fn all() -> Vec<(Command, String, &'static str)> {
+    pub(super) fn all() -> Vec<(Command, String)> {
         use Command::*;
-        let mut v: Vec<(Command, String, &'static str)> = [
-            (NewFile, "Datei: Neu", "Strg+N"),
-            (OpenFile, "Datei: Öffnen…", "Strg+O"),
-            (OpenFolder, "Datei: Ordner öffnen…", "Strg+Umschalt+O"),
-            (QuickOpen, "Datei: Schnell öffnen…", "Strg+P"),
-            (Save, "Datei: Speichern", "Strg+S"),
-            (SaveAs, "Datei: Speichern unter…", "Strg+Umschalt+S"),
-            (SaveAll, "Datei: Alle speichern", "Strg+Alt+S"),
-            (CloseTab, "Datei: Tab schließen", "Strg+W"),
-            (CloseOthers, "Datei: Andere Tabs schließen", ""),
-            (CloseAll, "Datei: Alle Tabs schließen", ""),
-            (DuplicateDoc, "Datei: Duplizieren", ""),
-            (Print, "Datei: Drucken…", "Strg+Alt+P"),
-            (Find, "Suchen: In Datei suchen", "Strg+F"),
-            (Replace, "Suchen: Ersetzen", "Strg+H"),
-            (FindInProject, "Suchen: Im Projekt suchen", "Strg+Umschalt+F"),
-            (GotoLine, "Gehe zu Zeile…", "Strg+G"),
-            (ToggleSidebar, "Ansicht: Seitenleiste ein/aus", "Strg+B"),
-            (ToggleTheme, "Ansicht: Hell/Dunkel umschalten", ""),
-            (FontBigger, "Ansicht: Schrift größer", "Strg++"),
-            (FontSmaller, "Ansicht: Schrift kleiner", "Strg+-"),
-            (ToggleInvisibles, "Ansicht: Unsichtbare Zeichen ein/aus", ""),
-            (ToggleWordWrap, "Ansicht: Automatischer Zeilenumbruch ein/aus", "Alt+Z"),
-            (ToggleSplit, "Ansicht: Geteilte Ansicht ein/aus", "Strg+Alt+T"),
-            (ToggleTerminal, "Terminal: SSH-Terminal ein/aus", "Strg+Ö"),
-            (Settings, "Einstellungen: Editor", "Strg+,"),
-            (Themes, "Einstellungen: Design und Themes", ""),
-            (Languages, "Einstellungen: Sprachen", ""),
-            (AddServer, "Server: Hinzufügen…", ""),
-            (Publish, "Projekt: Veröffentlichen", ""),
-            (PublishSetup, "Projekt: Veröffentlichen einrichten…", ""),
-            (ExtLibrary, "Erweiterungen: Bibliothek durchsuchen…", ""),
-            (ExtManage, "Erweiterungen: Verwalten…", ""),
-            (ExtConsole, "Erweiterungen: Konsole", ""),
-            (TogglePreview, "Vorschau: Live-Vorschau ein/aus", "Strg+Umschalt+V"),
-            (OpenInBrowser, "Vorschau: Im Browser öffnen", "F5"),
-            (ToggleComment, "Bearbeiten: Kommentar umschalten", "Strg+/"),
-            (DuplicateLine, "Bearbeiten: Zeile duplizieren", "Strg+Umschalt+D"),
-            (DeleteLine, "Bearbeiten: Zeile löschen", "Strg+Umschalt+K"),
-            (SelectAllOccurrences, "Bearbeiten: Alle Vorkommen auswählen", "Strg+Umschalt+L"),
-            (FoldToggle, "Faltung: Block ein-/ausklappen", ""),
-            (FoldAll, "Faltung: Alles einklappen", ""),
-            (UnfoldAll, "Faltung: Alles ausklappen", ""),
-            (LineEndingLf, "Zeilenenden: LF (Unix)", ""),
-            (LineEndingCrLf, "Zeilenenden: CRLF (Windows)", ""),
-            (TrimWhitespace, "Text: Leerzeichen am Zeilenende entfernen", ""),
-            (CursorsAtLineEnds, "Auswahl: Cursor an alle Zeilenenden", "Alt+Umschalt+I"),
-            (IndentToSpaces, "Text: Einrückung in Leerzeichen umwandeln", ""),
-            (IndentToTabs, "Text: Einrückung in Tabs umwandeln", ""),
+        let mut v: Vec<(Command, String)> = [
+            (NewFile, "Datei: Neu"),
+            (OpenFile, "Datei: Öffnen…"),
+            (OpenFolder, "Datei: Ordner öffnen…"),
+            (QuickOpen, "Datei: Schnell öffnen…"),
+            (CommandPalette, "Befehlspalette…"),
+            (NextTab, "Tabs: Nächster Tab"),
+            (PrevTab, "Tabs: Vorheriger Tab"),
+            (Save, "Datei: Speichern"),
+            (SaveAs, "Datei: Speichern unter…"),
+            (SaveAll, "Datei: Alle speichern"),
+            (CloseTab, "Datei: Tab schließen"),
+            (CloseOthers, "Datei: Andere Tabs schließen"),
+            (CloseAll, "Datei: Alle Tabs schließen"),
+            (DuplicateDoc, "Datei: Duplizieren"),
+            (Print, "Datei: Drucken…"),
+            (Find, "Suchen: In Datei suchen"),
+            (Replace, "Suchen: Ersetzen"),
+            (FindInProject, "Suchen: Im Projekt suchen"),
+            (FindNext, "Suchen: Nächster Treffer"),
+            (FindPrevious, "Suchen: Vorheriger Treffer"),
+            (GotoLine, "Gehe zu Zeile…"),
+            (ToggleSidebar, "Ansicht: Seitenleiste ein/aus"),
+            (ToggleTheme, "Ansicht: Hell/Dunkel umschalten"),
+            (FontBigger, "Ansicht: Schrift größer"),
+            (FontSmaller, "Ansicht: Schrift kleiner"),
+            (FontReset, "Ansicht: Schriftgröße zurücksetzen"),
+            (ToggleInvisibles, "Ansicht: Unsichtbare Zeichen ein/aus"),
+            (ToggleWordWrap, "Ansicht: Automatischer Zeilenumbruch ein/aus"),
+            (ToggleSplit, "Ansicht: Geteilte Ansicht ein/aus"),
+            (ToggleTerminal, "Terminal: SSH-Terminal ein/aus"),
+            (Settings, "Einstellungen: Editor"),
+            (Themes, "Einstellungen: Design und Themes"),
+            (Languages, "Einstellungen: Sprachen"),
+            (AddServer, "Server: Hinzufügen…"),
+            (Publish, "Projekt: Veröffentlichen"),
+            (PublishSetup, "Projekt: Veröffentlichen einrichten…"),
+            (ExtLibrary, "Erweiterungen: Bibliothek durchsuchen…"),
+            (ExtManage, "Erweiterungen: Verwalten…"),
+            (ExtConsole, "Erweiterungen: Konsole"),
+            (TogglePreview, "Vorschau: Live-Vorschau ein/aus"),
+            (OpenInBrowser, "Vorschau: Im Browser öffnen"),
+            (ToggleComment, "Bearbeiten: Kommentar umschalten"),
+            (DuplicateLine, "Bearbeiten: Zeile duplizieren"),
+            (DeleteLine, "Bearbeiten: Zeile löschen"),
+            (SelectAllOccurrences, "Bearbeiten: Alle Vorkommen auswählen"),
+            (FoldToggle, "Faltung: Block ein-/ausklappen"),
+            (FoldAll, "Faltung: Alles einklappen"),
+            (UnfoldAll, "Faltung: Alles ausklappen"),
+            (LineEndingLf, "Zeilenenden: LF (Unix)"),
+            (LineEndingCrLf, "Zeilenenden: CRLF (Windows)"),
+            (TrimWhitespace, "Text: Leerzeichen am Zeilenende entfernen"),
+            (CursorsAtLineEnds, "Auswahl: Cursor an alle Zeilenenden"),
+            (IndentToSpaces, "Text: Einrückung in Leerzeichen umwandeln"),
+            (IndentToTabs, "Text: Einrückung in Tabs umwandeln"),
         ]
         .into_iter()
-        .map(|(c, l, s)| (c, l.to_string(), s))
+        .map(|(c, l)| (c, l.to_string()))
         .collect();
         for l in crate::lang::Language::ALL {
-            v.push((Command::Language(l), format!("Sprache festlegen: {}", l.name()), ""));
+            v.push((Command::Language(l), format!("Sprache festlegen: {}", l.name())));
         }
         v
     }
@@ -163,21 +175,21 @@ impl NebulaApp {
         let mut keep = true;
         let mut all = Command::all();
         for (n, c) in self.available_ext_commands().iter().enumerate() {
-            all.push((Command::Ext(n), format!("{}: {}", c.ext_name, c.title), ""));
+            all.push((Command::Ext(n), format!("{}: {}", c.ext_name, c.title)));
         }
         for (n, (ext, c)) in self.available_clips().iter().enumerate() {
-            all.push((Command::Clip(n), format!("Clip: {} ({ext})", c.name), ""));
+            all.push((Command::Clip(n), format!("Clip: {} ({ext})", c.name)));
         }
         for (n, s) in self.sites.sites.iter().enumerate() {
-            all.push((Command::Terminal(n), format!("Terminal: SSH-Terminal für {}", s.display_name()), ""));
+            all.push((Command::Terminal(n), format!("Terminal: SSH-Terminal für {}", s.display_name())));
         }
         for (n, p) in self.settings.recent_folders.iter().enumerate().skip(1) {
             let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            all.push((Command::SwitchProject(n), format!("Projekt wechseln: {name}  ({})", p.display()), ""));
+            all.push((Command::SwitchProject(n), format!("Projekt wechseln: {name}  ({})", p.display())));
         }
-        let mut items: Vec<(Command, String, &'static str, i32)> = all
+        let mut items: Vec<(Command, String, String, i32)> = all
             .into_iter()
-            .filter_map(|(c, l, s)| Some((c, l.clone(), s, if state.query.is_empty() { 0 } else { score(&l, &state.query)? })))
+            .filter_map(|(c, l)| Some((c, l.clone(), self.shortcut_label(c), if state.query.is_empty() { 0 } else { score(&l, &state.query)? })))
             .collect();
         items.sort_by(|a, b| b.3.cmp(&a.3));
         items.truncate(14);
@@ -207,7 +219,7 @@ impl NebulaApp {
             for (n, (c, label, shortcut, _)) in items.iter().enumerate() {
                 let r = ui.add(
                     egui::Button::selectable(n == state.selected, RichText::new(label).size(14.0))
-                        .shortcut_text(RichText::new(*shortcut).color(self.theme.text_faint))
+                        .shortcut_text(RichText::new(shortcut).color(self.theme.text_faint))
                         .min_size(egui::vec2(540.0, 28.0)),
                 );
                 if r.clicked() {
@@ -266,6 +278,16 @@ impl NebulaApp {
             Command::Find => self.open_find(false),
             Command::Replace => self.open_find(true),
             Command::FindInProject => self.open_project_search(),
+            Command::FindNext => self.find_step(true),
+            Command::FindPrevious => self.find_step(false),
+            Command::CommandPalette => self.dialog = Some(super::Dialog::CommandPalette(PaletteState { query: String::new(), selected: 0, focus: true })),
+            Command::NextTab | Command::PrevTab => {
+                if let Some(i) = self.active {
+                    let n = self.docs.len();
+                    self.activate(if c == Command::NextTab { (i + 1) % n } else { (i + n - 1) % n });
+                }
+            }
+            Command::FontReset => self.settings.editor.font_size = 14.0,
             Command::GotoLine => self.dialog = Some(super::Dialog::GotoLine { value: String::new(), focus: true }),
             Command::ToggleSidebar => self.show_sidebar = !self.show_sidebar,
             Command::Settings => self.open_settings(Page::Editor),
