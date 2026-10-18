@@ -61,11 +61,20 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Nächste Schritte
 
-Runde 1 und 2 sind abgeschlossen.
+Runde 1 und 2 sind abgeschlossen, dazu Zen-Modus, Schriftwahl, Farbwähler, Bildvorschau und Minimap.
 
-1. KI im rechten Panel (Agenten über ACP, eigener Chat).
-2. Danach weitere B-Punkte aus der Liste oben.
+Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
+1. „Schnell öffnen“ (Strg+P) für Serverdateien und mit `:Zeile`.
+2. Absturzbericht (Panics in Logdatei, beim nächsten Start anbieten).
+3. Server duplizieren, in Ordnern gruppieren, Import aus FileZilla.
+4. Vorschau in Gerätebreiten; lokaler PHP-Server für die Vorschau.
+5. Eigene Snippets pro Sprache.
+6. Tabs anheften; Einstellungen exportieren/importieren.
+7. Große Dateien schreibgeschützt öffnen, Hex-Ansicht.
+8. Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“.
+
+Später (bewusst zurückgestellt): KI im rechten Panel (Agenten über ACP, eigener Chat) – vorher Umfang abstimmen.
 
 ## Erledigt
 
