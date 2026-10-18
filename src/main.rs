@@ -3,6 +3,7 @@
 mod app;
 mod editor;
 mod editorconfig;
+mod diff;
 mod highlight;
 mod icon;
 mod ext;

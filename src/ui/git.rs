@@ -42,6 +42,8 @@ impl FileState {
 
 struct Snapshot {
     root: PathBuf,
+    top: PathBuf,
+    head: Option<String>,
     branch: Option<String>,
     files: HashMap<PathBuf, FileState>,
 }
@@ -50,6 +52,9 @@ struct Snapshot {
 pub struct GitStatus {
     root: Option<PathBuf>,
     pub branch: Option<String>,
+    /// Top folder of the repository and the current commit.
+    pub top: Option<PathBuf>,
+    pub head: Option<String>,
     files: HashMap<PathBuf, FileState>,
     dirs: HashSet<PathBuf>,
     pending: Option<Receiver<Option<Snapshot>>>,
@@ -66,6 +71,26 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
     }
     let out = cmd.output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Contents of `path` in the current commit (`None` if it is not tracked).
+pub fn head_file(top: &Path, path: &Path) -> Option<Vec<u8>> {
+    // Windows paths compare without regard to case (git may report "a:/" for "A:\").
+    let (p, t) = (path.to_string_lossy(), top.to_string_lossy());
+    let t = t.trim_end_matches('\\');
+    if !p.get(..t.len()).is_some_and(|prefix| prefix.eq_ignore_ascii_case(t)) || p.len() <= t.len() {
+        return None;
+    }
+    let rel = p[t.len()..].trim_start_matches('\\').replace('\\', "/");
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["show", &format!("HEAD:{rel}")]).current_dir(top);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().ok()?;
+    out.status.success().then_some(out.stdout)
 }
 
 fn parse_porcelain(top: &Path, text: &str) -> HashMap<PathBuf, FileState> {
@@ -115,8 +140,10 @@ impl GitStatus {
                 let top = git(&root, &["rev-parse", "--show-toplevel"])?;
                 let top = PathBuf::from(top.trim().replace('/', "\\"));
                 let branch = git(&root, &["rev-parse", "--abbrev-ref", "HEAD"]).map(|b| b.trim().to_string());
+                let head = git(&root, &["rev-parse", "HEAD"]).map(|b| b.trim().to_string());
                 let status = git(&root, &["status", "--porcelain=v1", "-z", "--untracked-files=all"])?;
-                Some(Snapshot { root, branch, files: parse_porcelain(&top, &status) })
+                let files = parse_porcelain(&top, &status);
+                Some(Snapshot { root, top, head, branch, files })
             })();
             let _ = tx.send(snapshot);
             ctx.request_repaint();
@@ -144,11 +171,15 @@ impl GitStatus {
                     }
                     self.files = s.files;
                     self.branch = s.branch;
+                    self.top = Some(s.top);
+                    self.head = s.head;
                 }
                 _ => {
                     self.files.clear();
                     self.dirs.clear();
                     self.branch = None;
+                    self.top = None;
+                    self.head = None;
                 }
             }
         }

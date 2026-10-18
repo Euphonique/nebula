@@ -31,6 +31,7 @@ mod tabs;
 mod terminal;
 mod watch;
 mod backup;
+mod gitdiff;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -137,6 +138,8 @@ pub struct NebulaApp {
     disk: watch::DiskWatch,
     /// Copies of unsaved contents for crash recovery.
     backups: backup::Backups,
+    /// Committed versions of open files for the Git markers.
+    git_bases: gitdiff::GitBases,
 }
 
 impl NebulaApp {
@@ -181,6 +184,7 @@ impl NebulaApp {
             terminals: Default::default(),
             disk: Default::default(),
             backups: Default::default(),
+            git_bases: Default::default(),
             settings,
         };
         app.restore_session();
@@ -2742,6 +2746,7 @@ impl eframe::App for NebulaApp {
         self.process_remote_events();
         self.poll_disk(&ctx);
         self.backup_unsaved(&ctx);
+        self.poll_git_bases(&ctx);
         self.poll_terminals();
         self.poll_printing();
         self.serve_preview();

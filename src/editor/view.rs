@@ -4,6 +4,7 @@
 //! laid out and painted each frame, so cost is independent of file size.
 
 use std::ops::Range;
+use std::sync::Arc;
 use std::time::Duration;
 
 use eframe::egui::{
@@ -108,6 +109,7 @@ impl EditorView<'_> {
         ui.painter()
             .rect_filled(ui.available_rect_before_wrap(), 0.0, theme.background);
 
+        update_git_marks(doc);
         let rows = folding::rows(doc, tab, wrap);
         let scroll = ScrollArea::both()
             .id_salt(("editor-scroll", doc.id))
@@ -977,6 +979,7 @@ fn paint(
     let num_font = FontId::monospace(m.font.size * 0.86);
     let num_offset = (m.row_h - ui.fonts_mut(|f| f.row_height(&num_font))) / 2.0;
     let pointer = ui.input(|i| i.pointer.hover_pos()).filter(|p| gutter.contains(*p));
+    let git_marks = doc.view.git_marks.as_ref().map(|(_, m)| m.as_slice());
     // Most severe problem per visible line.
     let mut line_problems: std::collections::HashMap<usize, u8> = std::collections::HashMap::new();
     if !doc.view.diagnostics.is_empty() {
@@ -993,6 +996,23 @@ fn paint(
         if cursor_rows.contains(&r) && settings.highlight_current_line {
             let rect = Rect::from_min_size(pos2(gutter.left(), y), vec2(gutter.width(), m.row_h));
             painter.rect_filled(rect, 0.0, theme.gutter_active_bg);
+        }
+        // Git change marker at the right edge of the gutter.
+        match git_marks.and_then(|g| g.get(line)) {
+            Some(&mark @ (1 | 2)) => {
+                let color = if mark == 1 { theme.success } else { theme.modified };
+                let bar = Rect::from_min_max(pos2(gutter.right() - 3.5, y), pos2(gutter.right() - 1.0, y + m.row_h));
+                painter.rect_filled(bar, 0.0, color);
+            }
+            Some(3) if row.start == 0 => {
+                let (x, y) = (gutter.right() - 1.0, y);
+                painter.add(egui::Shape::convex_polygon(
+                    vec![pos2(x - 5.0, y), pos2(x, y - 4.0), pos2(x, y + 4.0)],
+                    theme.danger,
+                    Stroke::NONE,
+                ));
+            }
+            _ => {}
         }
         // Continuation rows of a wrapped line carry no number.
         if row.start != 0 {
@@ -1282,4 +1302,34 @@ fn clean_markdown(text: &str) -> String {
     }
     let s = out.join("\n");
     s.trim().chars().take(4000).collect()
+}
+
+/// Recomputes the Git change markers when the text changed.
+fn update_git_marks(doc: &mut Document) {
+    let Some(base) = doc.view.git_base.clone() else {
+        doc.view.git_marks = None;
+        return;
+    };
+    if doc.view.git_marks.as_ref().is_some_and(|(v, _)| *v == doc.version) {
+        return;
+    }
+    let text = doc.text();
+    let new = crate::diff::lines(&text);
+    let mut marks = vec![0u8; doc.len_lines()];
+    for h in crate::diff::hunks(&crate::diff::lines(&base), &new) {
+        if h.new.is_empty() {
+            let last = marks.len().saturating_sub(1);
+            if let Some(m) = marks.get_mut(h.new.start.min(last)) {
+                *m = 3;
+            }
+        } else {
+            let mark = if h.old.is_empty() { 1 } else { 2 };
+            for l in h.new.clone() {
+                if let Some(m) = marks.get_mut(l) {
+                    *m = mark;
+                }
+            }
+        }
+    }
+    doc.view.git_marks = Some((doc.version, Arc::new(marks)));
 }

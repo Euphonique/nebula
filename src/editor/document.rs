@@ -257,6 +257,10 @@ pub struct ViewState {
     pub hover: Option<(usize, String)>,
     /// Go to the definition of the symbol at this position.
     pub definition_request: Option<usize>,
+    /// Text of the file in the last Git commit (LF line breaks), for change markers.
+    pub git_base: Option<Arc<String>>,
+    /// Git marker per line (0 none, 1 added, 2 modified, 3 lines deleted above) for a document version.
+    pub git_marks: Option<(u64, Arc<Vec<u8>>)>,
 }
 
 /// A problem shown in the editor (squiggle and gutter marker).
