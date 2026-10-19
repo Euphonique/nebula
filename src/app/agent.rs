@@ -77,6 +77,51 @@ impl Selector {
     }
 }
 
+/// German name of a session setting the agent sends in English.
+fn setting_name(id: &str, category: &str, name: &str) -> String {
+    match (category, id) {
+        ("model", _) => "Modell",
+        ("thought_level", _) => "Aufwand",
+        ("mode", _) => "Modus",
+        (_, "fast") => "Schnellmodus",
+        (_, "collaboration_mode") => "Arbeitsweise",
+        _ => return name.to_string(),
+    }
+    .into()
+}
+
+/// German name and description of a choice, for the values Claude and Codex
+/// are known to send; anything else stays as the agent sent it.
+fn choice_name(value: &str, name: &str, description: Option<&str>) -> (String, Option<String>) {
+    let (n, d): (&str, Option<&str>) = match value {
+        // Claude Code: modes.
+        "default" if name == "Manual" => ("Manuell", Some("Vor jeder Änderung nachfragen")),
+        "acceptEdits" => ("Änderungen annehmen", Some("Dateiänderungen automatisch annehmen")),
+        "plan" => ("Planen", Some("Erst einen Plan erstellen, dann ändern")),
+        "auto" => ("Automatisch", Some("Claude entscheidet selbst, wann es nachfragt")),
+        "bypassPermissions" => ("Ohne Rückfragen", Some("Alles ohne Nachfrage erlauben – mit Vorsicht verwenden")),
+        // Codex: modes.
+        "read-only" => ("Nur lesen", Some("Fragt vor Änderungen an Dateien und vor Internetzugriff")),
+        "workspace-write" => ("Projektzugriff", Some("Darf im Projekt ändern; fragt außerhalb und vor Netzwerkzugriff")),
+        "agent" if name == "Auto review" => ("Automatische Prüfung", Some("Fragt nur bei möglicherweise unsicheren Aktionen")),
+        "agent-full-access" => ("Vollzugriff", Some("Uneingeschränkter Zugriff auf Internet und alle Dateien")),
+        // Effort.
+        "low" => ("Niedrig", None),
+        "medium" => ("Mittel", None),
+        "high" => ("Hoch", None),
+        "xhigh" => ("Sehr hoch", None),
+        "max" => ("Maximal", None),
+        "minimal" => ("Minimal", None),
+        // Switches and the recommended default.
+        "on" => ("An", None),
+        "off" => ("Aus", None),
+        "default" if name.starts_with("Default (recommended)") => ("Standard (empfohlen)", description),
+        "default" if name == "Default" => ("Standard", description),
+        _ => return (name.to_string(), description.map(str::to_string)),
+    };
+    (n.to_string(), d.or(description).map(str::to_string))
+}
+
 /// Text of a chip: long names (agents, models) are shortened; the tooltip has the full name.
 fn chip_text(sel: &Selector) -> String {
     let label: String = if sel.label.chars().count() > 18 { format!("{}…", sel.label.chars().take(17).collect::<String>()) } else { sel.label.clone() };
@@ -141,31 +186,25 @@ impl NebulaApp {
         let mut options: Vec<_> = s.config.iter().filter(|o| o.id != "agent").collect();
         options.sort_by_key(|o| rank(&o.category));
         for o in options {
-            let prefix = match o.category.as_str() {
-                "model" => String::new(),
-                "thought_level" => "Aufwand: ".into(),
-                "mode" => "Modus: ".into(),
-                _ => format!("{}: ", o.name),
-            };
+            let name = setting_name(&o.id, &o.category, &o.name);
+            let prefix = if o.category == "model" { String::new() } else { format!("{name}: ") };
             let (current, choices) = match &o.value {
-                ConfigValue::Select { current, options } => (current.clone(), options.clone()),
+                ConfigValue::Select { current, options } => (
+                    current.clone(),
+                    options.iter().map(|(v, n, d)| {
+                        let (n, d) = choice_name(v, n, d.as_deref());
+                        (v.clone(), n, d)
+                    }).collect::<Vec<_>>(),
+                ),
                 ConfigValue::Boolean(b) => (b.to_string(), vec![("true".into(), "an".into(), None), ("false".into(), "aus".into(), None)]),
             };
-            let tip = match &o.description {
-                Some(d) => format!("{}: {d}", o.name),
-                None => o.name.clone(),
-            };
+            let current_name = choices.iter().find(|(v, _, _)| *v == current).map_or(current.clone(), |(_, n, _)| n.clone());
             out.push(Selector {
                 kind: SelKind::Config(o.id.clone()),
-                name: match o.category.as_str() {
-                    "model" => "Modell".into(),
-                    "thought_level" => "Aufwand".into(),
-                    "mode" => "Modus".into(),
-                    _ => o.name.clone(),
-                },
+                name: name.clone(),
                 category: o.category.clone(),
-                label: format!("{prefix}{}", o.current_label()),
-                tip: Some(tip),
+                label: format!("{prefix}{current_name}"),
+                tip: Some(name),
                 current,
                 choices,
             });
@@ -176,7 +215,15 @@ impl NebulaApp {
             && modes.available_modes.len() > 1
         {
             let current = modes.current_mode_id.to_string();
-            let name = modes.available_modes.iter().find(|m| m.id.to_string() == current).map_or(current.clone(), |m| m.name.clone());
+            let choices: Vec<_> = modes
+                .available_modes
+                .iter()
+                .map(|m| {
+                    let (n, d) = choice_name(&m.id.to_string(), &m.name, m.description.as_deref());
+                    (m.id.to_string(), n, d)
+                })
+                .collect();
+            let name = choices.iter().find(|(v, _, _)| *v == current).map_or(current.clone(), |(_, n, _)| n.clone());
             out.push(Selector {
                 kind: SelKind::Mode,
                 name: "Modus".into(),
@@ -184,7 +231,7 @@ impl NebulaApp {
                 label: format!("Modus: {name}"),
                 tip: Some("Modus".into()),
                 current,
-                choices: modes.available_modes.iter().map(|m| (m.id.to_string(), m.name.clone(), m.description.clone())).collect(),
+                choices,
             });
         }
         out
@@ -562,6 +609,7 @@ impl NebulaApp {
                 _ => 4,
             },
         };
+        let mut pick_files = false;
         let mut picked: Option<Pick> = None;
         {
             let ui = &mut bottom;
@@ -605,14 +653,22 @@ impl NebulaApp {
                     // Toolbar (built upwards, so it comes first): attach, agent, model, effort, more – send on the right.
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        let attach = egui::Button::new(RichText::new("📎").size(13.0)).frame_when_inactive(self.agent.attach_file).selected(self.agent.attach_file);
-                        let tip = match &file_name {
-                            Some(n) => format!("{n} mitschicken"),
-                            None => "Dateien hängst du per Rechtsklick in der Seitenleiste an".into(),
-                        };
-                        if ui.add_enabled(file_name.is_some(), attach).on_hover_text(tip).on_disabled_hover_text("Dateien hängst du per Rechtsklick in der Seitenleiste an").clicked() {
-                            self.agent.attach_file = !self.agent.attach_file;
-                        }
+                        // Paperclip: the active file and a file picker.
+                        let attach = ui
+                            .add(egui::Button::new(RichText::new("📎").size(13.0)).frame_when_inactive(false))
+                            .on_hover_text("Dateien anhängen (auch per Rechtsklick in der Seitenleiste)");
+                        egui::Popup::menu(&attach).show(|ui| {
+                            ui.set_min_width(220.0);
+                            if let Some(n) = &file_name
+                                && ui.checkbox(&mut self.agent.attach_file, format!("Aktuelle Datei: {n}")).clicked()
+                            {
+                                ui.close();
+                            }
+                            if ui.button("Dateien auswählen…").clicked() {
+                                ui.close();
+                                pick_files = true;
+                            }
+                        });
                         // As many chips as fit; the rest goes into "⋯". The model stays
                         // longest, then the agent, then the effort.
                         let mut room = ui.available_width() - 34.0 /* send */ - 26.0 /* ⋯ */;
@@ -747,6 +803,15 @@ impl NebulaApp {
         }
         if let Some(pick) = picked {
             self.apply_agent_pick(pick);
+        }
+        if pick_files {
+            let mut dialog = rfd::FileDialog::new().set_title("Dateien an den KI-Agenten anhängen");
+            if let Some(dir) = self.sidebar.root.clone() {
+                dialog = dialog.set_directory(dir);
+            }
+            if let Some(paths) = dialog.pick_files() {
+                self.attach_to_agent(paths.into_iter().map(FileRef::Local).collect());
+            }
         }
 
         // The conversation in the space left above; questions and the login

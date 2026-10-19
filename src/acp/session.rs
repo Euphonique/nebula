@@ -110,18 +110,6 @@ pub enum ConfigValue {
     Boolean(bool),
 }
 
-impl ConfigOption {
-    /// Display name of the current choice.
-    pub fn current_label(&self) -> String {
-        match &self.value {
-            ConfigValue::Select { current, options } => {
-                options.iter().find(|(v, _, _)| v == current).map_or(current.clone(), |(_, n, _)| n.clone())
-            }
-            ConfigValue::Boolean(b) => if *b { "an" } else { "aus" }.into(),
-        }
-    }
-}
-
 /// Reads `configOptions` (kept as JSON to accept any agent's extra fields).
 fn config_options(v: Option<&Value>) -> Vec<ConfigOption> {
     let s = |v: Option<&Value>| v.and_then(Value::as_str).map(str::to_string);
