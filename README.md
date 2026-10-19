@@ -64,10 +64,11 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - `.editorconfig` wird ausgewertet (Einrückung, Zeilenenden, Kodierung, Leerzeichen am Zeilenende, Zeilenumbruch am Dateiende); beides auch als Einstellung beim Speichern. Einrückung lässt sich zwischen Tabs und Leerzeichen umwandeln.
 
 **Live-Vorschau**
-- HTML-, PHP- und Markdown-Seiten im rechten Panel (Knopf rechts in der Titelleiste, Strg+Umschalt+V; WebView2), aktualisiert beim Tippen, auch mit ungespeicherten Änderungen
+- HTML-, PHP- und Markdown-Seiten sowie Bilder im rechten Panel (Knopf rechts in der Titelleiste, Strg+Umschalt+V; WebView2), aktualisiert beim Tippen, auch mit ungespeicherten Änderungen
 - Geänderte CSS-Dateien werden ohne Neuladen der Seite übernommen, die Scrollposition bleibt erhalten
 - Funktioniert auch für Dateien auf dem Server: Bilder, CSS und Skripte werden über die Serververbindung geladen
 - PHP-Dateien mit hinterlegter Web-URL zeigen die Live-Seite und laden nach dem Speichern neu
+- Zurück/Vor nach gefolgten Links, Neu laden
 - Entwicklertools (F12-Konsole der Seite) und „Im Browser öffnen“ (Standardbrowser; unbenannte Dateien und Serverdateien ohne Web-URL als temporäre Kopie)
 
 **Erweiterungen (Nova-kompatibel)**
@@ -83,7 +84,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Eigene Titelleiste mit Tabs; Tabs scrollen, lassen sich per Drag sortieren und haben ein Kontextmenü (Speichern, Duplizieren, Drucken, Schließen, andere/rechts/alle schließen, Pfad kopieren, im Explorer zeigen)
 - Windows-11-Andocklayouts am Maximieren-Knopf, Mica-Hintergrund in der Seitenleiste, native Schatten und abgerundete Ecken
 - Seitenleiste mit Dateien, Servern und Projektsuche; Git-Status (Branch, geänderte und neue Dateien)
-- Zuletzt geöffnete Projekte: Klick auf den Projektnamen in der Seitenleiste, Menü, Startseite oder Befehlspalette. Pro Projekt merkt sich Nebula die offenen Dateien.
+- Zuletzt geöffnete Projekte: Klick auf den Projektnamen in der Seitenleiste, Menü, Startseite oder Befehlspalette. Pro Projekt merkt sich Nebula die offenen Dateien. Die Listen der zuletzt geöffneten Projekte und Dateien lassen sich auf der Startseite („Leeren“) und im Datei-Menü leeren.
 - Befehlspalette mit allen Befehlen
 - Themes „Nebula Dunkel“ und „Nebula Hell“ (Paletten nach Novas Themes). Eigene Themes lassen sich bearbeiten, als JSON importieren und exportieren, und Nova-Themes (.css) können importiert werden.
 - Einstellungen für Editor, Design und Sprachen (Dateiendungen, Einrückung, eigene Vervollständigungen)

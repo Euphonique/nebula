@@ -1,15 +1,3 @@
-# Gefundene Bugs / Verbesserungen:
-- Rechter Mausklick auf den Root Ordner in der lokalen Dateiansicht wirft einen Fehler aus.
-- Startseite: Die Liste der zuletzt geöffneten Dateien und Projekte läuft über das Fenster.
-- Desweiteren Möglichkeit einbauen die Liste der zuletzt geladenen Dateien, Ordner und Projekte zu leeren.
-- Rechtes Panel: Beim öffnen von Bilddateien zeigt diese eine leere Seite an. (SVG zeigt korrekt Vorschau an und Quellcode). Vorschlag: Bilddateien immer nur im Vorschau Panel laden. Sollten wir einen HEX Editor einbauen, könnte dieser bei Binärdateien dies anzeigen.
-- Rechtes Panel Vorschau: zurück/vor Buttons einbauen, falls man einem Link gefolgt ist, um wieder zurück zu kommen.
-- Einstellungen Tastenkürzel: Fenster etwas größer als bei dem Rest der Einstellungen. ggf. die anderen Seiten an die Größe anpassen, damit das Fenster beim Wechsel der Seiten nicht "springt".
-- Linkes Panel unten Textbox "Filtern": Text nicht vertikal zentriert und zu weit oben.
-- Linkes Panel unten Textbox "Filtern": Eintippen von Filtern lässt das Programm kurzzeitig einfrieren.
-- Einstellungen Schriftart: Dropdown wird nicht als Dropdown dargestellt, sondern verschiebt die restlichen Einstellungen nach unten. Dropdown auch etwas höher machen.
-
-
 # Nebula – offene Ideen
 
 Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, **C** = nice to have.
@@ -94,3 +82,5 @@ Später (bewusst zurückgestellt): KI im rechten Panel (Agenten über ACP, eigen
 Externe Änderungen erkennen, Wiederherstellung nach Absturz, geteilte Ansicht, Blockauswahl, Formatieren beim Speichern und `.editorconfig`, zuletzt geöffnete Projekte, Git-Markierungen, Unterschiede im Konfliktdialog, eigene Tastenkürzel.
 
 Danach: Knöpfe für geteilte Ansicht und rechtes Panel, rechtes Panel mit Vorschau und Gliederung, lokales Terminal (PowerShell, Git Bash, cmd), Wort unter dem Cursor hervorheben, passendes HTML-Tag hervorheben und mit umbenennen, Gehe zu Symbol (Strg+R), Navigationsverlauf (Alt+←/→), Lesezeichen, Textwerkzeuge, Suchen/Ersetzen in der Auswahl, Markierungen am rechten Rand, klickbare Pfadleiste (auch Netzlaufwerke werden jetzt korrekt geöffnet), Projektsuche mit Dateimustern und `.gitignore`, Projektsuche auf dem Server über SSH (abbrechbar), automatisch speichern, lokaler Verlauf, neues Fensterlayout mit Logo, Vergleich als Tab (Git-Markierungen funktionieren jetzt auch auf Netzlaufwerken), Git-Tab mit Commit, Pull/Push und Branches, Übertragungsliste (Neuverbindung nach Verbindungsabbruch repariert), gespeicherte Serverbefehle, Zen-Modus, Schriftart und Zeilenhöhe, Farbwähler für CSS-Farben, Bildvorschau, Minimap.
+
+Bugrunde vom 19.10.: Rechtsklick auf den Projektordner, Startseite (Karte wächst mit, Listen leeren), ICO-Dateien, Bilder in der Vorschau, Zurück/Vor und schmale Scrollleisten in der Vorschau, Dateifilter ohne Einfrieren und zentriert, Schriftart-Dropdown, gleich große Einstellungsseiten.
