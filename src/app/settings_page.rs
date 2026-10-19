@@ -58,7 +58,7 @@ impl NebulaApp {
         let mut close = false;
         let mut state = std::mem::take(&mut self.settings_ui);
         super::modal(ctx, egui::Id::unique("settings-window")).show(ctx, |ui| {
-            ui.set_width(820.0);
+            ui.set_width(880.0);
             ui.set_height(560.0);
             ui.horizontal(|ui| {
                 ui.heading("Einstellungen");
@@ -80,13 +80,14 @@ impl NebulaApp {
                             .clicked()
                         {
                             state.page = page;
+                            state.font_picker_open = false;
                         }
                     }
                 });
                 ui.separator();
                 ui.vertical(|ui| {
                     egui::ScrollArea::vertical().id_salt("settings-page").auto_shrink([false, false]).show(ui, |ui| {
-                        ui.set_width(620.0);
+                        ui.set_width(680.0);
                         match state.page {
                             Page::Editor => self.editor_page(ui, &mut state),
                             Page::Design => self.design_page(ui, &mut state),
@@ -102,7 +103,12 @@ impl NebulaApp {
                 });
             });
             if state.keys.recording.is_none() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                close = true;
+                // Esc closes an open font list first.
+                if state.font_picker_open {
+                    state.font_picker_open = false;
+                } else {
+                    close = true;
+                }
             }
         });
         self.settings_ui = state;
@@ -119,38 +125,57 @@ impl NebulaApp {
         egui::Grid::new("editor-grid").num_columns(2).spacing([16.0, 10.0]).show(ui, |ui| {
             ui.label("Schriftart");
             let current = if e.font_family.is_empty() { "Standard (Cascadia Mono)".to_string() } else { e.font_family.clone() };
-            // Opens in place: a popup outside the modal settings window gets no keyboard input.
-            ui.vertical(|ui| {
-                let open = &mut state.font_picker_open;
-                if ui.add(egui::Button::new(format!("{current}  {}", if *open { "▴" } else { "▾" })).min_size(egui::vec2(260.0, 0.0))).clicked() {
-                    *open = !*open;
-                    state.font_filter.clear();
-                }
-                if !*open {
-                    return;
-                }
-                let filter = ui.add(egui::TextEdit::singleline(&mut state.font_filter).hint_text("Schrift suchen…").desired_width(260.0));
-                if !filter.has_focus() && state.font_filter.is_empty() {
-                    filter.request_focus();
-                }
-                let q = state.font_filter.to_lowercase();
-                let mut chosen = None;
-                egui::ScrollArea::vertical().id_salt("font-list").max_height(220.0).show(ui, |ui| {
-                    ui.set_width(260.0);
-                    if q.is_empty() && ui.selectable_label(e.font_family.is_empty(), "Standard (Cascadia Mono)").clicked() {
-                        chosen = Some(String::new());
-                    }
-                    for family in crate::fonts::installed().keys().filter(|f| f.to_lowercase().contains(&q)) {
-                        if ui.selectable_label(&e.font_family == family, family).clicked() {
-                            chosen = Some(family.clone());
-                        }
-                    }
-                });
-                if let Some(family) = chosen {
-                    e.font_family = family;
+            let button = ui.add(
+                egui::Button::new(format!("{current}  {}", if state.font_picker_open { "▴" } else { "▾" }))
+                    .min_size(egui::vec2(280.0, 28.0)),
+            );
+            if button.clicked() {
+                state.font_picker_open = !state.font_picker_open;
+                state.font_filter.clear();
+            }
+            if state.font_picker_open {
+                // Floats above the settings window like a dropdown. Tooltip order puts it
+                // above the modal, so the search field gets keyboard input.
+                let area = egui::Area::new(egui::Id::unique("font-picker"))
+                    .order(egui::Order::Tooltip)
+                    .fixed_pos(button.rect.left_bottom() + egui::vec2(0.0, 4.0))
+                    .show(ui.ctx(), |ui| {
+                        egui::Frame::popup(ui.style()).show(ui, |ui| {
+                            ui.set_width(280.0);
+                            let filter = ui.add(
+                                egui::TextEdit::singleline(&mut state.font_filter)
+                                    .hint_text("Schrift suchen…")
+                                    .desired_width(f32::INFINITY),
+                            );
+                            if !filter.has_focus() && state.font_filter.is_empty() {
+                                filter.request_focus();
+                            }
+                            let q = state.font_filter.to_lowercase();
+                            let mut chosen = None;
+                            egui::ScrollArea::vertical().id_salt("font-list").max_height(320.0).show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                if q.is_empty() && ui.selectable_label(e.font_family.is_empty(), "Standard (Cascadia Mono)").clicked() {
+                                    chosen = Some(String::new());
+                                }
+                                for family in crate::fonts::installed().keys().filter(|f| f.to_lowercase().contains(&q)) {
+                                    if ui.selectable_label(&e.font_family == family, family).clicked() {
+                                        chosen = Some(family.clone());
+                                    }
+                                }
+                            });
+                            if let Some(family) = chosen {
+                                e.font_family = family;
+                                state.font_picker_open = false;
+                            }
+                        });
+                    });
+                // Clicking elsewhere closes it (Esc is handled by the window).
+                let clicked_outside = ui.input(|i| i.pointer.any_click())
+                    && ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| !area.response.rect.contains(p) && !button.rect.contains(p));
+                if clicked_outside {
                     state.font_picker_open = false;
                 }
-            });
+            }
             ui.end_row();
             ui.label("Schriftgröße");
             ui.add(egui::Slider::new(&mut e.font_size, 8.0..=32.0).step_by(0.5));
