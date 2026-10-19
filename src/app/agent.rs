@@ -61,12 +61,50 @@ enum SelKind {
 type Pick = (SelKind, String);
 
 struct Selector {
-    id: String,
     kind: SelKind,
+    /// Setting name ("Model", "Effort" …) and its category ("model", "thought_level" …).
+    name: String,
+    category: String,
     label: String,
     tip: Option<String>,
     current: String,
     choices: Vec<(String, String, Option<String>)>,
+}
+
+impl Selector {
+    fn current_name(&self) -> &str {
+        self.choices.iter().find(|(v, _, _)| *v == self.current).map_or(self.current.as_str(), |(_, n, _)| n.as_str())
+    }
+}
+
+/// A setting as a small text chip in the toolbar; a click opens its choices.
+fn chip(ui: &mut egui::Ui, theme: &crate::theme::Theme, sel: &Selector, picked: &mut Option<Pick>) {
+    // Long names (agents, models) are shortened; the tooltip has the full name.
+    let label: String = if sel.label.chars().count() > 18 { format!("{}…", sel.label.chars().take(17).collect::<String>()) } else { sel.label.clone() };
+    let text = RichText::new(format!("{label} ▾")).size(12.0).color(theme.text_muted);
+    let resp = ui.add(egui::Button::new(text).frame_when_inactive(false));
+    let resp = match &sel.tip {
+        Some(tip) => resp.on_hover_text(format!("{tip}\n{}", sel.current_name())),
+        None => resp,
+    };
+    egui::Popup::menu(&resp).show(|ui| {
+        ui.set_min_width(180.0);
+        choices(ui, sel, picked);
+    });
+}
+
+fn choices(ui: &mut egui::Ui, sel: &Selector, picked: &mut Option<Pick>) {
+    for (value, name, description) in &sel.choices {
+        let resp = ui.selectable_label(*value == sel.current, name);
+        let resp = match description {
+            Some(d) => resp.on_hover_text(d),
+            None => resp,
+        };
+        if resp.clicked() {
+            *picked = Some((sel.kind.clone(), value.clone()));
+            ui.close();
+        }
+    }
 }
 
 impl NebulaApp {
@@ -75,8 +113,9 @@ impl NebulaApp {
         use crate::acp::session::ConfigValue;
         let agents = self.settings.agents.iter().map(|a| (a.name.clone(), a.name.clone(), None)).collect();
         let mut out = vec![Selector {
-            id: "agent".into(),
             kind: SelKind::Agent,
+            name: "Agent".into(),
+            category: String::new(),
             label: self.settings.agent.clone(),
             tip: Some("Agent".into()),
             current: self.settings.agent.clone(),
@@ -107,8 +146,9 @@ impl NebulaApp {
                 None => o.name.clone(),
             };
             out.push(Selector {
-                id: o.id.clone(),
                 kind: SelKind::Config(o.id.clone()),
+                name: o.name.clone(),
+                category: o.category.clone(),
                 label: format!("{prefix}{}", o.current_label()),
                 tip: Some(tip),
                 current,
@@ -123,8 +163,9 @@ impl NebulaApp {
             let current = modes.current_mode_id.to_string();
             let name = modes.available_modes.iter().find(|m| m.id.to_string() == current).map_or(current.clone(), |m| m.name.clone());
             out.push(Selector {
-                id: "legacy-mode".into(),
                 kind: SelKind::Mode,
+                name: "Modus".into(),
+                category: "mode".into(),
                 label: format!("Modus: {name}"),
                 tip: Some("Modus".into()),
                 current,
@@ -488,128 +529,172 @@ impl NebulaApp {
         let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
         let ui = &mut ui;
 
-        // Bottom part first (built upwards), so the conversation gets the rest.
+        // Bottom part first (built upwards), so the conversation gets the rest:
+        // the input card with its toolbar, below it mode and plan limits.
         let top = ui.cursor().top();
         let bottom_rect = Rect::from_min_max(pos2(area.left(), top), pos2(area.right(), area.bottom() - 8.0));
         let mut bottom = ui.new_child(egui::UiBuilder::new().max_rect(bottom_rect).layout(egui::Layout::bottom_up(egui::Align::Min)));
         let working = self.agent.session.as_ref().is_some_and(|s| s.is_working()) || self.agent.queued.is_some();
         let mut send = false;
+        let selectors = self.agent_selectors();
+        let slot = |s: &Selector| match &s.kind {
+            SelKind::Agent => 0,
+            SelKind::Mode => 3,
+            SelKind::Config(_) => match s.category.as_str() {
+                "model" => 1,
+                "thought_level" => 2,
+                "mode" => 3,
+                _ => 4,
+            },
+        };
+        let mut picked: Option<Pick> = None;
         {
             let ui = &mut bottom;
-            // Send/stop button and agent name.
+            // Mode (left) and limits (right) under the card.
             ui.horizontal(|ui| {
-                let mut refresh = false;
-                if let Some(s) = &self.agent.session {
-                    match &s.limits {
-                        Some(l) => refresh = limits_ui(ui, &theme, l, s.agent_info.as_deref()).clicked(),
-                        None => {
-                            if let Some(info) = &s.agent_info {
-                                ui.label(RichText::new(info).size(11.0).color(theme.text_faint));
+                for sel in selectors.iter().filter(|s| slot(s) == 3) {
+                    chip(ui, &theme, sel, &mut picked);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let mut refresh = false;
+                    if let Some(s) = &self.agent.session {
+                        match &s.limits {
+                            Some(l) => refresh = limits_ui(ui, &theme, l, s.agent_info.as_deref()).clicked(),
+                            None => {
+                                if let Some(info) = &s.agent_info {
+                                    ui.label(RichText::new(info).size(11.0).color(theme.text_faint));
+                                }
                             }
                         }
                     }
-                }
-                if refresh && let Some(s) = &mut self.agent.session {
-                    s.refresh_limits();
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if working {
-                        let stop = egui::Button::new(RichText::new("Stopp")).min_size(vec2(70.0, 26.0));
-                        if ui.add(stop).clicked() {
-                            self.agent.queued = None;
-                            if let Some(s) = &mut self.agent.session {
-                                s.cancel();
-                            }
-                        }
-                    } else {
-                        let enabled = !self.agent.input.trim().is_empty();
-                        let button = egui::Button::new(RichText::new("Senden").color(Color32::WHITE)).fill(theme.accent).min_size(vec2(70.0, 26.0));
-                        if ui.add_enabled(enabled, button).clicked() {
-                            send = true;
-                        }
+                    if refresh && let Some(s) = &mut self.agent.session {
+                        s.refresh_limits();
                     }
                 });
             });
-            ui.add_space(4.0);
-            let edit = egui::TextEdit::multiline(&mut self.agent.input)
-                .hint_text(if working { "Der Agent arbeitet …" } else { "Frag den Agenten oder gib ihm eine Aufgabe …" })
-                .desired_rows(3)
-                .desired_width(f32::INFINITY)
-                .return_key(egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::Enter));
-            let resp = ui.add(edit);
-            if self.agent.focus_input {
-                resp.request_focus();
-                self.agent.focus_input = false;
-            }
-            if resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift) {
-                send = true;
-            }
-            ui.add_space(4.0);
-            // Agent and its settings (model, effort, mode …), right above the input.
-            let rows = self.agent_selectors();
-            let width = ((ui.available_width() - 6.0) / 2.0).max(80.0);
-            let mut picked: Option<Pick> = None;
-            // Built upwards: the last row first.
-            for row in rows.chunks(2).rev() {
-                ui.horizontal(|ui| {
-                    for sel in row {
-                        let resp = egui::ComboBox::from_id_salt(("agent-sel", &sel.id))
-                            .selected_text(&sel.label)
-                            .width(width - 8.0)
-                            .show_ui(ui, |ui| {
-                                for (value, name, description) in &sel.choices {
-                                    let resp = ui.selectable_label(*value == sel.current, name);
-                                    let resp = match description {
-                                        Some(d) => resp.on_hover_text(d),
-                                        None => resp,
-                                    };
-                                    if resp.clicked() {
-                                        picked = Some((sel.kind.clone(), value.clone()));
-                                    }
-                                }
-                            });
-                        if let Some(tip) = &sel.tip {
-                            resp.response.on_hover_text(tip);
-                        }
-                    }
-                });
-            }
-            if let Some(pick) = picked {
-                self.apply_agent_pick(pick);
-            }
-            ui.add_space(4.0);
-            // Attach the active file.
+            ui.add_space(2.0);
+
+            let focused = ui.memory(|m| m.focused() == Some(egui::Id::unique("agent-input")));
             let file_name = self.active.and_then(|i| match &self.docs[i].source {
                 DocSource::Local(_) | DocSource::Remote { .. } if self.docs[i].image.is_none() => Some(self.docs[i].source.file_name()),
                 _ => None,
             });
-            ui.horizontal(|ui| {
-                if let Some(name) = &file_name {
-                    ui.toggle_value(&mut self.agent.attach_file, format!("📎 {name}")).on_hover_text("Die aktuelle Datei mitschicken");
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new("Umschalt+Enter: neue Zeile").size(11.0).color(theme.text_faint));
-                });
-            });
-            // Files attached from the sidebar; a click removes one.
-            let mut remove = None;
-            for row in self.agent.attachments.chunks(3).collect::<Vec<_>>().into_iter().rev() {
-                ui.horizontal(|ui| {
-                    for a in row {
-                        let (text, tip) = match &a.loaded {
-                            Some(l) => (format!("📄 {}  ✕", a.label), format!("{}\nKlicken zum Entfernen", l.label)),
-                            None => (format!("⏳ {}", a.label), "Wird vom Server gelesen …".to_string()),
+            egui::Frame::new()
+                .fill(theme.background)
+                .stroke(Stroke::new(1.0, if focused { theme.accent.gamma_multiply(0.8) } else { theme.hover.gamma_multiply(2.0) }))
+                .corner_radius(10.0)
+                .inner_margin(egui::Margin { left: 8, right: 6, top: 6, bottom: 5 })
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    // Toolbar (built upwards, so it comes first): attach, agent, model, effort, more – send on the right.
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        let attach = egui::Button::new(RichText::new("📎").size(13.0)).frame_when_inactive(self.agent.attach_file).selected(self.agent.attach_file);
+                        let tip = match &file_name {
+                            Some(n) => format!("{n} mitschicken"),
+                            None => "Dateien hängst du per Rechtsklick in der Seitenleiste an".into(),
                         };
-                        if ui.add(egui::Button::new(RichText::new(text).size(12.0)).corner_radius(10.0)).on_hover_text(tip).clicked() {
-                            remove = Some(a.file.clone());
+                        if ui.add_enabled(file_name.is_some(), attach).on_hover_text(tip).on_disabled_hover_text("Dateien hängst du per Rechtsklick in der Seitenleiste an").clicked() {
+                            self.agent.attach_file = !self.agent.attach_file;
+                        }
+                        for want in 0..=2 {
+                            for sel in selectors.iter().filter(|s| slot(s) == want) {
+                                chip(ui, &theme, sel, &mut picked);
+                            }
+                        }
+                        let more: Vec<&Selector> = selectors.iter().filter(|s| slot(s) == 4).collect();
+                        if !more.is_empty() {
+                            let resp = ui.add(egui::Button::new(RichText::new("⋯").size(13.0)).frame_when_inactive(false)).on_hover_text("Weitere Einstellungen");
+                            egui::Popup::menu(&resp).show(|ui| {
+                                for sel in &more {
+                                    ui.menu_button(format!("{}: {}", sel.name, sel.current_name()), |ui| {
+                                        choices(ui, sel, &mut picked);
+                                    });
+                                }
+                            });
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let (text, tip, enabled) = if working {
+                                ("■", "Stoppen", true)
+                            } else {
+                                ("↑", "Senden (Enter)", !self.agent.input.trim().is_empty())
+                            };
+                            let button = egui::Button::new(RichText::new(text).size(14.0).strong().color(Color32::WHITE))
+                                .fill(if working { theme.danger.gamma_multiply(0.85) } else { theme.accent })
+                                .corner_radius(13.0)
+                                .min_size(vec2(26.0, 26.0));
+                            if ui.add_enabled(enabled, button).on_hover_text(tip).clicked() {
+                                if working {
+                                    self.agent.queued = None;
+                                    if let Some(s) = &mut self.agent.session {
+                                        s.cancel();
+                                    }
+                                } else {
+                                    send = true;
+                                }
+                            }
+                        });
+                    });
+                    let edit = egui::TextEdit::multiline(&mut self.agent.input)
+                        .id(egui::Id::unique("agent-input"))
+                        .frame(egui::Frame::NONE)
+                        .hint_text(if working { "Der Agent arbeitet …" } else { "Frag den Agenten oder gib ihm eine Aufgabe …" })
+                        .desired_rows(2)
+                        .desired_width(f32::INFINITY)
+                        .return_key(egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::Enter));
+                    let resp = ui.add(edit).on_hover_text("Enter: senden · Umschalt+Enter: neue Zeile");
+                    if self.agent.focus_input {
+                        resp.request_focus();
+                        self.agent.focus_input = false;
+                    }
+                    if resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift) {
+                        send = true;
+                    }
+                    // Esc stops a running answer.
+                    if working && (resp.has_focus() || resp.lost_focus()) && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        self.agent.queued = None;
+                        if let Some(s) = &mut self.agent.session {
+                            s.cancel();
                         }
                     }
+                    // Attached files above the text; a click removes one.
+                    let mut items: Vec<(Option<FileRef>, String, String)> = self
+                        .agent
+                        .attachments
+                        .iter()
+                        .map(|a| match &a.loaded {
+                            Some(l) => (Some(a.file.clone()), format!("📄 {}  ✕", a.label), format!("{}\nKlicken zum Entfernen", l.label)),
+                            None => (Some(a.file.clone()), format!("⏳ {}", a.label), "Wird vom Server gelesen …".to_string()),
+                        })
+                        .collect();
+                    if self.agent.attach_file
+                        && let Some(n) = &file_name
+                    {
+                        items.insert(0, (None, format!("📄 {n} (aktuell)  ✕"), "Die aktuelle Datei wird mitgeschickt\nKlicken zum Entfernen".into()));
+                    }
+                    let mut remove: Option<Option<FileRef>> = None;
+                    for row in items.chunks(3).collect::<Vec<_>>().into_iter().rev() {
+                        ui.horizontal(|ui| {
+                            for (file, text, tip) in row {
+                                let button = egui::Button::new(RichText::new(text).size(11.5)).corner_radius(9.0).fill(theme.hover.gamma_multiply(1.4));
+                                if ui.add(button).on_hover_text(tip).clicked() {
+                                    remove = Some(file.clone());
+                                }
+                            }
+                        });
+                    }
+                    match remove {
+                        Some(Some(file)) => {
+                            self.agent.attachments.retain(|a| a.file != file);
+                            self.agent.pending_attach.retain(|_, f| *f != file);
+                        }
+                        Some(None) => self.agent.attach_file = false,
+                        None => {}
+                    }
                 });
-            }
-            if let Some(file) = remove {
-                self.agent.attachments.retain(|a| a.file != file);
-                self.agent.pending_attach.retain(|_, f| *f != file);
-            }
+        }
+        if let Some(pick) = picked {
+            self.apply_agent_pick(pick);
         }
 
         // The conversation in the space left above; questions and the login
