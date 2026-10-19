@@ -7,6 +7,8 @@
 - Einstellungen Tastenkürzel: Fenster etwas größer als bei dem Rest der Einstellungen. ggf. die anderen Seiten an die Größe anpassen, damit das Fenster beim Wechsel der Seiten nicht "springt".
 - Linkes Panel unten Textbox "Filtern": Text nicht vertikal zentriert und zu weit oben.
 - Linkes Panel unten Textbox "Filtern": Eintippen von Filtern lässt das Programm kurzzeitig einfrieren.
+- Einstellungen Schriftart: Dropdown wird nicht als Dropdown dargestellt, sondern verschiebt die restlichen Einstellungen nach unten. Dropdown auch etwas höher machen.
+
 
 # Nebula – offene Ideen
 
@@ -17,6 +19,7 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 - **C** `.bak`-Kopie auf dem Server vor dem Überschreiben (eine lokale Kopie leistet schon der lokale Verlauf).
 
 ## Editor
+- **B** Über Minimap ein Icon Button einbauen um diese ein/auszublenden.
 - **B** Eigene Snippets pro Sprache in den Einstellungen anlegen/bearbeiten (mit Platzhaltern `$1`, `${2:name}`).
 - **C** Makros aufnehmen und abspielen.
 - **C** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).

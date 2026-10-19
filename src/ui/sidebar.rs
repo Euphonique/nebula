@@ -830,7 +830,8 @@ impl Sidebar {
         let clipboard_ready = self.clipboard.is_some();
         resp.context_menu(|ui| dir_menu(ui, &target, clipboard_ready, actions));
         let resp = resp.on_hover_text("Projekt wechseln");
-        egui::Popup::menu(&resp).show(|ui| {
+        // Own id: the context menu above already uses the default popup id of this response.
+        egui::Popup::menu(&resp).id(resp.id.with("projects")).show(|ui| {
             ui.set_min_width(240.0);
             for p in self.recent_folders.iter().filter(|p| **p != root) {
                 let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string());
