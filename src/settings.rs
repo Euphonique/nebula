@@ -1,12 +1,19 @@
 //! Persistent application settings and server definitions.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "Nebula";
 pub const KEYRING_SERVICE: &str = "Nebula Editor";
+
+/// Nebula's folder (`%APPDATA%\nebula`): `config` plus the agents' Node
+/// runtime and package cache next to it.
+pub fn data_dir() -> PathBuf {
+    let config = config_dir();
+    config.parent().map(Path::to_path_buf).unwrap_or(config)
+}
 
 pub fn config_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("NEBULA_CONFIG_DIR") {

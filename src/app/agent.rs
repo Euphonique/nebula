@@ -23,9 +23,77 @@ pub(super) struct AgentUi {
     queued: Option<(String, Vec<(PathBuf, String)>)>,
     /// Focus the input on the next frame.
     focus_input: bool,
+    /// Node.js being downloaded for the agents, and the last download error.
+    node_dl: Option<NodeDownload>,
+    node_error: Option<String>,
+}
+
+struct NodeDownload {
+    progress: std::sync::Arc<crate::acp::node::Progress>,
+    handle: std::thread::JoinHandle<Result<String, String>>,
 }
 
 impl NebulaApp {
+    fn start_node_download(&mut self) {
+        if self.agent.node_dl.is_some() {
+            return;
+        }
+        // A running agent keeps Nebula's node.exe open; the new one replaces it.
+        self.agent.session = None;
+        let progress = std::sync::Arc::new(crate::acp::node::Progress::default());
+        let p = progress.clone();
+        let handle = std::thread::spawn(move || crate::acp::node::download(p));
+        self.agent.node_dl = Some(NodeDownload { progress, handle });
+        self.agent.node_error = None;
+    }
+
+    pub(super) fn agent_node_downloading(&self) -> bool {
+        self.agent.node_dl.is_some()
+    }
+
+    /// Finishes a Node download; a waiting agent starts again.
+    fn poll_node_download(&mut self, ctx: &egui::Context) {
+        let Some(dl) = &self.agent.node_dl else { return };
+        if !dl.handle.is_finished() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            return;
+        }
+        let dl = self.agent.node_dl.take().unwrap();
+        match dl.handle.join().unwrap_or_else(|_| Err("Download abgebrochen.".into())) {
+            Ok(version) => {
+                self.info(format!("Node.js {version} ist bereit."));
+                if self.agent.session.as_ref().is_some_and(|s| s.phase == Phase::NeedsNode) {
+                    self.agent.session = None;
+                }
+            }
+            Err(e) => self.agent.node_error = Some(e),
+        }
+    }
+
+    /// Button or progress bar for getting Node.js.
+    pub(super) fn node_download_ui(&mut self, ui: &mut egui::Ui, label: &str) {
+        let theme = self.theme.clone();
+        self.poll_node_download(ui.ctx());
+        match &self.agent.node_dl {
+            Some(dl) => {
+                let text = match dl.progress.fraction() {
+                    Some(f) if f >= 1.0 => "Node.js wird entpackt …".to_string(),
+                    Some(f) => format!("Node.js wird geladen … {:.0} %", f * 100.0),
+                    None => "Node.js wird geladen …".into(),
+                };
+                ui.add(egui::ProgressBar::new(dl.progress.fraction().unwrap_or(0.0)).text(text).desired_width(320.0));
+            }
+            None => {
+                if ui.button(label).clicked() {
+                    self.start_node_download();
+                }
+            }
+        }
+        if let Some(e) = &self.agent.node_error {
+            ui.label(RichText::new(e).color(theme.danger));
+        }
+    }
+
     /// Opens the agent tab of the right panel (focusing the input).
     pub(super) fn show_agent(&mut self) {
         self.settings.right_panel = true;
@@ -178,7 +246,7 @@ impl NebulaApp {
         let theme = self.theme.clone();
         let ctx = ui.ctx().clone();
         // Start the agent right away: login state and plan limits show before the first message.
-        if self.agent.session.is_none() && !self.settings.agents.is_empty() {
+        if self.agent.session.is_none() && !self.settings.agents.is_empty() && self.agent.node_dl.is_none() {
             self.start_agent(&ctx);
         }
 
@@ -311,6 +379,23 @@ impl NebulaApp {
         // come at its end (it sticks to the bottom).
         let list_rect = Rect::from_min_max(pos2(area.left(), top), pos2(area.right(), bottom.min_rect().top() - 8.0));
         let mut list_ui = ui.new_child(egui::UiBuilder::new().max_rect(list_rect));
+        if self.agent.session.as_ref().is_some_and(|s| s.phase == Phase::NeedsNode) {
+            let ui = &mut list_ui;
+            ui.add_space(24.0);
+            ui.label(RichText::new("Node.js wird benötigt").size(15.0).strong());
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(format!(
+                    "Die KI-Agenten laufen mit Node.js. Nebula lädt es einmalig von nodejs.org (ca. 30 MB, Prüfsumme wird kontrolliert) \
+                     nach {} – ohne Installation und ohne Adminrechte.",
+                    crate::acp::node::runtime_dir().display()
+                ))
+                .color(theme.text_muted),
+            );
+            ui.add_space(8.0);
+            self.node_download_ui(ui, "Node.js herunterladen");
+            return;
+        }
         let mut open_location: Option<(PathBuf, Option<u32>)> = None;
         let mut answer: Option<Option<String>> = None;
         let mut auth: Option<crate::acp::session::AuthOption> = None;
@@ -324,6 +409,9 @@ impl NebulaApp {
                     intro(ui, &theme, &self.settings.agent);
                     return;
                 };
+                if s.entries.is_empty() && matches!(s.phase, Phase::Ready | Phase::Starting) {
+                    intro(ui, &theme, &self.settings.agent);
+                }
                 for (n, entry) in s.entries.iter().enumerate() {
                     entry_ui(ui, &theme, n, entry, &mut open_location);
                     ui.add_space(6.0);

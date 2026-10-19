@@ -3,6 +3,7 @@
 //! line. Nebula is the client: it shows the conversation, answers permission
 //! requests and serves file reads/writes (open buffers included).
 
+pub mod node;
 pub mod session;
 pub mod usage;
 
@@ -145,7 +146,8 @@ pub fn run_login_console(agent: &AgentConfig, login: &session::TerminalLogin, cw
     };
     // `start` opens a new console; it stays open so messages can be read.
     let script = format!("title Anmeldung: {} & {line} & echo. & pause", agent.name);
-    let mut env = agent.process_env();
+    // Same Node and package cache as the agent itself.
+    let (_, mut env) = node::prepare(&agent.command, agent.process_env())?;
     env.extend(login.env.clone());
     Command::new("cmd")
         .args(["/C", "start", "", "cmd", "/C", &script])
@@ -181,11 +183,10 @@ impl Connection {
     /// Starts the agent in `cwd`; `wake` is called whenever something arrives.
     pub fn spawn(cfg: &AgentConfig, cwd: &Path, wake: impl Fn() + Send + Sync + 'static) -> Result<Self, String> {
         use std::os::windows::process::CommandExt;
-        let program = crate::ext::process::which(&cfg.command, &cfg.env)
-            .ok_or_else(|| format!("„{}“ wurde nicht gefunden. Ist Node.js installiert?", cfg.command))?;
+        let (program, env) = node::prepare(&cfg.command, cfg.process_env())?;
         let mut child = Command::new(&program)
             .args(&cfg.args)
-            .envs(cfg.process_env())
+            .envs(&env)
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

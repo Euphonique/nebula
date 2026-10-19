@@ -19,6 +19,8 @@ pub struct AgentsPage {
     edit: Option<Edit>,
     /// Hint shown after starting a console login, by agent name.
     console_hint: HashMap<String, String>,
+    /// Space used by Node and the agents (measured in the background).
+    sizes: Option<std::sync::Arc<std::sync::Mutex<Option<(u64, u64)>>>>,
 }
 
 impl AgentsPage {
@@ -26,6 +28,7 @@ impl AgentsPage {
     pub fn stop(&mut self) {
         self.probes.clear();
         self.console_hint.clear();
+        self.sizes = None;
     }
 }
 
@@ -78,6 +81,79 @@ impl Edit {
 }
 
 impl NebulaApp {
+    /// Where Node.js and the agents live, with their size.
+    fn runtime_info(&mut self, ui: &mut Ui, state: &mut AgentsPage) {
+        use crate::acp::node;
+        let theme = self.theme.clone();
+        let sizes = state
+            .sizes
+            .get_or_insert_with(|| {
+                let cell = std::sync::Arc::new(std::sync::Mutex::new(None));
+                let c = cell.clone();
+                let ctx = ui.ctx().clone();
+                std::thread::spawn(move || {
+                    let measured = (node::folder_size(&node::private_dir()), node::folder_size(&node::agents_dir()));
+                    *c.lock().unwrap() = Some(measured);
+                    ctx.request_repaint();
+                });
+                cell
+            })
+            .lock()
+            .ok()
+            .and_then(|s| *s);
+        let mb = |b: u64| format!("{:.0} MB", b as f64 / 1_048_576.0);
+        egui::Frame::new().fill(theme.hover.gamma_multiply(0.6)).corner_radius(8.0).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            let status = node::status();
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Node.js").strong());
+                let (text, color) = match &status {
+                    node::Status::Private(v) => {
+                        let size = sizes.map(|(n, _)| format!(", {}", mb(n))).unwrap_or_default();
+                        (format!("{v} – von Nebula verwaltet{size}"), theme.success)
+                    }
+                    node::Status::System(dir) => (format!("installiert ({})", dir.display()), theme.success),
+                    node::Status::Missing => ("fehlt – wird für die Agenten benötigt".into(), theme.modified),
+                };
+                ui.label(RichText::new(text).color(color));
+            });
+            if let Some((_, agents)) = sizes {
+                ui.label(RichText::new(format!("Agenten: {}", mb(agents))).size(12.0).color(theme.text_muted));
+            }
+            ui.horizontal(|ui| {
+                match &status {
+                    node::Status::Missing => self.node_download_ui(ui, "Node.js herunterladen (ca. 30 MB)"),
+                    node::Status::Private(_) => {
+                        self.node_download_ui(ui, "Auf neueste LTS-Version aktualisieren");
+                        // Checking agents would keep the old Node busy.
+                        if self.agent_node_downloading() {
+                            state.probes.clear();
+                        }
+                    }
+                    // An installed Node is used; Nebula's own copy would take precedence.
+                    node::Status::System(_) => {}
+                }
+                if sizes.is_some_and(|(_, a)| a > 0)
+                    && ui
+                        .button("Agenten-Speicher leeren")
+                        .on_hover_text("Löscht die geladenen Agenten; sie werden beim nächsten Start neu geladen. Anmeldungen bleiben erhalten.")
+                        .clicked()
+                {
+                    // Running agents keep files open: stop them first.
+                    state.probes.clear();
+                    self.agent.session = None;
+                    let _ = std::fs::remove_dir_all(node::agents_dir());
+                    state.sizes = None;
+                }
+                if ui.button("Ordner öffnen").on_hover_text(crate::settings::data_dir().display().to_string()).clicked() {
+                    let dir = crate::settings::data_dir();
+                    let _ = std::fs::create_dir_all(&dir);
+                    let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                }
+            });
+        });
+    }
+
     pub(super) fn agents_page(&mut self, ui: &mut Ui, state: &mut AgentsPage) {
         let theme = self.theme.clone();
         let ctx = ui.ctx().clone();
@@ -91,10 +167,12 @@ impl NebulaApp {
         ui.label(
             RichText::new(
                 "Agenten arbeiten im rechten Panel (✦) im geöffneten Projekt. Angemeldet wird beim jeweiligen Anbieter – \
-                 im Browser mit deinem Konto oder per API-Schlüssel. Die Agenten werden beim ersten Start über npx installiert (Node.js nötig).",
+                 im Browser mit deinem Konto oder per API-Schlüssel. Die Agenten werden beim ersten Start geladen.",
             )
             .color(theme.text_muted),
         );
+        ui.add_space(8.0);
+        self.runtime_info(ui, state);
         ui.add_space(8.0);
 
         if let Some(edit) = &mut state.edit {
@@ -277,6 +355,7 @@ fn status_label(ui: &mut Ui, theme: &crate::theme::Theme, probe: Option<&AgentSe
         Phase::NeedsAuth(_) => ("● Anmeldung nötig".into(), theme.modified),
         Phase::Failed(e) => (format!("● {}", e.lines().next().unwrap_or("Fehler")), theme.danger),
         Phase::Exited => ("beendet".into(), theme.text_faint),
+        Phase::NeedsNode => ("● Node.js wird benötigt".into(), theme.modified),
     };
     if p.phase == Phase::Starting {
         ui.spinner();

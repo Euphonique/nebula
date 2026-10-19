@@ -23,6 +23,8 @@ pub enum Phase {
     Ready,
     /// A prompt is running.
     Working,
+    /// Node.js is needed to run the agent and not available yet.
+    NeedsNode,
     Failed(String),
     Exited,
 }
@@ -170,6 +172,7 @@ impl AgentSession {
                     }),
                 );
             }
+            Err(e) if e == super::node::MISSING => s.phase = Phase::NeedsNode,
             Err(e) => s.phase = Phase::Failed(e),
         }
         s
