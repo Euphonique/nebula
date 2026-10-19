@@ -1179,6 +1179,11 @@ impl NebulaApp {
                                 self.handle_sidebar_action(ui.ctx(), SidebarAction::SwitchFolder(p));
                             }
                         }
+                        ui.separator();
+                        if ui.button("Liste leeren").clicked() {
+                            ui.close();
+                            self.clear_recent_folders();
+                        }
                     });
                 });
                 let recent = self.settings.recent_files.clone();
@@ -1189,6 +1194,11 @@ impl NebulaApp {
                                 self.open_local(&p);
                                 ui.close();
                             }
+                        }
+                        ui.separator();
+                        if ui.button("Liste leeren").clicked() {
+                            ui.close();
+                            self.clear_recent_files();
                         }
                     });
                 });
@@ -1930,7 +1940,17 @@ impl NebulaApp {
         ui.painter().rect_filled(area, 0.0, theme.background);
         let icon = self.app_icon(ui.ctx());
 
-        let card_size = vec2(680.0_f32.min(area.width() - 40.0), 400.0_f32.min(area.height() - 40.0));
+        let current = self.sidebar.root.clone();
+        let servers: Vec<(String, String)> =
+            self.sites.sites.iter().take(4).map(|s| (s.id.clone(), s.display_name())).collect();
+        let folders: Vec<PathBuf> =
+            self.settings.recent_folders.iter().filter(|p| Some(*p) != current.as_ref()).take(5).cloned().collect();
+        let recent: Vec<PathBuf> = self.settings.recent_files.iter().take(5).cloned().collect();
+        // Grow the card with its lists; beyond the window height the right column scrolls.
+        let sections = 1 + [servers.len(), folders.len(), recent.len()].iter().filter(|n| **n > 0).count();
+        let rows = 4 + servers.len() + folders.len() + recent.len();
+        let needed = 40.0 + sections as f32 * WELCOME_HEADING_H + rows as f32 * (WELCOME_ROW_H + 2.0);
+        let card_size = vec2(680.0_f32.min(area.width() - 40.0), needed.max(400.0).min(area.height() - 40.0));
         let card = Rect::from_center_size(area.center(), card_size);
         let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(card));
         let painter = ui.painter().clone();
@@ -1961,76 +1981,85 @@ impl NebulaApp {
         // Right: actions, recent files and servers.
         let right = Rect::from_min_max(pos2(left.right() + 18.0, card.top() + 22.0), card.max - vec2(18.0, 18.0));
         let mut col = ui.new_child(egui::UiBuilder::new().max_rect(right));
-        col.spacing_mut().item_spacing.y = 2.0;
-        let heading = |ui: &mut egui::Ui, t: &str| {
-            ui.add_space(6.0);
-            ui.label(RichText::new(t.to_uppercase()).font(FontId::new(10.5, crate::theme::bold_family())).color(theme.text_faint));
-            ui.add_space(2.0);
-        };
-        heading(&mut col, "Start");
-        type IconFn = fn(&egui::Painter, egui::Pos2, Color32);
-        let actions: [(IconFn, &str, &str); 4] = [
-            (icons::new_file, "Neue Datei", "Strg+N"),
-            (|p, c, col| icons::folder(p, c, col, true), "Ordner öffnen…", "Strg+Umschalt+O"),
-            (|p, c, col| icons::search(p, c, col), "Datei öffnen…", "Strg+O"),
-            (icons::server, "Server hinzufügen…", ""),
-        ];
-        for (n, (icon, label, hint)) in actions.into_iter().enumerate() {
-            if welcome_row(&mut col, &theme, |p, c| icon(p, c, theme.accent), label, hint).clicked() {
-                match n {
-                    0 => self.new_document(),
-                    1 => self.pick_and_open_folder(),
-                    2 => self.pick_and_open_file(),
-                    _ => self.open_site_form(None),
-                }
-            }
-        }
-
-        let servers: Vec<(String, String)> =
-            self.sites.sites.iter().take(4).map(|s| (s.id.clone(), s.display_name())).collect();
-        if !servers.is_empty() {
-            heading(&mut col, "Server");
-            for (id, name) in servers {
-                if welcome_row(&mut col, &theme, |p, c| icons::server(p, c, theme.text_muted), &name, "Verbinden").clicked() {
-                    self.show_sidebar = true;
-                    self.sidebar.tab = crate::ui::sidebar::SidebarTab::Servers;
-                    self.sidebar.expanded_sites.insert(id.clone());
-                    if let Some(site) = self.sites.get(&id).cloned() {
-                        self.ensure_tree(&site);
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(&mut col, |col| {
+            col.spacing_mut().item_spacing.y = 2.0;
+            welcome_heading(col, &theme, "Start", false);
+            type IconFn = fn(&egui::Painter, egui::Pos2, Color32);
+            let actions: [(IconFn, &str, &str); 4] = [
+                (icons::new_file, "Neue Datei", "Strg+N"),
+                (|p, c, col| icons::folder(p, c, col, true), "Ordner öffnen…", "Strg+Umschalt+O"),
+                (|p, c, col| icons::search(p, c, col), "Datei öffnen…", "Strg+O"),
+                (icons::server, "Server hinzufügen…", ""),
+            ];
+            for (n, (icon, label, hint)) in actions.into_iter().enumerate() {
+                if welcome_row(col, &theme, |p, c| icon(p, c, theme.accent), label, hint).clicked() {
+                    match n {
+                        0 => self.new_document(),
+                        1 => self.pick_and_open_folder(),
+                        2 => self.pick_and_open_file(),
+                        _ => self.open_site_form(None),
                     }
                 }
             }
-        }
+
+            if !servers.is_empty() {
+                welcome_heading(col, &theme, "Server", false);
+                for (id, name) in servers {
+                    if welcome_row(col, &theme, |p, c| icons::server(p, c, theme.text_muted), &name, "Verbinden").clicked() {
+                        self.show_sidebar = true;
+                        self.sidebar.tab = crate::ui::sidebar::SidebarTab::Servers;
+                        self.sidebar.expanded_sites.insert(id.clone());
+                        if let Some(site) = self.sites.get(&id).cloned() {
+                            self.ensure_tree(&site);
+                        }
+                    }
+                }
+            }
+            if !folders.is_empty() {
+                if welcome_heading(col, &theme, "Projekte", true) {
+                    self.clear_recent_folders();
+                }
+                for p in folders {
+                    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string());
+                    let dir = p.parent().and_then(|d| d.file_name()).map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+                    if welcome_row(col, &theme, |painter, c| icons::folder(painter, c, theme.text_muted, false), &name, &dir)
+                        .on_hover_text(p.display().to_string())
+                        .clicked()
+                    {
+                        let ctx = col.ctx().clone();
+                        self.handle_sidebar_action(&ctx, SidebarAction::SwitchFolder(p));
+                    }
+                }
+            }
+            if !recent.is_empty() {
+                if welcome_heading(col, &theme, "Zuletzt geöffnet", true) {
+                    self.clear_recent_files();
+                }
+                for p in recent {
+                    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let dir = p.parent().and_then(|d| d.file_name()).map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+                    if welcome_row(col, &theme, |painter, c| icons::file(painter, c, &name), &name, &dir)
+                        .on_hover_text(p.display().to_string())
+                        .clicked()
+                    {
+                        self.open_local(&p);
+                    }
+                }
+            }
+        });
+    }
+
+    /// Forgets the recently opened projects (the current one stays for the project switcher).
+    fn clear_recent_folders(&mut self) {
         let current = self.sidebar.root.clone();
-        let folders: Vec<PathBuf> = self.settings.recent_folders.iter().filter(|p| Some(*p) != current.as_ref()).take(5).cloned().collect();
-        if !folders.is_empty() {
-            heading(&mut col, "Projekte");
-            for p in folders {
-                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string());
-                let dir = p.parent().and_then(|d| d.file_name()).map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
-                if welcome_row(&mut col, &theme, |painter, c| icons::folder(painter, c, theme.text_muted, false), &name, &dir)
-                    .on_hover_text(p.display().to_string())
-                    .clicked()
-                {
-                    let ctx = col.ctx().clone();
-                    self.handle_sidebar_action(&ctx, SidebarAction::SwitchFolder(p));
-                }
-            }
-        }
-        let recent: Vec<PathBuf> = self.settings.recent_files.iter().take(5).cloned().collect();
-        if !recent.is_empty() {
-            heading(&mut col, "Zuletzt geöffnet");
-            for p in recent {
-                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let dir = p.parent().and_then(|d| d.file_name()).map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
-                if welcome_row(&mut col, &theme, |painter, c| icons::file(painter, c, &name), &name, &dir)
-                    .on_hover_text(p.display().to_string())
-                    .clicked()
-                {
-                    self.open_local(&p);
-                }
-            }
-        }
+        self.settings.recent_folders.retain(|p| Some(p) == current.as_ref());
+        self.sidebar.recent_folders = self.settings.recent_folders.clone();
+        let _ = self.settings.save();
+    }
+
+    fn clear_recent_files(&mut self) {
+        self.settings.recent_files.clear();
+        let _ = self.settings.save();
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
@@ -3055,6 +3084,34 @@ fn fuzzy_filter(files: &[PathBuf], root: &Path, query: &str, max: usize) -> Vec<
 }
 
 /// A clickable row on the welcome screen: icon, label and a muted hint.
+const WELCOME_ROW_H: f32 = 28.0;
+const WELCOME_HEADING_H: f32 = 26.0;
+
+/// Section heading on the start page, optionally with a small "Leeren" link.
+/// Returns true when that link was clicked.
+fn welcome_heading(ui: &mut egui::Ui, theme: &Theme, title: &str, clearable: bool) -> bool {
+    ui.add_space(6.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 16.0), Sense::hover());
+    ui.painter().text(
+        pos2(rect.left(), rect.center().y),
+        Align2::LEFT_CENTER,
+        title.to_uppercase(),
+        FontId::new(10.5, crate::theme::bold_family()),
+        theme.text_faint,
+    );
+    let mut clicked = false;
+    if clearable {
+        let galley = ui.painter().layout_no_wrap("Leeren".into(), FontId::proportional(11.0), theme.text_faint);
+        let link = Rect::from_min_size(pos2(rect.right() - galley.size().x - 8.0, rect.top()), vec2(galley.size().x + 8.0, rect.height()));
+        let resp = ui.interact(link, ui.scope_id().with(("clear", title)), Sense::click()).on_hover_text("Liste leeren");
+        let color = if resp.hovered() { theme.accent } else { theme.text_faint };
+        ui.painter().text(pos2(link.right() - 4.0, link.center().y), Align2::RIGHT_CENTER, "Leeren", FontId::proportional(11.0), color);
+        clicked = resp.clicked();
+    }
+    ui.add_space(4.0);
+    clicked
+}
+
 fn welcome_row(
     ui: &mut egui::Ui,
     theme: &Theme,
@@ -3062,7 +3119,7 @@ fn welcome_row(
     label: &str,
     hint: &str,
 ) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), WELCOME_ROW_H), Sense::click());
     let painter = ui.painter();
     if resp.hovered() {
         painter.rect_filled(rect, 6.0, theme.hover.gamma_multiply(1.4));
