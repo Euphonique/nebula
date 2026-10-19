@@ -256,6 +256,37 @@ pub fn refresh(painter: &Painter, c: Pos2, color: Color32) {
     ));
 }
 
+/// Four-pointed spark, the usual sign for AI features.
+pub fn sparkle(painter: &Painter, c: Pos2, color: Color32) {
+    let star = |center: Pos2, r: f32| {
+        let w = r * 0.28;
+        vec![
+            center + vec2(0.0, -r),
+            center + vec2(w, -w),
+            center + vec2(r, 0.0),
+            center + vec2(w, w),
+            center + vec2(0.0, r),
+            center + vec2(-w, w),
+            center + vec2(-r, 0.0),
+            center + vec2(-w, -w),
+        ]
+    };
+    // The star is concave: fill it as a fan of triangles around its center.
+    let mut mesh = egui::Mesh::default();
+    for (center, r) in [(c + vec2(-1.5, 1.5), 6.5), (c + vec2(5.0, -5.0), 3.0)] {
+        let pts = star(center, r);
+        let base = mesh.vertices.len() as u32;
+        mesh.colored_vertex(center, color);
+        for p in &pts {
+            mesh.colored_vertex(*p, color);
+        }
+        for i in 0..pts.len() as u32 {
+            mesh.add_triangle(base, base + 1 + i, base + 1 + (i + 1) % pts.len() as u32);
+        }
+    }
+    painter.add(Shape::mesh(mesh));
+}
+
 /// Arrow pointing left (back) or right (forward).
 pub fn arrow(painter: &Painter, c: Pos2, color: Color32, forward: bool) {
     let d = if forward { 1.0 } else { -1.0 };

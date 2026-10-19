@@ -36,6 +36,7 @@ mod compare;
 mod split;
 mod keys;
 mod right_panel;
+mod agent;
 mod nav;
 mod jumpbar;
 mod history;
@@ -176,6 +177,8 @@ pub struct NebulaApp {
     /// Second editor beside the first.
     split: Option<split::SplitView>,
     right_state: right_panel::RightPanelState,
+    /// Chat with a coding agent (ACP).
+    agent: agent::AgentUi,
     /// Earlier cursor positions for Alt+←/→.
     nav: nav::NavHistory,
 }
@@ -236,6 +239,7 @@ impl NebulaApp {
             compare: None,
             split: None,
             right_state: Default::default(),
+            agent: Default::default(),
             nav: Default::default(),
             settings,
         };
@@ -2796,6 +2800,7 @@ impl eframe::App for NebulaApp {
         self.backup_unsaved(&ctx);
         self.poll_git_bases(&ctx);
         self.poll_terminals();
+        self.poll_agent();
         self.poll_printing();
         self.serve_preview();
         self.sync_extensions(&ctx);

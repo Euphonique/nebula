@@ -58,6 +58,7 @@ pub(super) fn defaults(c: Command) -> Vec<KeyboardShortcut> {
         ToggleTerminal => vec![ks(CTRL, Key::Semicolon), ks(CTRL, Key::Backtick)],
         Settings => vec![ks(CTRL, Key::Comma)],
         TogglePreview => vec![ks(CTRL | shift, Key::V)],
+        ToggleAgent => vec![ks(CTRL | shift, Key::A)],
         OpenInBrowser => vec![ks(none, Key::F5)],
         ToggleComment => vec![ks(CTRL, Key::Slash)],
         DuplicateLine => vec![ks(CTRL | shift, Key::D)],

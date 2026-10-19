@@ -119,6 +119,15 @@ impl NebulaApp {
         ctx.memory_mut(|m| m.request_focus(term_id(id)));
     }
 
+    /// Runs a command line in a new local terminal (in `cwd`).
+    pub(super) fn run_in_local_terminal(&mut self, ctx: &egui::Context, command: &str, cwd: Option<std::path::PathBuf>) {
+        self.open_local_terminal(ctx, None, cwd);
+        if let Some(tab) = self.terminals.tabs.last_mut() {
+            tab.queued.push(command.to_string());
+        }
+        self.poll_terminals();
+    }
+
     /// Shows or hides the panel; with no terminal yet, opens an SSH terminal
     /// for a server file, else a local shell.
     /// Zen mode: only the editor, full screen; Esc or the shortcut leaves it.

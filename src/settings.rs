@@ -128,6 +128,9 @@ pub struct AppSettings {
     pub keybindings: std::collections::BTreeMap<String, String>,
     /// Identifiers of installed extensions that are turned off.
     pub disabled_extensions: Vec<String>,
+    /// Coding agents (ACP) and the one used for new sessions (by name).
+    pub agents: Vec<crate::acp::AgentConfig>,
+    pub agent: String,
 }
 
 /// Where a local project is published to (like Nova's project publishing).
@@ -195,6 +198,8 @@ impl Default for AppSettings {
             right_width: 460.0,
             disabled_extensions: Vec::new(),
             keybindings: Default::default(),
+            agents: crate::acp::default_agents(),
+            agent: "Claude Code".into(),
         }
     }
 }
@@ -464,6 +469,8 @@ pub enum RightTab {
     #[default]
     Preview,
     Outline,
+    /// Chat with a coding agent.
+    Agent,
 }
 
 #[cfg(test)]

@@ -169,7 +169,7 @@ impl AgentSession {
                         self.log.pop_front();
                     }
                 }
-                Event::Exit(_) => {
+                Event::Exit => {
                     self.permissions.clear();
                     if !matches!(self.phase, Phase::Failed(_)) {
                         let tail: Vec<&str> = self.log.iter().rev().take(6).map(String::as_str).collect::<Vec<_>>().into_iter().rev().collect();

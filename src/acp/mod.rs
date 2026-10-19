@@ -56,7 +56,7 @@ pub enum Event {
     /// A line on stderr (log output).
     Stderr(String),
     /// The process ended.
-    Exit(Option<i32>),
+    Exit,
 }
 
 /// The running agent process.
@@ -163,7 +163,7 @@ fn spawn_reader(pipe: impl std::io::Read + Send + 'static, tx: Sender<Event>, wa
             wake();
         }
         if !stderr {
-            let _ = tx.send(Event::Exit(None));
+            let _ = tx.send(Event::Exit);
             wake();
         }
     });

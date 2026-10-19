@@ -44,6 +44,8 @@ pub enum Command {
     PublishSetup,
     OpenInBrowser,
     TogglePreview,
+    ToggleAgent,
+    NewAgentSession,
     ExtLibrary,
     ExtManage,
     ExtConsole,
@@ -152,6 +154,8 @@ impl Command {
             (ExtManage, "Erweiterungen: Verwalten…"),
             (ExtConsole, "Erweiterungen: Konsole"),
             (TogglePreview, "Vorschau: Live-Vorschau ein/aus"),
+            (ToggleAgent, "KI-Agent: Panel ein/aus"),
+            (NewAgentSession, "KI-Agent: Neue Unterhaltung"),
             (OpenInBrowser, "Vorschau: Im Browser öffnen"),
             (ToggleComment, "Bearbeiten: Kommentar umschalten"),
             (DuplicateLine, "Bearbeiten: Zeile duplizieren"),
@@ -357,6 +361,11 @@ impl NebulaApp {
             Command::PublishSetup => self.open_publish_setup(),
             Command::OpenInBrowser => self.open_in_browser(ctx),
             Command::TogglePreview => self.toggle_preview(),
+            Command::ToggleAgent => self.toggle_agent(),
+            Command::NewAgentSession => {
+                self.new_agent_session();
+                self.show_agent();
+            }
             Command::ExtLibrary | Command::ExtManage | Command::ExtConsole => {
                 self.settings_ui.ext.tab = match c {
                     Command::ExtLibrary => super::extensions_page::Tab::Library,

@@ -73,8 +73,11 @@ impl NebulaApp {
         tabs.spacing_mut().item_spacing.x = 2.0;
         let tip = |name: &str, key: String| if key.is_empty() { name.to_string() } else { format!("{name} ({key})") };
         let preview_tip = tip("Vorschau", self.shortcut_label(super::palette::Command::TogglePreview));
-        let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 2] =
-            [(RightTab::Preview, preview_tip, icons::eye), (RightTab::Outline, "Gliederung".into(), icons::outline)];
+        let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 3] = [
+            (RightTab::Preview, preview_tip, icons::eye),
+            (RightTab::Outline, "Gliederung".into(), icons::outline),
+            (RightTab::Agent, tip("KI-Agent", self.shortcut_label(super::palette::Command::ToggleAgent)), icons::sparkle),
+        ];
         for (tab, hover, paint) in entries {
             let selected = self.settings.right_tab == tab;
             if icons::icon_button(&mut tabs, &theme, vec2(34.0, 26.0), selected, paint).on_hover_text(hover).clicked() {
@@ -89,6 +92,10 @@ impl NebulaApp {
             RightTab::Preview => self.preview_pane(ui, row, body, row.right() - 13.0, x + 6.0),
             RightTab::Outline => {
                 self.outline(ui, body);
+                None
+            }
+            RightTab::Agent => {
+                self.agent_pane(ui, row, body);
                 None
             }
         }
