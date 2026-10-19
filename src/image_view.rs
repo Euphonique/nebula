@@ -32,8 +32,15 @@ pub fn decode(bytes: &[u8]) -> Result<Image, String> {
     if bytes.len() > MAX_BYTES {
         return Err("Das Bild ist zu groß für die Vorschau.".into());
     }
+    if bytes.is_empty() {
+        return Err("Die Datei ist leer.".into());
+    }
     let format = image::guess_format(bytes).map_err(|_| "Unbekanntes Bildformat".to_string())?;
-    let img = image::load_from_memory_with_format(bytes, format).map_err(|e| format!("Bild nicht lesbar: {e}"))?;
+    let img = match format {
+        image::ImageFormat::Ico => decode_ico(bytes),
+        _ => image::load_from_memory_with_format(bytes, format),
+    }
+    .map_err(|e| format!("Bild nicht lesbar: {e}"))?;
     let rgba = img.to_rgba8();
     let name = match format {
         image::ImageFormat::Png => "PNG",
@@ -53,6 +60,33 @@ pub fn decode(bytes: &[u8]) -> Result<Image, String> {
         texture: Mutex::new(None),
         actual_size: Mutex::new(false),
     })
+}
+
+/// The largest picture of an icon file. PNG entries are decoded directly, because
+/// the `image` crate's ICO decoder only accepts them in RGBA (favicon tools often
+/// write RGB or palette PNGs).
+fn decode_ico(bytes: &[u8]) -> image::ImageResult<image::DynamicImage> {
+    let u16_at = |i: usize| bytes.get(i..i + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
+    let u32_at = |i: usize| bytes.get(i..i + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let count = u16_at(4).unwrap_or(0) as usize;
+    let best = (0..count)
+        .filter_map(|n| {
+            let e = 6 + n * 16;
+            // 0 means 256 in the directory.
+            let w = match *bytes.get(e)? { 0 => 256, v => v as u32 };
+            let h = match *bytes.get(e + 1)? { 0 => 256, v => v as u32 };
+            let bpp = u16_at(e + 6)?;
+            let (len, offset) = (u32_at(e + 8)? as usize, u32_at(e + 12)? as usize);
+            Some((w * h, bpp, offset, len))
+        })
+        .max_by_key(|(area, bpp, ..)| (*area, *bpp));
+    if let Some((_, _, offset, len)) = best
+        && let Some(data) = bytes.get(offset..offset.saturating_add(len))
+        && data.starts_with(b"\x89PNG")
+    {
+        return image::load_from_memory_with_format(data, image::ImageFormat::Png);
+    }
+    image::load_from_memory_with_format(bytes, image::ImageFormat::Ico)
 }
 
 fn human_size(n: usize) -> String {
@@ -133,5 +167,32 @@ mod tests {
         assert_eq!((decoded.width, decoded.height, decoded.format), (3, 2, "PNG"));
         assert!(decode(b"not an image").is_err());
         assert!(is_image_name("Logo.PNG") && is_image_name("a.webp") && !is_image_name("a.svg"));
+        assert_eq!(decode(b"").err().as_deref(), Some("Die Datei ist leer."));
+    }
+
+    #[test]
+    fn decodes_ico_with_rgb_png() {
+        // An icon with 16 px and 32 px RGB (not RGBA) PNG entry.
+        let png = |size: u32| {
+            let mut out = Vec::new();
+            image::RgbImage::from_pixel(size, size, image::Rgb([0, 128, 255]))
+                .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+                .unwrap();
+            out
+        };
+        let (small, large) = (png(16), png(32));
+        let mut ico = vec![0, 0, 1, 0, 2, 0];
+        let mut offset = 6 + 2 * 16;
+        for (size, data) in [(16u8, &small), (32u8, &large)] {
+            ico.extend([size, size, 0, 0, 1, 0, 24, 0]);
+            ico.extend((data.len() as u32).to_le_bytes());
+            ico.extend((offset as u32).to_le_bytes());
+            offset += data.len();
+        }
+        ico.extend(&small);
+        ico.extend(&large);
+        let decoded = decode(&ico).unwrap();
+        assert_eq!((decoded.width, decoded.height, decoded.format), (32, 32, "ICO"));
     }
 }
+
