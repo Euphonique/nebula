@@ -192,6 +192,7 @@ pub struct Sidebar {
     pub remote: HashMap<String, RemoteTree>,
     pub expanded_sites: HashSet<String>,
     pub filter: String,
+    local_filter: super::file_filter::LocalFilter,
     pub selection: Vec<Item>,
     /// Internal clipboard and the system clipboard sequence when it was set.
     pub clipboard: Option<(Vec<Item>, bool, u32)>,
@@ -226,6 +227,7 @@ impl Sidebar {
             remote: HashMap::new(),
             expanded_sites: HashSet::new(),
             filter: String::new(),
+            local_filter: Default::default(),
             selection: Vec::new(),
             clipboard: None,
             focused: false,
@@ -251,6 +253,7 @@ impl Sidebar {
     }
 
     pub fn refresh_local(&mut self, dir: Option<&Path>) {
+        self.local_filter.invalidate();
         match dir {
             Some(d) => {
                 self.local_dirs.remove(d);
@@ -638,12 +641,17 @@ impl Sidebar {
         let field = filter_ui.max_rect();
         filter_ui.painter().rect_filled(field, 7.0, theme.hover.gamma_multiply(1.4));
         icons::search(filter_ui.painter(), pos2(field.left() + 14.0, field.center().y), theme.text_faint);
-        filter_ui.add_space(26.0);
-        filter_ui.add(
+        // The text field fills the box and centers its text vertically.
+        let text_rect = Rect::from_min_max(pos2(field.left() + 26.0, field.top()), pos2(field.right() - 8.0, field.bottom()));
+        filter_ui.put(
+            text_rect,
             egui::TextEdit::singleline(&mut self.filter)
                 .hint_text("Filtern")
                 .frame(egui::Frame::NONE)
-                .desired_width(field.width() - 34.0),
+                .margin(egui::Margin::ZERO)
+                .align(egui::Align2::LEFT_CENTER)
+                .min_size(text_rect.size())
+                .desired_width(text_rect.width()),
         );
         ui.advance_cursor_after_rect(full);
     }
@@ -851,18 +859,53 @@ impl Sidebar {
                 actions.push(SidebarAction::OpenFolder);
             }
         });
-        let filter = self.filter.to_lowercase();
-        self.show_local_dir(ui, rc, &root, 0, &filter, actions);
+        let filter = self.filter.trim().to_lowercase();
+        let matches = self.local_filter.update(ui.ctx(), &root, &filter);
+        if !filter.is_empty() {
+            let note = match &matches {
+                _ if self.local_filter.busy() => Some("Suche…"),
+                Some(m) if m.files.is_empty() && m.dirs.is_empty() => Some("Keine Treffer"),
+                Some(m) if m.truncated => Some("Nur die ersten Treffer – Filter genauer fassen"),
+                _ => None,
+            };
+            if let Some(note) = note {
+                indent_label(ui, 0, note, rc.theme.text_faint);
+            }
+        }
+        match matches {
+            Some(m) => self.show_filtered_dir(ui, rc, &root, 0, &m, actions),
+            None if filter.is_empty() => self.show_local_dir(ui, rc, &root, 0, actions),
+            None => {}
+        }
     }
 
-    fn show_local_dir(&mut self, ui: &mut Ui, rc: &RowCtx, dir: &Path, depth: usize, filter: &str, actions: &mut Vec<SidebarAction>) {
+    /// The tree reduced to filter matches (all folders with matches open).
+    fn show_filtered_dir(&mut self, ui: &mut Ui, rc: &RowCtx, dir: &Path, depth: usize, m: &super::file_filter::Matches, actions: &mut Vec<SidebarAction>) {
         for entry in self.local_children(dir) {
-            if !filter.is_empty() && !entry.is_dir && !entry.name.to_lowercase().contains(filter) {
-                continue;
-            }
             let item = Item::local(entry.path.clone(), entry.is_dir);
             if entry.is_dir {
-                let open = self.local_expanded.contains(&entry.path) || !filter.is_empty() && depth < 6;
+                if !m.dirs.contains(&entry.path) {
+                    continue;
+                }
+                let resp = self.item_row(ui, rc, &item, depth, Some(true), &entry.name, None, actions);
+                if resp.clicked() && !rc.modifiers.command {
+                    self.local_expanded.insert(entry.path.clone());
+                }
+                self.show_filtered_dir(ui, rc, &entry.path, depth + 1, m, actions);
+            } else if m.files.contains(&entry.path) {
+                let resp = self.item_row(ui, rc, &item, depth, None, &entry.name, None, actions);
+                if resp.clicked() && !rc.modifiers.command {
+                    actions.push(SidebarAction::OpenLocal(entry.path.clone()));
+                }
+            }
+        }
+    }
+
+    fn show_local_dir(&mut self, ui: &mut Ui, rc: &RowCtx, dir: &Path, depth: usize, actions: &mut Vec<SidebarAction>) {
+        for entry in self.local_children(dir) {
+            let item = Item::local(entry.path.clone(), entry.is_dir);
+            if entry.is_dir {
+                let open = self.local_expanded.contains(&entry.path);
                 let resp = self.item_row(ui, rc, &item, depth, Some(open), &entry.name, None, actions);
                 if resp.clicked() && !rc.modifiers.command {
                     if !self.local_expanded.insert(entry.path.clone()) {
@@ -870,7 +913,7 @@ impl Sidebar {
                     }
                 }
                 if open {
-                    self.show_local_dir(ui, rc, &entry.path, depth + 1, filter, actions);
+                    self.show_local_dir(ui, rc, &entry.path, depth + 1, actions);
                 }
             } else {
                 let resp = self.item_row(ui, rc, &item, depth, None, &entry.name, None, actions);

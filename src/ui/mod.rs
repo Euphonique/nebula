@@ -5,3 +5,4 @@ pub mod search;
 pub mod sidebar;
 pub mod wordmark;
 pub mod git_panel;
+pub mod file_filter;
