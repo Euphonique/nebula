@@ -39,11 +39,15 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## KI-Unterstützung (wie in VS Code)
 
-- **B** Agenten über das Agent Client Protocol (ACP, wie im Editor Zed) anbinden: Claude Code & Co. als Chat im rechten Panel, Änderungen kommen als Diff zum Annehmen/Ablehnen (Diff-Anzeige ist schon da), Rückfragen vor Dateizugriff/Befehlen.
-- **B** Eigener KI-Chat als Reiter „KI“ im rechten Panel: Anbieter wählbar (Anthropic, OpenAI, lokal über Ollama), API-Schlüssel in der Windows-Anmeldeinformationsverwaltung. Kontext per Knopf: aktuelle Datei, Auswahl, Fehlerliste, ausgewählte Projektdateien.
-- **B** KI-Befehle auf der Auswahl: Erklären, Kommentieren, Umschreiben/Refaktorisieren, Fehler beheben, Commit-Nachricht aus dem Diff – Ergebnis als Diff zum Übernehmen.
-- **C** Inline-Vorschläge beim Tippen (graue Vervollständigung, Tab übernimmt).
+Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
+
+- **B** Eigener KI-Agent ohne Node für API-Schlüssel und lokale Modelle: Anthropic, OpenAI (auch kompatible Basis-URL), Ollama; Werkzeuge Datei lesen, Ändern als Diff, Suchen, Befehl mit Rückfrage. (Abo-Logins gehen nur über die Agenten der Anbieter – Anthropic sperrt fremde OAuth-Nutzung, nur Haiku erreichbar.)
+- **B** KI-Befehle auf der Auswahl: Erklären, Kommentieren, Umschreiben/Refaktorisieren, Fehler beheben – Ergebnis als Diff zum Übernehmen.
+- **B** Commit-Nachricht aus dem Diff (Knopf im Git-Tab).
 - **C** Nebula als MCP-Server: externe Agenten sehen offene Dateien, Auswahl und Fehler und können Dateien im Editor öffnen.
+- **C** Inline-Vorschläge beim Tippen (graue Vervollständigung, Tab übernimmt) – unbedingt ein-/ausschaltbar (Kosten).
+- **C** Angehängte Serverdateien direkt bearbeitbar machen (virtueller Pfad, Lesen/Schreiben über die Serververbindung); bisher nur lesend bzw. über ein lokales Projekt mit „Beim Speichern hochladen“.
+- **C** Limits-Anzeige auch für Codex (ChatGPT-Abo), sobald der Adapter sie meldet.
 
 ## Oberfläche und Allgemein
 
@@ -75,7 +79,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 7. Große Dateien schreibgeschützt öffnen, Hex-Ansicht.
 8. Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“.
 
-Später (bewusst zurückgestellt): KI im rechten Panel (Agenten über ACP, eigener Chat) – vorher Umfang abstimmen.
+KI: als Nächstes der eigene Agent für API-Schlüssel und Ollama, danach KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
 
 ## Erledigt
 
@@ -84,3 +88,5 @@ Externe Änderungen erkennen, Wiederherstellung nach Absturz, geteilte Ansicht, 
 Danach: Knöpfe für geteilte Ansicht und rechtes Panel, rechtes Panel mit Vorschau und Gliederung, lokales Terminal (PowerShell, Git Bash, cmd), Wort unter dem Cursor hervorheben, passendes HTML-Tag hervorheben und mit umbenennen, Gehe zu Symbol (Strg+R), Navigationsverlauf (Alt+←/→), Lesezeichen, Textwerkzeuge, Suchen/Ersetzen in der Auswahl, Markierungen am rechten Rand, klickbare Pfadleiste (auch Netzlaufwerke werden jetzt korrekt geöffnet), Projektsuche mit Dateimustern und `.gitignore`, Projektsuche auf dem Server über SSH (abbrechbar), automatisch speichern, lokaler Verlauf, neues Fensterlayout mit Logo, Vergleich als Tab (Git-Markierungen funktionieren jetzt auch auf Netzlaufwerken), Git-Tab mit Commit, Pull/Push und Branches, Übertragungsliste (Neuverbindung nach Verbindungsabbruch repariert), gespeicherte Serverbefehle, Zen-Modus, Schriftart und Zeilenhöhe, Farbwähler für CSS-Farben, Bildvorschau, Minimap.
 
 Bugrunde vom 19.10.: Rechtsklick auf den Projektordner, Startseite (Karte wächst mit, Listen leeren), ICO-Dateien, Bilder in der Vorschau, Zurück/Vor und schmale Scrollleisten in der Vorschau, Dateifilter ohne Einfrieren und zentriert, Schriftart-Dropdown, gleich große Einstellungsseiten.
+
+KI-Agenten (19.10.): Claude Code, Codex (ChatGPT) und Gemini CLI über ACP im rechten Panel (Reiter „KI“): Verlauf mit Markdown, Plänen, Werkzeugaufrufen und Diffs, Rückfragen, Stop; Modell, Aufwand und Modus wählbar (pro Agent gemerkt); Dateien anhängen (Büroklammer, Rechtsklick in der Seitenleiste, auch vom Server); 5-Stunden- und Wochenlimit von Claude; Einstellungsseite „KI-Agenten“ mit Anmeldung über die Anbieter, API-Schlüsseln und Node.js-Verwaltung (Node wird bei Bedarf nach `%APPDATA%\nebula\runtime` geladen, Agenten liegen in `%APPDATA%\nebula\agents`); Änderungen des Agenten werden bei „Beim Speichern hochladen“ auf den Server übertragen. Außerdem: Reiter im rechten Panel jetzt Gliederung, KI, Vorschau.

@@ -4,21 +4,21 @@ description: Stand der Arbeit am Editor Nebula (A:\Development\Nova\nebula) und 
 metadata:
   node_type: memory
   type: project
-  originSessionId: 54481c14-f69f-4772-8ba1-6fa54422a0f2
-  modified: 2026-10-18T21:27:45.981Z
+  originSessionId: 10a7e079-fb2f-49fa-8901-631ac611494f
+  modified: 2026-10-19T21:14:36.096Z
 ---
 
-Nebula = nativer Windows-Code-Editor in Rust (eframe/egui 0.37), Nova-ähnlich, mit FTP/SFTP. Aufgaben stehen priorisiert (A/B/C) in `todo.md`; der Abschnitt „Nächste Schritte“ enthält die abgestimmte Reihenfolge. Erledigte Punkte werden aus der Liste entfernt und unter „Erledigt“ ergänzt, README wird mitgepflegt.
+Nebula = nativer Windows-Code-Editor in Rust (eframe/egui 0.37), Nova-ähnlich, mit FTP/SFTP. Aufgaben stehen priorisiert (A/B/C) in `todo.md`; „Nächste Schritte“ enthält die abgestimmte Reihenfolge. Erledigtes wird aus der Liste entfernt und unter „Erledigt“ ergänzt, README wird mitgepflegt. Der Nutzer sammelt gefundene Bugs gelegentlich als Liste ganz oben in todo.md.
 
-Stand 2026-10-19: Bugrunde des Nutzers (11 Punkte oben in todo.md) erledigt und aus todo.md entfernt, alle 85 Tests grün. Der Nutzer sammelt neue Bugs gelegentlich als Liste ganz oben in todo.md. Der Release-Build `target/release/nebula.exe` ist aktuell – der Nutzer startet diese exe, also nach Änderungen `cargo build --release` laufen lassen (dauert ca. 4 Min., im Hintergrund starten).
+Stand 2026-10-19 abends: alle 94 Tests grün (6 ignorierte Netz-/Server-Tests), Arbeitsverzeichnis committet, Release-Build aktuell. Der Nutzer startet `target/release/nebula.exe` – nach Änderungen `cargo build --release` im Hintergrund laufen lassen (ca. 4–5 Min.).
 
 Fertig (Auswahl, mit Orten im Code):
-- Runde 1 und 2 komplett, u. a. Pfadleiste (src/app/jumpbar.rs), Projektsuche lokal + per SSH (src/ui/search.rs, src/remote/search.rs), Autosave + lokaler Verlauf (src/history.rs, src/app/history.rs), Vergleich als Tab (src/app/difftab.rs), Git-Tab (src/ui/git_panel.rs), Übertragungsliste (src/remote/transfers.rs, src/app/transfers_ui.rs), Serverbefehle (Site.commands, „Befehle ▾“ im Terminal).
-- Danach: neues Fensterlayout mit Logo und Agency-Schriftzug als Vektor (src/ui/wordmark.rs), Zen-Modus, Schriftwahl (src/fonts.rs), CSS-Farbwähler (src/editor/colors.rs), Bildvorschau (src/image_view.rs; Bild-Tabs werden nie gespeichert), Minimap (src/editor/view.rs).
+- Runde 1 und 2, u. a. Pfadleiste (src/app/jumpbar.rs), Projektsuche lokal + SSH (src/ui/search.rs, src/remote/search.rs), Autosave + lokaler Verlauf (src/history.rs), Vergleich als Tab (src/app/difftab.rs), Git-Tab (src/ui/git_panel.rs), Übertragungsliste, Serverbefehle, Zen-Modus, Schriftwahl (src/fonts.rs), Farbwähler, Bildvorschau (src/image_view.rs, eigener ICO-Leser), Minimap.
+- Bugrunde 19.10. (Startseite, Filter im Hintergrund src/ui/file_filter.rs, Vorschau mit Bildern/Zurück/Vor, Einstellungs-Dropdowns).
+- KI-Agenten über ACP, Details siehe [[nebula-ki-scope]].
 
-Nächste Arbeit: „Runde 3“ laut todo.md, beginnend mit Strg+P für Serverdateien und `:Zeile`, dann Absturzbericht usw.
-KI im rechten Panel (ACP-Agenten wie Zed, eigener Chat) hat der Nutzer bewusst auf später verschoben – nicht von selbst anfangen, erst den Umfang abstimmen.
-Das Wochenlimit war bei Sitzungsende knapp (ca. 20 % übrig); der Nutzer achtet darauf und bittet am Ende um Memory-Update.
+Nächste Arbeit: Nach Wunsch des Nutzers entweder KI weiter (eigener Agent für API-Schlüssel/Ollama, dann KI-Befehle, Commit-Nachricht, MCP, Inline) oder „Runde 3“ aus todo.md (Strg+P für Serverdateien, Absturzbericht …). Vorher kurz fragen, womit er weitermachen will.
+Das Claude-Wochenlimit des Nutzers war am 19.10. fast aufgebraucht (3 % frei, Reset 22.10. 03:00) – er achtet darauf und bittet am Ende um Memory-Update.
 
-**Why:** Damit die nächste Sitzung ohne Nachfragen weitermachen kann.
-**How to apply:** Mit dem ersten Punkt von „Runde 3“ in todo.md starten, pro Aufgabe ein Commit (siehe [[nebula-workflow]]).
+**Why:** Damit die nächste Sitzung ohne Nachfragen zum Stand weitermachen kann.
+**How to apply:** Pro Aufgabe ein Commit (siehe [[nebula-workflow]]); todo.md und README mitpflegen.

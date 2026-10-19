@@ -1,22 +1,24 @@
 ---
 name: nebula-ki-scope
-description: "Abgestimmter Umfang der KI-Integration in Nebula (Reihenfolge, Anbieter, Zusatzfunktionen)"
+description: "KI-Integration in Nebula – abgestimmter Umfang, getroffene Entscheidungen, Aufbau im Code und was noch offen ist"
 metadata:
   node_type: memory
   type: project
   originSessionId: 10a7e079-fb2f-49fa-8901-631ac611494f
-  modified: 2026-10-19T13:23:00.039Z
+  modified: 2026-10-19T21:14:55.097Z
 ---
 
-Am 2026-10-19 mit dem Nutzer abgestimmt:
-- Start mit Agenten über ACP (Agent Client Protocol, wie Zed): Chat im rechten Panel, Änderungen als Diff, Rückfragen vor Datei-/Befehlszugriff.
-- Danach eigener KI-Chat mit Anbietern Anthropic, OpenAI (auch kompatible Basis-URL) und Ollama lokal; API-Schlüssel in der Windows-Anmeldeinformationsverwaltung.
-- Ebenfalls gewünscht: KI-Befehle auf der Auswahl (Erklären, Kommentieren, Umschreiben, Fehler beheben → Diff), Commit-Nachricht im Git-Tab, Nebula als MCP-Server, Inline-Vorschläge – diese aber unbedingt ein-/ausschaltbar (Kosten).
+Abgestimmt am 2026-10-19: zuerst Agenten über ACP (wie Zed), danach eigener Agent/Chat für API-Schlüssel (Anthropic, OpenAI inkl. kompatibler Basis-URL) und Ollama, dann KI-Befehle auf der Auswahl, Commit-Nachricht im Git-Tab, Nebula als MCP-Server, Inline-Vorschläge (unbedingt abschaltbar, Kosten).
 
-**Why:** Nutzer hatte KI bewusst zurückgestellt und wollte den Umfang vorher festlegen.
-**How to apply:** In dieser Reihenfolge abarbeiten, pro Teilschritt ein Commit (siehe [[nebula-workflow]], [[nebula-progress]]).
+Entscheidungen:
+- Bei Node bleiben: Direkter Abo-OAuth (wie im Projekt A:\Development\AntiSpam, ClaudeOAuthPlugin) liefert bei Anthropic nur Haiku und ist seit 02/2026 untersagt; der Nutzer will die besseren Modelle. ChatGPT-Abo-OAuth wäre technisch/regelseitig eher möglich.
+- Alles liegt in %APPDATA%\nebula: config\, runtime\node\ (Nebula lädt Node-LTS bei Bedarf, SHA-256-geprüft), agents\ (npm_config_cache für npx). Installiertes Node wird mitbenutzt, Nebulas eigenes hat Vorrang.
+- Server-Bearbeitung durch den Agenten: Weg A (lokales Projekt + „Beim Speichern hochladen“) umgesetzt; virtuelle Serverpfade (B) offen.
+- UI: Eingabe als Karte mit Chip-Werkzeugleiste (Agent, Modell, Aufwand, ⋯), Modus und Limits darunter; Reiter rechts: Gliederung, KI, Vorschau. Englische Werte der Agenten werden übersetzt (choice_name in src/app/agent.rs).
 
-Stand 2026-10-19: ACP-Kern (src/acp/, Typen aus Crate agent-client-protocol-schema ohne async) und Agent-Reiter im rechten Panel (src/app/agent.rs, Strg+Umschalt+A) fertig und mit Schein-Agent getestet (Node-Skript im Scratchpad, Tests in src/acp/tests.rs). Einstellungsseite „KI-Agenten“ (src/app/agents_page.rs) fertig: Login macht der Agent selbst (Claude: Terminal-Methode → Konsolenfenster, Codex „chat-gpt“/Gemini „oauth-personal“: authenticate öffnet Browser), API-Schlüssel per Keyring als Umgebungsvariable. „Status prüfen“ (initialize+session/new) kostet kein Kontingent; Prompts an echte Agenten nur nach Rückfrage. Codex meldet auch ohne Login „bereit“. Offen: echter Prompt-Test, ggf. Terminal-Fähigkeit; danach eigener Chat.
+Code: src/acp/ (mod.rs Verbindung + Presets, session.rs Sitzung/configOptions/Anhänge/Login, node.rs Node-Verwaltung, usage.rs Limits über `/usage` in unsichtbarer Sitzung – nur claude-agent-acp, kostet keine Tokens), src/app/agent.rs (Panel), src/app/agents_page.rs (Einstellungen). Tests mit Schein-Agent in src/acp/tests.rs; Netz-Tests `download_node`, `replace_node_in_use` (ignored).
 
+Prüfen ohne Kosten: initialize + session/new + `/usage` + set_config_option verbrauchen kein Kontingent; echte Prompts an Claude/Codex/Gemini nur nach Rückfrage. Codex meldet auch ohne Login „bereit“.
 
-Entscheidung 2026-10-19: Bei Node bleiben (direkter Abo-OAuth bei Anthropic liefert nur Haiku und ist laut Anthropic-Regeln seit 02/2026 untersagt; Nutzer will die besseren Modelle). Alles liegt in %APPDATA%\nebula: config\, runtime\node\ (von Nebula geladen, src/acp/node.rs), agents\ (npm_config_cache für npx). Installiertes Node wird mitbenutzt, Nebulas eigenes hat Vorrang. Limits-Anzeige über /usage (src/acp/usage.rs). Test-Schalter NEBULA_IGNORE_SYSTEM_NODE=1. Nächster Schritt laut Plan: eigener Chat/Agent für API-Schlüssel und Ollama, KI-Befehle, Commit-Nachricht, MCP-Server, Inline (schaltbar).
+**Why:** Nutzer hatte KI bewusst zurückgestellt und den Umfang vorher festgelegt; die Entscheidungen oben wurden ausführlich besprochen.
+**How to apply:** Offene Punkte in todo.md (Abschnitt KI) in der Reihenfolge abarbeiten; siehe [[nebula-progress]], [[nebula-workflow]].

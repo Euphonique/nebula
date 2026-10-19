@@ -1,2 +1,3 @@
-- [Nebula: Stand und nächste Schritte](nebula-progress.md) — Runde 1+2 und Extras fertig; als Nächstes Runde 3 aus todo.md, KI später
-- [Nebula: Arbeitsweise und Test-Tricks](nebula-workflow.md) — Commit pro Aufgabe, Screenshot-Tests, Edit-Tool statt perl, F-Tasten mit Alternative
+- [Nebula: Stand und nächste Schritte](nebula-progress.md) — Bugrunde + KI-Agenten fertig; als Nächstes KI weiter oder Runde 3 (vorher fragen)
+- [Nebula: Arbeitsweise und Test-Tricks](nebula-workflow.md) — Commit pro Aufgabe, Screenshot-Tests, Edit-Tool statt perl, Schein-Agent für KI-Tests
+- [Nebula: KI-Integration](nebula-ki-scope.md) — ACP-Agenten fertig, Node in %APPDATA%\nebula, kein Abo-OAuth; offen: eigener Agent, Befehle, Commit-Msg, MCP, Inline

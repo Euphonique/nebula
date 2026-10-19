@@ -71,6 +71,15 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Zurück/Vor nach gefolgten Links, Neu laden
 - Entwicklertools (F12-Konsole der Seite) und „Im Browser öffnen“ (Standardbrowser; unbenannte Dateien und Serverdateien ohne Web-URL als temporäre Kopie)
 
+**KI-Agenten**
+- Coding-Agenten im rechten Panel (Reiter „KI“, Strg+Umschalt+A): Claude Code, Codex (ChatGPT) und Gemini CLI über das Agent Client Protocol (ACP, wie in Zed); eigene ACP-Agenten lassen sich hinzufügen
+- Der Agent arbeitet im geöffneten Projekt: Antworten als Markdown, Gedanken, Plan, Werkzeugaufrufe mit Diffs; vor Änderungen und Befehlen fragt er nach (Erlauben / Immer erlauben / Ablehnen). Änderungen landen rückgängig machbar im offenen Tab und werden gespeichert; mit „Beim Speichern hochladen“ gehen sie auch auf den Server
+- Eingabe mit Werkzeugleiste: Agent, Modell, Aufwand und weitere Einstellungen des Agenten (Modell und Aufwand werden pro Agent gemerkt), Modus darunter; Stopp per ■ oder Esc
+- Dateien anhängen: Büroklammer (aktuelle Datei, Dateiauswahl) oder Rechtsklick in der Seitenleiste „An KI-Agent anhängen“, auch für Serverdateien
+- Verbleibendes 5-Stunden- und Wochenlimit des Claude-Abos unter der Eingabe (ohne Tokenverbrauch)
+- Einstellungen → KI-Agenten: Status prüfen, Anmelden mit den Methoden des Anbieters (Browser-Login mit Claude-, ChatGPT- oder Google-Konto, oder API-Schlüssel in der Windows-Anmeldeinformationsverwaltung), Abmelden
+- Node.js: ein installiertes Node wird genutzt, sonst lädt Nebula auf Wunsch die aktuelle LTS-Version (SHA-256-geprüft) nach `%APPDATA%\nebula\runtime`; die Agenten liegen in `%APPDATA%\nebula\agents`
+
 **Erweiterungen (Nova-kompatibel)**
 - Installation direkt aus Novas Extension Library (Suche, Kategorien, Beschreibung), aus einem Ordner oder einer ZIP-Datei
 - JavaScript-Laufzeit (QuickJS) mit der Nova-Extension-API: Befehle, Einstellungen, Editor- und Dokument-API, Meldungen, Paletten, Benachrichtigungen, Prozesse (auch JSON-RPC), fetch, Dateisystem, Pfade, Zwischenablage, Anmeldedaten, Timer, Seitenleisten (TreeView)
@@ -107,6 +116,7 @@ Alle Kürzel lassen sich unter Einstellungen → Tastenkürzel ändern. Standard
 | Lesezeichen setzen / nächstes / vorheriges | Strg+Alt+K / Strg+Alt+L / Strg+Alt+J (oder Strg+F2 / F2 / Umschalt+F2) |
 | Im Browser öffnen | F5 |
 | Rechtes Panel mit Live-Vorschau ein/aus | Strg+Umschalt+V |
+| KI-Agent ein/aus | Strg+Umschalt+A |
 | Automatischer Zeilenumbruch | Alt+Z |
 | Drucken | Strg+Alt+P |
 | Zen-Modus | Strg+Alt+Enter / F11 |
@@ -132,6 +142,9 @@ src/
   app/files.rs         Kopieren/Verschieben/Upload/Download, Drops aus dem Explorer
   app/publish.rs       Veröffentlichen, Browser-Vorschau
   app/preview.rs       Live-Vorschau (Seitenwahl, Auslieferung, Neuladen)
+  app/agent.rs         KI-Agent im rechten Panel (Unterhaltung, Eingabe, Anhänge, Limits)
+  app/agents_page.rs   Einstellungsseite KI-Agenten (Anmeldung, Node.js)
+  acp/                 Agent Client Protocol: Verbindung, Sitzung, Node-Verwaltung, Limits
   app/extensions.rs    Erweiterungen in der App: Dokument-Abgleich, Anfragen, Probleme
   app/extensions_page.rs  Einstellungsseite: installierte Erweiterungen, Bibliothek, Konsole
   preview.rs           WebView2-Fenster und eigenes URL-Schema
