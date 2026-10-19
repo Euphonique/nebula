@@ -4,6 +4,7 @@
 //! requests and serves file reads/writes (open buffers included).
 
 pub mod session;
+pub mod usage;
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};

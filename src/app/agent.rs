@@ -177,6 +177,10 @@ impl NebulaApp {
     pub(super) fn agent_pane(&mut self, ui: &mut egui::Ui, header: Rect, body: Rect) {
         let theme = self.theme.clone();
         let ctx = ui.ctx().clone();
+        // Start the agent right away: login state and plan limits show before the first message.
+        if self.agent.session.is_none() && !self.settings.agents.is_empty() {
+            self.start_agent(&ctx);
+        }
 
         // Header button: new conversation.
         let r = Rect::from_center_size(pos2(header.right() - 13.0, header.center().y), vec2(26.0, 24.0));
@@ -203,10 +207,19 @@ impl NebulaApp {
             let ui = &mut bottom;
             // Send/stop button and agent name.
             ui.horizontal(|ui| {
-                if let Some(s) = &self.agent.session
-                    && let Some(info) = &s.agent_info
-                {
-                    ui.label(RichText::new(info).size(11.0).color(theme.text_faint));
+                let mut refresh = false;
+                if let Some(s) = &self.agent.session {
+                    match &s.limits {
+                        Some(l) => refresh = limits_ui(ui, &theme, l, s.agent_info.as_deref()).clicked(),
+                        None => {
+                            if let Some(info) = &s.agent_info {
+                                ui.label(RichText::new(info).size(11.0).color(theme.text_faint));
+                            }
+                        }
+                    }
+                }
+                if refresh && let Some(s) = &mut self.agent.session {
+                    s.refresh_limits();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if working {
@@ -374,6 +387,47 @@ impl NebulaApp {
             }
         }
     }
+}
+
+/// Remaining plan limits ("5 Std. 88 % frei · Woche 12 % frei"); click reloads.
+fn limits_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, l: &crate::acp::usage::Limits, info: Option<&str>) -> egui::Response {
+    use crate::acp::usage;
+    let now = usage::now();
+    let color = |free: f32| {
+        if free < 10.0 {
+            theme.danger
+        } else if free < 25.0 {
+            theme.modified
+        } else {
+            theme.text_muted
+        }
+    };
+    let mut job = egui::text::LayoutJob::default();
+    let mut tip = String::new();
+    for (name, long, w) in [("5 Std.", "5-Stunden-Limit", l.five_hour()), ("Woche", "Wochenlimit", l.weekly())] {
+        let Some(w) = w else { continue };
+        let free = (100.0 - w.used).max(0.0);
+        if !job.sections.is_empty() {
+            job.append("  ·  ", 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), theme.text_faint));
+        }
+        job.append(&format!("{name} "), 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), theme.text_faint));
+        job.append(&format!("{free:.0} % frei"), 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), color(free)));
+        tip.push_str(&format!("{long}: {:.0} % verbraucht", w.used));
+        if let Some(r) = &w.reset {
+            tip.push_str(&format!(", wieder voll in {} ({:02}.{:02}. {:02}:{:02} Uhr)", usage::until(r.at, now), r.day, r.month, r.hour, r.minute));
+        }
+        tip.push('\n');
+    }
+    if let Some(plan) = &l.plan {
+        tip.push_str(&format!("Abo: Claude {plan}\n"));
+    }
+    if let Some(info) = info {
+        tip.push_str(info);
+        tip.push('\n');
+    }
+    let age = if now - l.fetched < 60 { "gerade eben".to_string() } else { format!("vor {}", usage::until(now, l.fetched)) };
+    tip.push_str(&format!("Stand: {age} – klicken zum Aktualisieren"));
+    ui.add(egui::Label::new(job).sense(Sense::click())).on_hover_text(tip)
 }
 
 /// The agent asks before running a tool; returns the chosen option.
