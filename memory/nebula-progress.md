@@ -10,7 +10,7 @@ metadata:
 
 Nebula = nativer Windows-Code-Editor in Rust (eframe/egui 0.37), Nova-ähnlich, mit FTP/SFTP. Aufgaben stehen priorisiert (A/B/C) in `todo.md`; der Abschnitt „Nächste Schritte“ enthält die abgestimmte Reihenfolge. Erledigte Punkte werden aus der Liste entfernt und unter „Erledigt“ ergänzt, README wird mitgepflegt.
 
-Stand 2026-10-18 abends (letzter Commit 7c0ad21, Arbeitsverzeichnis sauber, alle 83 Tests grün). Der Release-Build `target/release/nebula.exe` ist aktuell – der Nutzer startet diese exe, also nach Änderungen `cargo build --release` laufen lassen (dauert ca. 4 Min., im Hintergrund starten).
+Stand 2026-10-19: Bugrunde des Nutzers (11 Punkte oben in todo.md) erledigt und aus todo.md entfernt, alle 85 Tests grün. Der Nutzer sammelt neue Bugs gelegentlich als Liste ganz oben in todo.md. Der Release-Build `target/release/nebula.exe` ist aktuell – der Nutzer startet diese exe, also nach Änderungen `cargo build --release` laufen lassen (dauert ca. 4 Min., im Hintergrund starten).
 
 Fertig (Auswahl, mit Orten im Code):
 - Runde 1 und 2 komplett, u. a. Pfadleiste (src/app/jumpbar.rs), Projektsuche lokal + per SSH (src/ui/search.rs, src/remote/search.rs), Autosave + lokaler Verlauf (src/history.rs, src/app/history.rs), Vergleich als Tab (src/app/difftab.rs), Git-Tab (src/ui/git_panel.rs), Übertragungsliste (src/remote/transfers.rs, src/app/transfers_ui.rs), Serverbefehle (Site.commands, „Befehle ▾“ im Terminal).

@@ -15,6 +15,8 @@ metadata:
 - Server-UI-Tests: `NEBULA_SFTP_ROOT=… cargo test serve_sftp -- --ignored` (127.0.0.1:2222, test/secret, mit Echo-Shell); Passwort per `NEBULA_SITE=id:user NEBULA_PASS=secret cargo test set_site_password -- --ignored` setzen statt über die UI, danach mit leerem NEBULA_PASS wieder löschen. Der Nutzer hat einen echten Eintrag „…:hosting204954“ – nie anfassen.
 - Git-Funktionen nie im Nebula-Repo testen (keine Test-Commits dort), sondern im Scratchpad ein Wegwerf-Repo plus `git init --bare remote.git` als lokalen „Server“ anlegen.
 - Läuft der SFTP-Testserver (`cargo test serve_sftp`), sperrt er das Test-Binary: vor `cargo test` den Prozess auf Port 2222 beenden.
+- Popup-ID-Kollision: `context_menu` und `Popup::menu` auf derselben Response teilen sich die ID → eigene `.id(...)` setzen. Dropdowns im Einstellungs-Modal als `egui::Area` mit `Order::Tooltip` (liegt über dem Modal, bekommt Tastatur).
+- Testsitzung zeigt Startseite erst, wenn in cfgsettings.json `session`/`project_tabs` geleert und `cfgackup` gelöscht ist; `launch.ps1` im Scratchpad startet mit isolierter Konfiguration.
 - egui-Fallstricke: Popups außerhalb eines Modals (z. B. Einstellungen) bekommen keine Tastatureingaben → Inhalte im Modal selbst zeigen; die Einstellungsseiten bekommen ihren Zustand als `state`-Parameter (self.settings_ui ist währenddessen herausgenommen); `ui.horizontal` in ScrollAreas zentriert vertikal und verschiebt Inhalte → `Layout::left_to_right(Align::Min)`.
 - Vor `cargo build` laufende nebula.exe beenden (sonst „Zugriff verweigert“); `cfg\backup` danach löschen.
 - Der Nutzer hat eine Tastatur, auf der F-Tasten Sonderfunktionen haben (Fn+F2 = echtes F2): F-Tasten-Kürzel immer mit Strg/Alt-Alternative anbieten.
