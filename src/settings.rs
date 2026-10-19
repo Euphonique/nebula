@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub const APP_NAME: &str = "Nebula";
-const KEYRING_SERVICE: &str = "Nebula Editor";
+pub const KEYRING_SERVICE: &str = "Nebula Editor";
 
 pub fn config_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("NEBULA_CONFIG_DIR") {

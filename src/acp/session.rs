@@ -61,8 +61,18 @@ pub struct AuthOption {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
-    /// Login runs interactively: the agent command with these arguments in a terminal.
-    pub terminal: Option<(Vec<String>, HashMap<String, String>)>,
+    /// Login runs interactively in a console window.
+    pub terminal: Option<TerminalLogin>,
+    /// The method needs an API key (entered in the settings, passed as environment variable).
+    pub api_key: bool,
+}
+
+/// An interactive login: `command` (else the agent's own command and arguments) plus `args`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TerminalLogin {
+    pub command: Option<String>,
+    pub args: Vec<String>,
+    pub env: HashMap<String, String>,
 }
 
 /// A question of the agent before it runs a tool.
@@ -84,6 +94,7 @@ pub enum FileRequest {
 enum Pending {
     Initialize,
     Authenticate,
+    Logout,
     NewSession,
     Prompt,
     SetMode,
@@ -102,7 +113,9 @@ pub struct AgentSession {
     pub agent_info: Option<String>,
     /// The agent accepts file contents embedded in the prompt.
     embedded_context: bool,
-    auth_methods: Vec<AuthOption>,
+    pub auth_methods: Vec<AuthOption>,
+    /// The agent can log out (`logout` method).
+    pub can_logout: bool,
     pending: HashMap<i64, Pending>,
     /// Last lines of the agent's log output (shown when starting fails).
     pub log: VecDeque<String>,
@@ -123,6 +136,7 @@ impl AgentSession {
             agent_info: None,
             embedded_context: false,
             auth_methods: Vec::new(),
+            can_logout: false,
             pending: HashMap::new(),
             log: VecDeque::new(),
         };
@@ -134,7 +148,12 @@ impl AgentSession {
                     Pending::Initialize,
                     json!({
                         "protocolVersion": 1,
-                        "clientCapabilities": { "fs": { "readTextFile": true, "writeTextFile": true }, "terminal": false },
+                        "clientCapabilities": {
+                            "fs": { "readTextFile": true, "writeTextFile": true },
+                            "terminal": false,
+                            // Interactive logins (e.g. Claude) are offered only to clients that can run them.
+                            "_meta": { "terminal-auth": true },
+                        },
                         "clientInfo": { "name": "nebula", "title": "Nebula", "version": env!("CARGO_PKG_VERSION") },
                     }),
                 );
@@ -244,12 +263,14 @@ impl AgentSession {
     fn request_done(&mut self, kind: Pending, result: Value) {
         match kind {
             Pending::Initialize => {
+                self.auth_methods =
+                    result.get("authMethods").and_then(Value::as_array).map(|a| a.iter().filter_map(auth_option).collect()).unwrap_or_default();
+                self.can_logout = result.pointer("/agentCapabilities/auth/logout").is_some();
                 let resp: Option<InitializeResponse> = serde_json::from_value(result).ok();
                 if let Some(info) = resp.as_ref().and_then(|r| r.agent_info.as_ref()) {
                     self.agent_info = Some(format!("{} {}", info.title.as_deref().unwrap_or(&info.name), info.version));
                 }
                 self.embedded_context = resp.as_ref().is_some_and(|r| r.agent_capabilities.prompt_capabilities.embedded_context);
-                self.auth_methods = resp.map(|r| r.auth_methods.iter().map(auth_option).collect()).unwrap_or_default();
                 self.new_session();
             }
             Pending::Authenticate => self.new_session(),
@@ -279,6 +300,10 @@ impl AgentSession {
                 }
             }
             Pending::SetMode => {}
+            Pending::Logout => {
+                self.phase = Phase::NeedsAuth(self.auth_methods.clone());
+                self.session_id = None;
+            }
         }
     }
 
@@ -299,7 +324,7 @@ impl AgentSession {
                 }
                 self.notice(message, true);
             }
-            Pending::SetMode => self.notice(message, true),
+            Pending::SetMode | Pending::Logout => self.notice(message, true),
         }
     }
 
@@ -312,6 +337,16 @@ impl AgentSession {
     pub fn authenticate(&mut self, method_id: &str) {
         self.phase = Phase::Starting;
         self.send("authenticate", Pending::Authenticate, json!({ "methodId": method_id }));
+    }
+
+    /// A login started with `authenticate` is still running (e.g. in the browser).
+    pub fn is_authenticating(&self) -> bool {
+        self.pending.values().any(|p| *p == Pending::Authenticate)
+    }
+
+    /// Logs out of the agent's account.
+    pub fn logout(&mut self) {
+        self.send("logout", Pending::Logout, json!({}));
     }
 
     /// Sends a message; `context` are files given along (path and current text).
@@ -498,18 +533,29 @@ impl AgentSession {
     }
 }
 
-fn auth_option(m: &schema::AuthMethod) -> AuthOption {
-    match m {
-        schema::AuthMethod::Terminal(t) => AuthOption {
-            id: t.id.to_string(),
-            name: t.name.clone(),
-            description: t.description.clone(),
-            terminal: Some((t.args.clone(), t.env.clone())),
-        },
-        schema::AuthMethod::Agent(a) => AuthOption { id: a.id.to_string(), name: a.name.clone(), description: a.description.clone(), terminal: None },
-        #[allow(unreachable_patterns)]
-        _ => AuthOption { id: m.id().to_string(), name: m.id().to_string(), description: None, terminal: None },
-    }
+/// A login method from `initialize` (read from JSON to keep the `_meta` details).
+fn auth_option(m: &Value) -> Option<AuthOption> {
+    let s = |v: Option<&Value>| v.and_then(Value::as_str).map(str::to_string);
+    let list = |v: Option<&Value>| -> Vec<String> {
+        v.and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+    };
+    let id = s(m.get("id"))?;
+    let meta = m.pointer("/_meta/terminal-auth");
+    let is_terminal = m.get("type").and_then(Value::as_str) == Some("terminal") || meta.is_some();
+    let terminal = is_terminal.then(|| {
+        let env = m
+            .get("env")
+            .and_then(Value::as_object)
+            .map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect())
+            .unwrap_or_default();
+        // The exact command from `_meta` if given, else the agent's own command with `args`.
+        match meta.and_then(|t| s(t.get("command")).map(|c| (c, list(t.get("args"))))) {
+            Some((command, args)) => TerminalLogin { command: Some(command), args, env },
+            None => TerminalLogin { command: None, args: list(m.get("args")), env },
+        }
+    });
+    let api_key = m.pointer("/_meta/api-key").is_some() || id.contains("api-key");
+    Some(AuthOption { name: s(m.get("name")).unwrap_or_else(|| id.clone()), description: s(m.get("description")), id, terminal, api_key })
 }
 
 fn apply_fields(t: &mut ToolEntry, f: &schema::ToolCallUpdateFields) {
@@ -556,4 +602,27 @@ pub fn slice_lines(text: &str, line: Option<u32>, limit: Option<u32>) -> String 
     let start = line.map_or(0, |l| l.saturating_sub(1) as usize);
     let take = limit.map_or(usize::MAX, |l| l as usize);
     text.split_inclusive('\n').skip(start).take(take).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_login_methods() {
+        // As sent by claude-agent-acp and codex-acp.
+        let claude = json!({ "id": "claude-ai-login", "name": "Claude Subscription", "type": "terminal", "args": ["--cli", "auth", "login"],
+            "_meta": { "terminal-auth": { "command": "C:\node.exe", "args": ["index.js", "--cli", "auth", "login"] } } });
+        let m = auth_option(&claude).unwrap();
+        let t = m.terminal.unwrap();
+        assert_eq!(t.command.as_deref(), Some("C:\node.exe"));
+        assert_eq!(t.args, vec!["index.js", "--cli", "auth", "login"]);
+        assert!(!m.api_key);
+
+        let key = auth_option(&json!({ "id": "api-key", "name": "API Key", "_meta": { "api-key": { "provider": "openai" } } })).unwrap();
+        assert!(key.api_key && key.terminal.is_none());
+        let browser = auth_option(&json!({ "id": "chat-gpt", "name": "ChatGPT" })).unwrap();
+        assert!(!browser.api_key && browser.terminal.is_none());
+        assert!(auth_option(&json!({ "name": "ohne id" })).is_none());
+    }
 }

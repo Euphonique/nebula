@@ -340,7 +340,7 @@ impl NebulaApp {
             s.answer_permission(a.as_deref());
         }
         if let Some(m) = auth {
-            self.agent_login(&ctx, &m);
+            self.agent_login(&m);
         }
         if let Some((path, line)) = open_location {
             self.open_local(&path);
@@ -353,19 +353,20 @@ impl NebulaApp {
         }
     }
 
-    /// Logs in: interactive methods run in a terminal, others through the agent.
-    fn agent_login(&mut self, ctx: &egui::Context, m: &crate::acp::session::AuthOption) {
+    /// Logs in: interactive methods run in a console window, others through the agent.
+    fn agent_login(&mut self, m: &crate::acp::session::AuthOption) {
+        if m.api_key {
+            // Keys are entered on the settings page.
+            self.open_settings(super::settings_page::Page::Agents);
+            return;
+        }
         match &m.terminal {
-            Some((args, _env)) => {
+            Some(login) => {
                 let Some(s) = &self.agent.session else { return };
-                let mut line = s.agent.command.clone();
-                for a in s.agent.args.iter().chain(args) {
-                    line.push(' ');
-                    line.push_str(&if a.contains(' ') { format!("\"{a}\"") } else { a.clone() });
+                match crate::acp::run_login_console(&s.agent, login, &s.cwd) {
+                    Ok(()) => self.info("Melde dich im geöffneten Fenster an und starte danach eine neue Unterhaltung."),
+                    Err(e) => self.error(e),
                 }
-                let cwd = Some(s.cwd.clone());
-                self.run_in_local_terminal(ctx, &line, cwd);
-                self.info("Melde dich im Terminal an und starte danach eine neue Unterhaltung.");
             }
             None => {
                 if let Some(s) = &mut self.agent.session {

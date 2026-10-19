@@ -112,3 +112,10 @@ fn missing_program_fails_cleanly() {
     let s = AgentSession::start(cfg, std::env::temp_dir(), || {});
     assert!(matches!(s.phase, Phase::Failed(_)));
 }
+
+#[test]
+fn split_args_keeps_quoted_parts() {
+    assert_eq!(super::split_args(r#"-y "a b" c"#), vec!["-y", "a b", "c"]);
+    assert_eq!(super::split_args(r#"x """#), vec!["x", ""]);
+    assert!(super::split_args("   ").is_empty());
+}

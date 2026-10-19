@@ -25,27 +25,134 @@ pub struct AgentConfig {
     pub command: String,
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
+    /// Environment variable that receives the API key stored for this agent
+    /// (e.g. OPENAI_API_KEY); empty: no key.
+    pub api_key_env: String,
 }
 
 impl Default for AgentConfig {
     fn default() -> Self {
-        Self { name: String::new(), command: String::new(), args: Vec::new(), env: HashMap::new() }
+        Self { name: String::new(), command: String::new(), args: Vec::new(), env: HashMap::new(), api_key_env: String::new() }
+    }
+}
+
+impl AgentConfig {
+    fn keyring_entry(&self) -> Option<keyring::Entry> {
+        keyring::Entry::new(crate::settings::KEYRING_SERVICE, &format!("agent:{}", self.name)).ok()
+    }
+
+    /// The API key from the Windows credential manager.
+    pub fn api_key(&self) -> Option<String> {
+        self.keyring_entry()?.get_password().ok().filter(|k| !k.is_empty())
+    }
+
+    /// Stores the API key (empty: removes it).
+    pub fn set_api_key(&self, key: &str) -> Result<(), String> {
+        let entry = self.keyring_entry().ok_or("Anmeldeinformationsverwaltung nicht verfügbar")?;
+        if key.is_empty() {
+            let _ = entry.delete_credential();
+            Ok(())
+        } else {
+            entry.set_password(key).map_err(|e| e.to_string())
+        }
+    }
+
+    /// Environment for the agent process: configured variables plus the API key.
+    fn process_env(&self) -> HashMap<String, String> {
+        let mut env = self.env.clone();
+        if !self.api_key_env.trim().is_empty()
+            && let Some(key) = self.api_key()
+        {
+            env.insert(self.api_key_env.trim().to_string(), key);
+        }
+        env
+    }
+
+    /// Command line for display and for running in a console.
+    pub fn command_line(&self) -> String {
+        std::iter::once(&self.command).chain(&self.args).map(|a| quote_arg(a)).collect::<Vec<_>>().join(" ")
+    }
+}
+
+fn quote_arg(a: &str) -> String {
+    if a.is_empty() || a.contains([' ', '\t', '"']) { format!("\"{}\"", a.replace('"', "\\\"")) } else { a.to_string() }
+}
+
+/// Splits a command line into arguments (double quotes group).
+pub fn split_args(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quoted = false;
+    let mut any = false;
+    for c in line.chars() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                any = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if any {
+                    out.push(std::mem::take(&mut cur));
+                    any = false;
+                }
+            }
+            c => {
+                cur.push(c);
+                any = true;
+            }
+        }
+    }
+    if any {
+        out.push(cur);
+    }
+    out
+}
+
+/// Ready-made agents: name, npx arguments, variable for an API key.
+pub const PRESETS: &[(&str, &[&str], &str)] = &[
+    ("Claude Code", &["-y", "@agentclientprotocol/claude-agent-acp@latest"], "ANTHROPIC_API_KEY"),
+    ("Codex (ChatGPT)", &["-y", "@agentclientprotocol/codex-acp@latest"], "OPENAI_API_KEY"),
+    ("Gemini CLI", &["-y", "@google/gemini-cli@latest", "--acp"], "GEMINI_API_KEY"),
+];
+
+pub fn preset(name: &str, args: &[&str], key_env: &str) -> AgentConfig {
+    AgentConfig {
+        name: name.into(),
+        command: "npx".into(),
+        args: args.iter().map(|s| s.to_string()).collect(),
+        env: HashMap::new(),
+        api_key_env: key_env.into(),
     }
 }
 
 /// Agents offered out of the box (all started through npx, installed on first use).
 pub fn default_agents() -> Vec<AgentConfig> {
-    let npx = |name: &str, args: &[&str]| AgentConfig {
-        name: name.into(),
-        command: "npx".into(),
-        args: args.iter().map(|s| s.to_string()).collect(),
-        env: HashMap::new(),
+    PRESETS.iter().map(|(n, a, k)| preset(n, a, k)).collect()
+}
+
+/// Runs an interactive login (e.g. "claude auth login") in its own console
+/// window; the agent opens the browser for the account login from there.
+pub fn run_login_console(agent: &AgentConfig, login: &session::TerminalLogin, cwd: &Path) -> Result<(), String> {
+    let line = match &login.command {
+        Some(cmd) => std::iter::once(cmd.as_str()).chain(login.args.iter().map(String::as_str)).map(quote_arg).collect::<Vec<_>>().join(" "),
+        None => {
+            let mut parts = vec![agent.command.clone()];
+            parts.extend(agent.args.iter().cloned());
+            parts.extend(login.args.iter().cloned());
+            parts.iter().map(|a| quote_arg(a)).collect::<Vec<_>>().join(" ")
+        }
     };
-    vec![
-        npx("Claude Code", &["-y", "@agentclientprotocol/claude-agent-acp@latest"]),
-        npx("Gemini CLI", &["-y", "@google/gemini-cli@latest", "--experimental-acp"]),
-        npx("Codex", &["-y", "@zed-industries/codex-acp@latest"]),
-    ]
+    // `start` opens a new console; it stays open so messages can be read.
+    let script = format!("title Anmeldung: {} & {line} & echo. & pause", agent.name);
+    let mut env = agent.process_env();
+    env.extend(login.env.clone());
+    Command::new("cmd")
+        .args(["/C", "start", "", "cmd", "/C", &script])
+        .envs(&env)
+        .current_dir(cwd)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Anmeldung konnte nicht gestartet werden: {e}"))
 }
 
 /// Something that came from the agent process.
@@ -77,7 +184,7 @@ impl Connection {
             .ok_or_else(|| format!("„{}“ wurde nicht gefunden. Ist Node.js installiert?", cfg.command))?;
         let mut child = Command::new(&program)
             .args(&cfg.args)
-            .envs(&cfg.env)
+            .envs(cfg.process_env())
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

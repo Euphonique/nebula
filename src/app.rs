@@ -37,6 +37,7 @@ mod split;
 mod keys;
 mod right_panel;
 mod agent;
+mod agents_page;
 mod nav;
 mod jumpbar;
 mod history;
