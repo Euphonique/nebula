@@ -74,9 +74,9 @@ impl NebulaApp {
         let tip = |name: &str, key: String| if key.is_empty() { name.to_string() } else { format!("{name} ({key})") };
         let preview_tip = tip("Vorschau", self.shortcut_label(super::palette::Command::TogglePreview));
         let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 3] = [
-            (RightTab::Preview, preview_tip, icons::eye),
             (RightTab::Outline, "Gliederung".into(), icons::outline),
             (RightTab::Agent, tip("KI-Agent", self.shortcut_label(super::palette::Command::ToggleAgent)), icons::sparkle),
+            (RightTab::Preview, preview_tip, icons::eye),
         ];
         for (tab, hover, paint) in entries {
             let selected = self.settings.right_tab == tab;

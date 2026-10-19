@@ -77,11 +77,21 @@ impl Selector {
     }
 }
 
+/// Text of a chip: long names (agents, models) are shortened; the tooltip has the full name.
+fn chip_text(sel: &Selector) -> String {
+    let label: String = if sel.label.chars().count() > 18 { format!("{}…", sel.label.chars().take(17).collect::<String>()) } else { sel.label.clone() };
+    format!("{label} ▾")
+}
+
+/// Width a chip needs (text plus button padding).
+fn chip_width(ui: &egui::Ui, sel: &Selector) -> f32 {
+    let galley = ui.painter().layout_no_wrap(chip_text(sel), egui::FontId::proportional(12.0), Color32::WHITE);
+    galley.size().x + 2.0 * ui.spacing().button_padding.x
+}
+
 /// A setting as a small text chip in the toolbar; a click opens its choices.
 fn chip(ui: &mut egui::Ui, theme: &crate::theme::Theme, sel: &Selector, picked: &mut Option<Pick>) {
-    // Long names (agents, models) are shortened; the tooltip has the full name.
-    let label: String = if sel.label.chars().count() > 18 { format!("{}…", sel.label.chars().take(17).collect::<String>()) } else { sel.label.clone() };
-    let text = RichText::new(format!("{label} ▾")).size(12.0).color(theme.text_muted);
+    let text = RichText::new(chip_text(sel)).size(12.0).color(theme.text_muted);
     let resp = ui.add(egui::Button::new(text).frame_when_inactive(false));
     let resp = match &sel.tip {
         Some(tip) => resp.on_hover_text(format!("{tip}\n{}", sel.current_name())),
@@ -147,7 +157,12 @@ impl NebulaApp {
             };
             out.push(Selector {
                 kind: SelKind::Config(o.id.clone()),
-                name: o.name.clone(),
+                name: match o.category.as_str() {
+                    "model" => "Modell".into(),
+                    "thought_level" => "Aufwand".into(),
+                    "mode" => "Modus".into(),
+                    _ => o.name.clone(),
+                },
                 category: o.category.clone(),
                 label: format!("{prefix}{}", o.current_label()),
                 tip: Some(tip),
@@ -551,6 +566,7 @@ impl NebulaApp {
         {
             let ui = &mut bottom;
             // Mode (left) and limits (right) under the card.
+            let narrow = ui.available_width() < 380.0;
             ui.horizontal(|ui| {
                 for sel in selectors.iter().filter(|s| slot(s) == 3) {
                     chip(ui, &theme, sel, &mut picked);
@@ -559,7 +575,7 @@ impl NebulaApp {
                     let mut refresh = false;
                     if let Some(s) = &self.agent.session {
                         match &s.limits {
-                            Some(l) => refresh = limits_ui(ui, &theme, l, s.agent_info.as_deref()).clicked(),
+                            Some(l) => refresh = limits_ui(ui, &theme, l, s.agent_info.as_deref(), narrow).clicked(),
                             None => {
                                 if let Some(info) = &s.agent_info {
                                     ui.label(RichText::new(info).size(11.0).color(theme.text_faint));
@@ -597,12 +613,28 @@ impl NebulaApp {
                         if ui.add_enabled(file_name.is_some(), attach).on_hover_text(tip).on_disabled_hover_text("Dateien hängst du per Rechtsklick in der Seitenleiste an").clicked() {
                             self.agent.attach_file = !self.agent.attach_file;
                         }
-                        for want in 0..=2 {
+                        // As many chips as fit; the rest goes into "⋯". The model stays
+                        // longest, then the agent, then the effort.
+                        let mut room = ui.available_width() - 34.0 /* send */ - 26.0 /* ⋯ */;
+                        let mut shown = [false; 3];
+                        for want in [1, 0, 2] {
                             for sel in selectors.iter().filter(|s| slot(s) == want) {
-                                chip(ui, &theme, sel, &mut picked);
+                                let w = chip_width(ui, sel);
+                                if w <= room {
+                                    room -= w + 2.0;
+                                    shown[want] = true;
+                                }
                             }
                         }
-                        let more: Vec<&Selector> = selectors.iter().filter(|s| slot(s) == 4).collect();
+                        for want in 0..=2 {
+                            if shown[want] {
+                                for sel in selectors.iter().filter(|s| slot(s) == want) {
+                                    chip(ui, &theme, sel, &mut picked);
+                                }
+                            }
+                        }
+                        let more: Vec<&Selector> =
+                            selectors.iter().filter(|s| slot(s) == 4 || (slot(s) < 3 && !shown[slot(s)])).collect();
                         if !more.is_empty() {
                             let resp = ui.add(egui::Button::new(RichText::new("⋯").size(13.0)).frame_when_inactive(false)).on_hover_text("Weitere Einstellungen");
                             egui::Popup::menu(&resp).show(|ui| {
@@ -673,7 +705,27 @@ impl NebulaApp {
                         items.insert(0, (None, format!("📄 {n} (aktuell)  ✕"), "Die aktuelle Datei wird mitgeschickt\nKlicken zum Entfernen".into()));
                     }
                     let mut remove: Option<Option<FileRef>> = None;
-                    for row in items.chunks(3).collect::<Vec<_>>().into_iter().rev() {
+                    // Rows by width (a chip never gets wider than the card).
+                    let full = ui.available_width();
+                    let pad = 2.0 * ui.spacing().button_padding.x + 4.0;
+                    let mut rows: Vec<Vec<(Option<FileRef>, String, String)>> = Vec::new();
+                    let mut used = f32::INFINITY;
+                    for (file, mut text, tip) in items {
+                        let mut w = ui.painter().layout_no_wrap(text.clone(), egui::FontId::proportional(11.5), Color32::WHITE).size().x + pad;
+                        while w > full && text.chars().count() > 8 {
+                            // Shorten the name in front of "  ✕".
+                            let chars: Vec<char> = text.chars().collect();
+                            text = format!("{}…  ✕", chars[..chars.len().saturating_sub(5)].iter().collect::<String>().trim_end_matches('…'));
+                            w = ui.painter().layout_no_wrap(text.clone(), egui::FontId::proportional(11.5), Color32::WHITE).size().x + pad;
+                        }
+                        if used + w > full {
+                            rows.push(Vec::new());
+                            used = 0.0;
+                        }
+                        used += w;
+                        rows.last_mut().unwrap().push((file, text, tip));
+                    }
+                    for row in rows.iter().rev() {
                         ui.horizontal(|ui| {
                             for (file, text, tip) in row {
                                 let button = egui::Button::new(RichText::new(text).size(11.5)).corner_radius(9.0).fill(theme.hover.gamma_multiply(1.4));
@@ -800,7 +852,8 @@ impl NebulaApp {
 }
 
 /// Remaining plan limits ("5 Std. 88 % frei · Woche 12 % frei"); click reloads.
-fn limits_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, l: &crate::acp::usage::Limits, info: Option<&str>) -> egui::Response {
+/// `compact`: short form for a narrow panel ("5 h 72 % · Wo. 4 %").
+fn limits_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, l: &crate::acp::usage::Limits, info: Option<&str>, compact: bool) -> egui::Response {
     use crate::acp::usage;
     let now = usage::now();
     let color = |free: f32| {
@@ -814,14 +867,15 @@ fn limits_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, l: &crate::acp::usa
     };
     let mut job = egui::text::LayoutJob::default();
     let mut tip = String::new();
-    for (name, long, w) in [("5 Std.", "5-Stunden-Limit", l.five_hour()), ("Woche", "Wochenlimit", l.weekly())] {
+    let names = if compact { ["5 h", "Wo."] } else { ["5 Std.", "Woche"] };
+    for (name, long, w) in [(names[0], "5-Stunden-Limit", l.five_hour()), (names[1], "Wochenlimit", l.weekly())] {
         let Some(w) = w else { continue };
         let free = (100.0 - w.used).max(0.0);
         if !job.sections.is_empty() {
             job.append("  ·  ", 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), theme.text_faint));
         }
         job.append(&format!("{name} "), 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), theme.text_faint));
-        job.append(&format!("{free:.0} % frei"), 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), color(free)));
+        job.append(&if compact { format!("{free:.0} %") } else { format!("{free:.0} % frei") }, 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), color(free)));
         tip.push_str(&format!("{long}: {:.0} % verbraucht", w.used));
         if let Some(r) = &w.reset {
             tip.push_str(&format!(", wieder voll in {} ({:02}.{:02}. {:02}:{:02} Uhr)", usage::until(r.at, now), r.day, r.month, r.hour, r.minute));
