@@ -274,8 +274,9 @@ impl NebulaApp {
             }
         };
 
-        // Open documents are served from the buffer, with unsaved changes.
-        if let Some(i) = self.docs.iter().position(|d| d.source == source) {
+        // Open documents are served from the buffer, with unsaved changes
+        // (image tabs have no text: those come from disk or server).
+        if let Some(i) = self.docs.iter().position(|d| d.source == source && d.image.is_none()) {
             let doc = &mut self.docs[i];
             let name = match &doc.source {
                 DocSource::Untitled(_) => "x.html".to_string(),
@@ -406,6 +407,12 @@ impl NebulaApp {
             self.preview_state.cache.clear();
             self.preview.reload();
         }
+        if button(ui, "Vor", icons::forward) {
+            self.preview.go(true);
+        }
+        if button(ui, "Zurück", icons::back) {
+            self.preview.go(false);
+        }
 
         if let Some(err) = &self.preview.error {
             ui.painter().text(body.center(), Align2::CENTER_CENTER, err, FontId::proportional(12.5), theme.text_muted);
@@ -415,7 +422,7 @@ impl NebulaApp {
             ui.painter().text(
                 body.center(),
                 Align2::CENTER_CENTER,
-                "Öffne eine HTML- oder Markdown-Datei.",
+                "Öffne eine HTML-, Markdown- oder Bilddatei.",
                 FontId::proportional(12.5),
                 theme.text_muted,
             );

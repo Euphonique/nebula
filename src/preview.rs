@@ -32,6 +32,16 @@ const INIT_SCRIPT: &str = r#"(function () {
   }, { passive: true });
   addEventListener('DOMContentLoaded', restore);
   addEventListener('load', restore);
+  // Slim rounded scroll bars like in the rest of the app; inserted first so
+  // a page's own scroll bar styles still win.
+  addEventListener('DOMContentLoaded', function () {
+    var s = document.createElement('style');
+    s.textContent = '::-webkit-scrollbar{width:10px;height:10px;background:transparent}'
+      + '::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}'
+      + '::-webkit-scrollbar-thumb{background:rgba(140,140,150,.45);border-radius:5px;border:2px solid transparent;background-clip:content-box}'
+      + '::-webkit-scrollbar-thumb:hover{background-color:rgba(140,140,150,.75)}';
+    (document.head || document.documentElement).prepend(s);
+  });
   window.__nebulaReloadCss = function () {
     document.querySelectorAll('link[rel~="stylesheet"]').forEach(function (l) {
       var u = new URL(l.href); u.searchParams.set('__nebula', Date.now()); l.href = u.href;
@@ -161,6 +171,13 @@ impl Preview {
         }
     }
 
+    /// Goes back (or forward) in the page history after following links.
+    pub fn go(&self, forward: bool) {
+        if let Some(webview) = &self.webview {
+            let _ = webview.evaluate_script(if forward { "history.forward()" } else { "history.back()" });
+        }
+    }
+
     /// Re-fetches the page's stylesheets without reloading the page.
     pub fn reload_css(&self) {
         if let Some(webview) = &self.webview {
@@ -235,10 +252,14 @@ pub fn is_markdown(path: &str) -> bool {
     lower.ends_with(".md") || lower.ends_with(".markdown")
 }
 
-/// Whether a document of this name can be shown as a page.
+/// Whether a document of this name can be shown as a page (images included).
 pub fn is_page(path: &str) -> bool {
     let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-    matches!(ext.as_str(), "html" | "htm" | "xhtml" | "shtml" | "php" | "phtml" | "md" | "markdown" | "svg")
+    matches!(
+        ext.as_str(),
+        "html" | "htm" | "xhtml" | "shtml" | "php" | "phtml" | "md" | "markdown" | "svg"
+            | "png" | "jpg" | "jpeg" | "gif" | "webp" | "avif" | "bmp" | "ico"
+    )
 }
 
 /// Renders Markdown into a styled page.

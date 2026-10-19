@@ -256,6 +256,22 @@ pub fn refresh(painter: &Painter, c: Pos2, color: Color32) {
     ));
 }
 
+/// Arrow pointing left (back) or right (forward).
+pub fn arrow(painter: &Painter, c: Pos2, color: Color32, forward: bool) {
+    let d = if forward { 1.0 } else { -1.0 };
+    let stroke = Stroke::new(1.4, color);
+    painter.line_segment([c + vec2(-5.5 * d, 0.0), c + vec2(5.5 * d, 0.0)], stroke);
+    painter.add(Shape::line(vec![c + vec2(1.0 * d, -4.5), c + vec2(5.5 * d, 0.0), c + vec2(1.0 * d, 4.5)], stroke));
+}
+
+pub fn back(painter: &Painter, c: Pos2, color: Color32) {
+    arrow(painter, c, color, false);
+}
+
+pub fn forward(painter: &Painter, c: Pos2, color: Color32) {
+    arrow(painter, c, color, true);
+}
+
 pub fn menu(painter: &Painter, c: Pos2, color: Color32) {
     for dy in [-4.0, 0.0, 4.0] {
         painter.line_segment([c + vec2(-6.0, dy), c + vec2(6.0, dy)], Stroke::new(1.4, color));
