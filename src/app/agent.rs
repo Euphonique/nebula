@@ -3,13 +3,16 @@
 //! (open buffers with unsaved changes win), edits land in open tabs as one
 //! undoable step and are saved, and every tool use can be confirmed first.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use eframe::egui::{self, Color32, Rect, RichText, Sense, Stroke, pos2, vec2};
 
 use super::NebulaApp;
 use crate::acp::schema::{PermissionOptionKind, ToolCallContent, ToolCallStatus, ToolKind};
-use crate::acp::session::{AgentSession, Entry, FileRequest, Phase, ToolEntry};
+use crate::acp::session::{AgentSession, Attachment, Entry, FileRequest, Phase, ToolEntry};
+use crate::remote::Request;
+use crate::ui::sidebar::FileRef;
 use crate::editor::DocSource;
 use crate::ui::{icons, markdown};
 
@@ -20,12 +23,25 @@ pub(super) struct AgentUi {
     /// Send the active file along with the next message.
     attach_file: bool,
     /// Message typed before the agent was ready.
-    queued: Option<(String, Vec<(PathBuf, String)>)>,
+    queued: Option<(String, Vec<Attachment>)>,
+    /// Files attached from the sidebar for the next message, and server reads for them.
+    attachments: Vec<PendingAttachment>,
+    pending_attach: HashMap<u64, FileRef>,
     /// Focus the input on the next frame.
     focus_input: bool,
     /// Node.js being downloaded for the agents, and the last download error.
     node_dl: Option<NodeDownload>,
     node_error: Option<String>,
+}
+
+/// Larger files are not attached (the agent can read them itself).
+const MAX_ATTACH: usize = 1024 * 1024;
+
+struct PendingAttachment {
+    file: FileRef,
+    label: String,
+    /// `None` while a server file is being read.
+    loaded: Option<Attachment>,
 }
 
 struct NodeDownload {
@@ -333,14 +349,16 @@ impl NebulaApp {
         if text.is_empty() {
             return;
         }
-        let mut context = Vec::new();
+        // Files attached from the sidebar (those still loading are skipped) and the active tab.
+        let mut context: Vec<Attachment> = self.agent.attachments.drain(..).filter_map(|a| a.loaded).collect();
         if self.agent.attach_file
             && let Some(i) = self.active
-            && let DocSource::Local(p) = self.docs[i].source.clone()
-            && self.docs[i].image.is_none()
+            && let Some(a) = self.doc_attachment(i)
+            && !context.iter().any(|c| c.uri == a.uri)
         {
-            context.push((p, self.docs[i].text().to_string()));
+            context.push(a);
         }
+        self.agent.pending_attach.clear();
         self.agent.input.clear();
         let needs_start = self.agent.session.as_ref().is_none_or(|s| matches!(s.phase, Phase::Failed(_) | Phase::Exited));
         if needs_start {
@@ -351,6 +369,97 @@ impl NebulaApp {
             Some(_) => self.agent.queued = Some((text, context)),
             None => {}
         }
+    }
+
+    /// An open tab as attachment, with its unsaved changes.
+    fn doc_attachment(&mut self, i: usize) -> Option<Attachment> {
+        if self.docs[i].image.is_some() {
+            return None;
+        }
+        let text = self.docs[i].text().to_string();
+        match self.docs[i].source.clone() {
+            DocSource::Local(p) => Some(Attachment::local(&p, text)),
+            DocSource::Remote { site_id, path } => {
+                let server = self.sites.get(&site_id).map(|s| s.display_name()).unwrap_or(site_id);
+                Some(Attachment::remote(&server, &path, text))
+            }
+            DocSource::Untitled(_) => None,
+        }
+    }
+
+    /// Adds files from the sidebar to the next message (server files are read first).
+    pub(super) fn attach_to_agent(&mut self, files: Vec<FileRef>) {
+        self.show_agent();
+        for file in files {
+            if self.agent.attachments.iter().any(|a| a.file == file) {
+                continue;
+            }
+            // An open tab wins: it may have unsaved changes.
+            let open = self.docs.iter().position(|d| match (&d.source, &file) {
+                (DocSource::Local(p), FileRef::Local(f)) => p == f,
+                (DocSource::Remote { site_id, path }, FileRef::Remote { site_id: s, path: p }) => site_id == s && path == p,
+                _ => false,
+            });
+            let loaded = match (open, &file) {
+                (Some(i), _) => self.doc_attachment(i),
+                (None, FileRef::Local(p)) => match std::fs::read(p) {
+                    Ok(bytes) if super::is_binary(&bytes) => {
+                        self.error(format!("{} ist keine Textdatei.", p.display()));
+                        continue;
+                    }
+                    Ok(bytes) if bytes.len() > MAX_ATTACH => {
+                        self.error(format!("{} ist zu groß zum Anhängen.", p.display()));
+                        continue;
+                    }
+                    Ok(bytes) => Some(Attachment::local(p, String::from_utf8_lossy(&bytes).into_owned())),
+                    Err(e) => {
+                        self.error(format!("{}: {e}", p.display()));
+                        continue;
+                    }
+                },
+                (None, FileRef::Remote { site_id, path }) => {
+                    match self.send_remote(site_id, Request::Read(path.clone())) {
+                        Some(tag) => {
+                            self.agent.pending_attach.insert(tag, file.clone());
+                        }
+                        None => {
+                            self.error("Server nicht gefunden.");
+                            continue;
+                        }
+                    }
+                    None
+                }
+            };
+            let label = match &file {
+                FileRef::Local(p) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                FileRef::Remote { path, .. } => path.rsplit('/').next().unwrap_or(path).to_string(),
+            };
+            self.agent.attachments.push(PendingAttachment { file, label, loaded });
+        }
+    }
+
+    /// A server file read for an attachment arrived; false if `tag` is not one.
+    pub(super) fn agent_read_done(&mut self, tag: u64, data: Result<&[u8], String>) -> bool {
+        let Some(file) = self.agent.pending_attach.remove(&tag) else { return false };
+        let FileRef::Remote { site_id, path } = &file else { return true };
+        let server = self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_else(|| site_id.clone());
+        match data {
+            Ok(bytes) if super::is_binary(bytes) || bytes.len() > MAX_ATTACH => {
+                self.agent.attachments.retain(|a| a.file != file);
+                self.error(format!("{path} lässt sich nicht anhängen (keine Textdatei oder zu groß)."));
+            }
+            Ok(bytes) => {
+                let a = Attachment::remote(&server, path, String::from_utf8_lossy(bytes).into_owned());
+                if let Some(p) = self.agent.attachments.iter_mut().find(|a| a.file == file) {
+                    p.loaded = Some(a);
+                }
+            }
+            Err(e) => {
+                self.agent.attachments.retain(|a| a.file != file);
+                self.error(format!("{path}: {e}"));
+            }
+        }
+        true
     }
 
     /// The agent tab: toolbar, conversation, questions and the input.
@@ -469,7 +578,7 @@ impl NebulaApp {
             ui.add_space(4.0);
             // Attach the active file.
             let file_name = self.active.and_then(|i| match &self.docs[i].source {
-                DocSource::Local(p) if self.docs[i].image.is_none() => p.file_name().map(|n| n.to_string_lossy().into_owned()),
+                DocSource::Local(_) | DocSource::Remote { .. } if self.docs[i].image.is_none() => Some(self.docs[i].source.file_name()),
                 _ => None,
             });
             ui.horizontal(|ui| {
@@ -480,6 +589,25 @@ impl NebulaApp {
                     ui.label(RichText::new("Umschalt+Enter: neue Zeile").size(11.0).color(theme.text_faint));
                 });
             });
+            // Files attached from the sidebar; a click removes one.
+            let mut remove = None;
+            for row in self.agent.attachments.chunks(3).collect::<Vec<_>>().into_iter().rev() {
+                ui.horizontal(|ui| {
+                    for a in row {
+                        let (text, tip) = match &a.loaded {
+                            Some(l) => (format!("📄 {}  ✕", a.label), format!("{}\nKlicken zum Entfernen", l.label)),
+                            None => (format!("⏳ {}", a.label), "Wird vom Server gelesen …".to_string()),
+                        };
+                        if ui.add(egui::Button::new(RichText::new(text).size(12.0)).corner_radius(10.0)).on_hover_text(tip).clicked() {
+                            remove = Some(a.file.clone());
+                        }
+                    }
+                });
+            }
+            if let Some(file) = remove {
+                self.agent.attachments.retain(|a| a.file != file);
+                self.agent.pending_attach.retain(|_, f| *f != file);
+            }
         }
 
         // The conversation in the space left above; questions and the login

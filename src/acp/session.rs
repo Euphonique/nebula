@@ -57,6 +57,41 @@ pub enum Entry {
     Notice { text: String, error: bool },
 }
 
+/// A file sent along with a message.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Attachment {
+    /// `file:///…` for local files, `sftp://server/path` for server files.
+    pub uri: String,
+    pub name: String,
+    /// Shown in the conversation (full path or "server: path").
+    pub label: String,
+    pub text: String,
+    /// On this disk (the agent can open it itself).
+    pub local: bool,
+}
+
+impl Attachment {
+    pub fn local(path: &Path, text: String) -> Self {
+        Self {
+            uri: file_uri(path),
+            name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            label: path.display().to_string(),
+            text,
+            local: true,
+        }
+    }
+
+    pub fn remote(server: &str, path: &str, text: String) -> Self {
+        Self {
+            uri: format!("sftp://{}{}", server.replace(' ', "_"), crate::preview::percent_encode(path)),
+            name: path.rsplit('/').next().unwrap_or(path).to_string(),
+            label: format!("{server}: {path}"),
+            text,
+            local: false,
+        }
+    }
+}
+
 /// A setting the agent offers for the session (model, effort, mode …).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ConfigOption {
@@ -531,21 +566,22 @@ impl AgentSession {
     }
 
     /// Sends a message; `context` are files given along (path and current text).
-    pub fn prompt(&mut self, text: &str, context: &[(PathBuf, String)]) {
+    pub fn prompt(&mut self, text: &str, context: &[Attachment]) {
         let Some(session_id) = self.session_id.clone() else { return };
         let mut blocks = vec![json!({ "type": "text", "text": text })];
-        for (path, content) in context {
-            let uri = file_uri(path);
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        for a in context {
             if self.embedded_context {
-                blocks.push(json!({ "type": "resource", "resource": { "uri": uri, "text": content } }));
+                blocks.push(json!({ "type": "resource", "resource": { "uri": a.uri, "text": a.text } }));
+            } else if a.local {
+                blocks.push(json!({ "type": "resource_link", "uri": a.uri, "name": a.name }));
             } else {
-                blocks.push(json!({ "type": "resource_link", "uri": uri, "name": name }));
+                // Server files are not on this disk: the content goes along as text.
+                blocks.push(json!({ "type": "text", "text": format!("Datei {} ({}):\n```\n{}\n```", a.name, a.uri, a.text) }));
             }
         }
         let mut shown = text.to_string();
-        for (path, _) in context {
-            shown.push_str(&format!("\n📎 {}", path.display()));
+        for a in context {
+            shown.push_str(&format!("\n📎 {}", if a.local { &a.name } else { &a.label }));
         }
         self.entries.push(Entry::User(shown));
         self.phase = Phase::Working;

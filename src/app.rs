@@ -611,6 +611,9 @@ impl NebulaApp {
                     }
                 }
                 Reply::Read { path, data, stamp } => {
+                    if self.agent_read_done(ev.tag, Ok(&data)) {
+                        continue;
+                    }
                     if self.preview_state.pending.contains_key(&ev.tag) {
                         self.preview_read_done(ev.tag, &path, Some(data));
                         continue;
@@ -718,6 +721,9 @@ impl NebulaApp {
                     if self.preview_state.pending.contains_key(&ev.tag) {
                         let p = if let Request::Read(p) = &request { p.clone() } else { String::new() };
                         self.preview_read_done(ev.tag, &p, None);
+                        continue;
+                    }
+                    if self.agent_read_done(ev.tag, Err(message.clone())) {
                         continue;
                     }
                     if self.compare_read_done(ev.tag, Err(message.clone())) {
@@ -921,6 +927,7 @@ impl NebulaApp {
             SidebarAction::RunCommand { site_id, command } => self.run_server_command(ctx, &site_id, &command),
             SidebarAction::Git(crate::ui::git_panel::GitAction::Compare(path)) => self.compare_path_with_head(&path),
             SidebarAction::Git(crate::ui::git_panel::GitAction::Open(path)) => self.open_local(&path),
+            SidebarAction::AttachToAgent(files) => self.attach_to_agent(files),
             SidebarAction::Compare(files) => match files.as_slice() {
                 [a, b] => self.compare_files(a.clone(), b.clone()),
                 [file] => {

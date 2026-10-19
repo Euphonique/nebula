@@ -139,6 +139,8 @@ pub enum SidebarAction {
     Git(super::git_panel::GitAction),
     /// A saved command in the server's SSH terminal.
     RunCommand { site_id: String, command: String },
+    /// Send files along with the next message to the AI agent.
+    AttachToAgent(Vec<FileRef>),
 }
 
 #[derive(Clone, PartialEq)]
@@ -1156,6 +1158,12 @@ fn item_menu(
             }
         } else if menu_button(ui, "Mit aktivem Tab vergleichen", "") {
             actions.push(SidebarAction::Compare(vec![item.file.clone()]));
+            close = true;
+        }
+        let label = if files.len() > 1 { format!("{} Dateien an KI-Agent anhängen", files.len()) } else { "An KI-Agent anhängen".to_string() };
+        if menu_button(ui, &label, "") {
+            let files = if files.len() > 1 { files.iter().map(|i| i.file.clone()).collect() } else { vec![item.file.clone()] };
+            actions.push(SidebarAction::AttachToAgent(files));
             close = true;
         }
     }
