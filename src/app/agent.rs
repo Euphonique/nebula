@@ -193,45 +193,6 @@ impl NebulaApp {
         let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
         let ui = &mut ui;
 
-        // Agent and mode selection.
-        ui.horizontal(|ui| {
-            let names: Vec<String> = self.settings.agents.iter().map(|a| a.name.clone()).collect();
-            let mut chosen = self.settings.agent.clone();
-            egui::ComboBox::from_id_salt("agent-pick").selected_text(&chosen).width(150.0).show_ui(ui, |ui| {
-                for n in &names {
-                    ui.selectable_value(&mut chosen, n.clone(), n);
-                }
-            });
-            if chosen != self.settings.agent {
-                self.settings.agent = chosen;
-                self.new_agent_session();
-            }
-            if let Some(s) = &mut self.agent.session
-                && let Some(modes) = s.modes.clone()
-                && modes.available_modes.len() > 1
-            {
-                let current = modes.current_mode_id.to_string();
-                let label = modes.available_modes.iter().find(|m| m.id.to_string() == current).map_or(current.clone(), |m| m.name.clone());
-                let mut pick = None;
-                egui::ComboBox::from_id_salt("agent-mode").selected_text(label).width(150.0).show_ui(ui, |ui| {
-                    for m in &modes.available_modes {
-                        let resp = ui.selectable_label(m.id.to_string() == current, &m.name);
-                        let resp = match &m.description {
-                            Some(d) => resp.on_hover_text(d),
-                            None => resp,
-                        };
-                        if resp.clicked() {
-                            pick = Some(m.id.to_string());
-                        }
-                    }
-                });
-                if let Some(id) = pick {
-                    s.set_mode(&id);
-                }
-            }
-        });
-        ui.add_space(6.0);
-
         // Bottom part first (built upwards), so the conversation gets the rest.
         let top = ui.cursor().top();
         let bottom_rect = Rect::from_min_max(pos2(area.left(), top), pos2(area.right(), area.bottom() - 8.0));
@@ -279,6 +240,44 @@ impl NebulaApp {
             if resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift) {
                 send = true;
             }
+            ui.add_space(4.0);
+            // Agent and mode selection, right above the input.
+            ui.horizontal(|ui| {
+                let names: Vec<String> = self.settings.agents.iter().map(|a| a.name.clone()).collect();
+                let mut chosen = self.settings.agent.clone();
+                egui::ComboBox::from_id_salt("agent-pick").selected_text(&chosen).width(150.0).show_ui(ui, |ui| {
+                    for n in &names {
+                        ui.selectable_value(&mut chosen, n.clone(), n);
+                    }
+                });
+                if chosen != self.settings.agent {
+                    self.settings.agent = chosen;
+                    self.new_agent_session();
+                }
+                if let Some(s) = &mut self.agent.session
+                    && let Some(modes) = s.modes.clone()
+                    && modes.available_modes.len() > 1
+                {
+                    let current = modes.current_mode_id.to_string();
+                    let label = modes.available_modes.iter().find(|m| m.id.to_string() == current).map_or(current.clone(), |m| m.name.clone());
+                    let mut pick = None;
+                    egui::ComboBox::from_id_salt("agent-mode").selected_text(label).width(150.0).show_ui(ui, |ui| {
+                        for m in &modes.available_modes {
+                            let resp = ui.selectable_label(m.id.to_string() == current, &m.name);
+                            let resp = match &m.description {
+                                Some(d) => resp.on_hover_text(d),
+                                None => resp,
+                            };
+                            if resp.clicked() {
+                                pick = Some(m.id.to_string());
+                            }
+                        }
+                    });
+                    if let Some(id) = pick {
+                        s.set_mode(&id);
+                    }
+                }
+            });
             ui.add_space(4.0);
             // Attach the active file.
             let file_name = self.active.and_then(|i| match &self.docs[i].source {
