@@ -33,7 +33,119 @@ struct NodeDownload {
     handle: std::thread::JoinHandle<Result<String, String>>,
 }
 
+/// What a dropdown under the conversation changes.
+#[derive(Clone)]
+enum SelKind {
+    Agent,
+    Config(String),
+    /// Older agents: modes without config options.
+    Mode,
+}
+
+type Pick = (SelKind, String);
+
+struct Selector {
+    id: String,
+    kind: SelKind,
+    label: String,
+    tip: Option<String>,
+    current: String,
+    choices: Vec<(String, String, Option<String>)>,
+}
+
 impl NebulaApp {
+    /// Dropdowns: the agent, then its settings – model, effort, mode, others.
+    fn agent_selectors(&self) -> Vec<Selector> {
+        use crate::acp::session::ConfigValue;
+        let agents = self.settings.agents.iter().map(|a| (a.name.clone(), a.name.clone(), None)).collect();
+        let mut out = vec![Selector {
+            id: "agent".into(),
+            kind: SelKind::Agent,
+            label: self.settings.agent.clone(),
+            tip: Some("Agent".into()),
+            current: self.settings.agent.clone(),
+            choices: agents,
+        }];
+        let Some(s) = &self.agent.session else { return out };
+        let rank = |c: &str| match c {
+            "model" => 0,
+            "thought_level" => 1,
+            "mode" => 2,
+            _ => 3,
+        };
+        let mut options: Vec<_> = s.config.iter().filter(|o| o.id != "agent").collect();
+        options.sort_by_key(|o| rank(&o.category));
+        for o in options {
+            let prefix = match o.category.as_str() {
+                "model" => String::new(),
+                "thought_level" => "Aufwand: ".into(),
+                "mode" => "Modus: ".into(),
+                _ => format!("{}: ", o.name),
+            };
+            let (current, choices) = match &o.value {
+                ConfigValue::Select { current, options } => (current.clone(), options.clone()),
+                ConfigValue::Boolean(b) => (b.to_string(), vec![("true".into(), "an".into(), None), ("false".into(), "aus".into(), None)]),
+            };
+            let tip = match &o.description {
+                Some(d) => format!("{}: {d}", o.name),
+                None => o.name.clone(),
+            };
+            out.push(Selector {
+                id: o.id.clone(),
+                kind: SelKind::Config(o.id.clone()),
+                label: format!("{prefix}{}", o.current_label()),
+                tip: Some(tip),
+                current,
+                choices,
+            });
+        }
+        // Modes the old way if the agent has no "mode" setting.
+        if !s.config.iter().any(|o| o.category == "mode")
+            && let Some(modes) = &s.modes
+            && modes.available_modes.len() > 1
+        {
+            let current = modes.current_mode_id.to_string();
+            let name = modes.available_modes.iter().find(|m| m.id.to_string() == current).map_or(current.clone(), |m| m.name.clone());
+            out.push(Selector {
+                id: "legacy-mode".into(),
+                kind: SelKind::Mode,
+                label: format!("Modus: {name}"),
+                tip: Some("Modus".into()),
+                current,
+                choices: modes.available_modes.iter().map(|m| (m.id.to_string(), m.name.clone(), m.description.clone())).collect(),
+            });
+        }
+        out
+    }
+
+    fn apply_agent_pick(&mut self, (kind, value): Pick) {
+        match kind {
+            SelKind::Agent => {
+                if value != self.settings.agent {
+                    self.settings.agent = value;
+                    self.new_agent_session();
+                }
+            }
+            SelKind::Mode => {
+                if let Some(s) = &mut self.agent.session {
+                    s.set_mode(&value);
+                }
+            }
+            SelKind::Config(id) => {
+                let Some(s) = &mut self.agent.session else { return };
+                s.set_config(&id, &value);
+                // Remember model, effort … for this agent; the mode deliberately not
+                // (every conversation starts with the safe default).
+                let remember = s.config.iter().any(|o| o.id == id && o.category != "mode");
+                let name = s.agent.name.clone();
+                if remember && let Some(cfg) = self.settings.agents.iter_mut().find(|a| a.name == name) {
+                    cfg.options.insert(id, value);
+                    let _ = self.settings.save();
+                }
+            }
+        }
+    }
+
     fn start_node_download(&mut self) {
         if self.agent.node_dl.is_some() {
             return;
@@ -322,43 +434,38 @@ impl NebulaApp {
                 send = true;
             }
             ui.add_space(4.0);
-            // Agent and mode selection, right above the input.
-            ui.horizontal(|ui| {
-                let names: Vec<String> = self.settings.agents.iter().map(|a| a.name.clone()).collect();
-                let mut chosen = self.settings.agent.clone();
-                egui::ComboBox::from_id_salt("agent-pick").selected_text(&chosen).width(150.0).show_ui(ui, |ui| {
-                    for n in &names {
-                        ui.selectable_value(&mut chosen, n.clone(), n);
+            // Agent and its settings (model, effort, mode …), right above the input.
+            let rows = self.agent_selectors();
+            let width = ((ui.available_width() - 6.0) / 2.0).max(80.0);
+            let mut picked: Option<Pick> = None;
+            // Built upwards: the last row first.
+            for row in rows.chunks(2).rev() {
+                ui.horizontal(|ui| {
+                    for sel in row {
+                        let resp = egui::ComboBox::from_id_salt(("agent-sel", &sel.id))
+                            .selected_text(&sel.label)
+                            .width(width - 8.0)
+                            .show_ui(ui, |ui| {
+                                for (value, name, description) in &sel.choices {
+                                    let resp = ui.selectable_label(*value == sel.current, name);
+                                    let resp = match description {
+                                        Some(d) => resp.on_hover_text(d),
+                                        None => resp,
+                                    };
+                                    if resp.clicked() {
+                                        picked = Some((sel.kind.clone(), value.clone()));
+                                    }
+                                }
+                            });
+                        if let Some(tip) = &sel.tip {
+                            resp.response.on_hover_text(tip);
+                        }
                     }
                 });
-                if chosen != self.settings.agent {
-                    self.settings.agent = chosen;
-                    self.new_agent_session();
-                }
-                if let Some(s) = &mut self.agent.session
-                    && let Some(modes) = s.modes.clone()
-                    && modes.available_modes.len() > 1
-                {
-                    let current = modes.current_mode_id.to_string();
-                    let label = modes.available_modes.iter().find(|m| m.id.to_string() == current).map_or(current.clone(), |m| m.name.clone());
-                    let mut pick = None;
-                    egui::ComboBox::from_id_salt("agent-mode").selected_text(label).width(150.0).show_ui(ui, |ui| {
-                        for m in &modes.available_modes {
-                            let resp = ui.selectable_label(m.id.to_string() == current, &m.name);
-                            let resp = match &m.description {
-                                Some(d) => resp.on_hover_text(d),
-                                None => resp,
-                            };
-                            if resp.clicked() {
-                                pick = Some(m.id.to_string());
-                            }
-                        }
-                    });
-                    if let Some(id) = pick {
-                        s.set_mode(&id);
-                    }
-                }
-            });
+            }
+            if let Some(pick) = picked {
+                self.apply_agent_pick(pick);
+            }
             ui.add_space(4.0);
             // Attach the active file.
             let file_name = self.active.and_then(|i| match &self.docs[i].source {

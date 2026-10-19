@@ -44,6 +44,8 @@ struct Edit {
     key: String,
     has_key: bool,
     error: Option<String>,
+    /// Remembered session settings, kept as they are.
+    options: std::collections::BTreeMap<String, String>,
 }
 
 impl Edit {
@@ -60,6 +62,7 @@ impl Edit {
             key: String::new(),
             has_key: !cfg.name.is_empty() && cfg.api_key().is_some(),
             error: None,
+            options: cfg.options.clone(),
         }
     }
 
@@ -76,6 +79,7 @@ impl Edit {
                 .filter(|(k, _)| !k.is_empty())
                 .collect(),
             api_key_env: self.key_env.trim().to_string(),
+            options: self.options.clone(),
         }
     }
 }

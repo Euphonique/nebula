@@ -30,11 +30,13 @@ pub struct AgentConfig {
     /// Environment variable that receives the API key stored for this agent
     /// (e.g. OPENAI_API_KEY); empty: no key.
     pub api_key_env: String,
+    /// Remembered session settings (option id -> value), e.g. model and effort.
+    pub options: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for AgentConfig {
     fn default() -> Self {
-        Self { name: String::new(), command: String::new(), args: Vec::new(), env: HashMap::new(), api_key_env: String::new() }
+        Self { name: String::new(), command: String::new(), args: Vec::new(), env: HashMap::new(), api_key_env: String::new(), options: Default::default() }
     }
 }
 
@@ -124,6 +126,7 @@ pub fn preset(name: &str, args: &[&str], key_env: &str) -> AgentConfig {
         args: args.iter().map(|s| s.to_string()).collect(),
         env: HashMap::new(),
         api_key_env: key_env.into(),
+        options: Default::default(),
     }
 }
 

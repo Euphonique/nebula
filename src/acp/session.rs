@@ -57,6 +57,70 @@ pub enum Entry {
     Notice { text: String, error: bool },
 }
 
+/// A setting the agent offers for the session (model, effort, mode …).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConfigOption {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    /// "model", "thought_level", "mode", "model_config" … (empty if none).
+    pub category: String,
+    pub value: ConfigValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConfigValue {
+    /// Current value and the choices (value, name, description).
+    Select { current: String, options: Vec<(String, String, Option<String>)> },
+    Boolean(bool),
+}
+
+impl ConfigOption {
+    /// Display name of the current choice.
+    pub fn current_label(&self) -> String {
+        match &self.value {
+            ConfigValue::Select { current, options } => {
+                options.iter().find(|(v, _, _)| v == current).map_or(current.clone(), |(_, n, _)| n.clone())
+            }
+            ConfigValue::Boolean(b) => if *b { "an" } else { "aus" }.into(),
+        }
+    }
+}
+
+/// Reads `configOptions` (kept as JSON to accept any agent's extra fields).
+fn config_options(v: Option<&Value>) -> Vec<ConfigOption> {
+    let s = |v: Option<&Value>| v.and_then(Value::as_str).map(str::to_string);
+    v.and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|o| {
+                    let value = match o.get("type").and_then(Value::as_str) {
+                        Some("boolean") => ConfigValue::Boolean(o.get("currentValue").and_then(Value::as_bool).unwrap_or(false)),
+                        _ => {
+                            // Options may also come in groups ({ name, options: [...] }).
+                            let mut options = Vec::new();
+                            for item in o.get("options").and_then(Value::as_array).into_iter().flatten() {
+                                match item.get("options").and_then(Value::as_array) {
+                                    Some(group) => options.extend(group.iter().filter_map(|g| Some((s(g.get("value"))?, s(g.get("name"))?, s(g.get("description")))))),
+                                    None => options.extend(s(item.get("value")).zip(s(item.get("name"))).map(|(v, n)| (v, n, s(item.get("description"))))),
+                                }
+                            }
+                            ConfigValue::Select { current: s(o.get("currentValue"))?, options }
+                        }
+                    };
+                    Some(ConfigOption {
+                        id: s(o.get("id"))?,
+                        name: s(o.get("name")).unwrap_or_default(),
+                        description: s(o.get("description")),
+                        category: s(o.get("category")).unwrap_or_default(),
+                        value,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// A way to log in offered by the agent.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AuthOption {
@@ -103,6 +167,7 @@ enum Pending {
     /// Hidden session for `/usage` and its prompt.
     UsageSession,
     UsagePrompt,
+    SetConfig,
 }
 
 pub struct AgentSession {
@@ -114,6 +179,8 @@ pub struct AgentSession {
     pub entries: Vec<Entry>,
     pub permissions: VecDeque<Permission>,
     pub modes: Option<SessionModeState>,
+    /// Settings offered by the agent (model, effort, mode …).
+    pub config: Vec<ConfigOption>,
     /// Name and version reported by the agent.
     pub agent_info: Option<String>,
     /// The agent accepts file contents embedded in the prompt.
@@ -143,6 +210,7 @@ impl AgentSession {
             entries: Vec::new(),
             permissions: VecDeque::new(),
             modes: None,
+            config: Vec::new(),
             agent_info: None,
             embedded_context: false,
             auth_methods: Vec::new(),
@@ -257,6 +325,14 @@ impl AgentSession {
             },
             // Notification.
             (Some(method), None) => {
+                // Changed settings (model, effort …) arrive as a full list.
+                if method == "session/update"
+                    && params.pointer("/update/sessionUpdate").and_then(Value::as_str) == Some("config_option_update")
+                    && params.get("sessionId").and_then(Value::as_str) == self.session_id.as_deref()
+                {
+                    self.config = config_options(params.pointer("/update/configOptions"));
+                    return;
+                }
                 if method == "session/update"
                     && let Ok(n) = serde_json::from_value::<SessionNotification>(params)
                 {
@@ -298,11 +374,13 @@ impl AgentSession {
                 self.new_session();
             }
             Pending::Authenticate => self.new_session(),
-            Pending::NewSession => match serde_json::from_value::<NewSessionResponse>(result) {
+            Pending::NewSession => match serde_json::from_value::<NewSessionResponse>(result.clone()) {
                 Ok(r) => {
                     self.session_id = Some(r.session_id.to_string());
                     self.modes = r.modes;
+                    self.config = config_options(result.get("configOptions"));
                     self.phase = Phase::Ready;
+                    self.apply_saved_options();
                     self.refresh_limits();
                 }
                 Err(e) => self.phase = Phase::Failed(format!("Ungültige Antwort auf session/new: {e}")),
@@ -331,6 +409,11 @@ impl AgentSession {
             Pending::UsageSession => {
                 self.usage_session = result.get("sessionId").and_then(Value::as_str).map(str::to_string);
                 self.ask_usage();
+            }
+            Pending::SetConfig => {
+                if result.get("configOptions").is_some() {
+                    self.config = config_options(result.get("configOptions"));
+                }
             }
             Pending::UsagePrompt => {
                 if let Some(l) = super::usage::parse(&self.usage_text, super::usage::now()) {
@@ -366,6 +449,41 @@ impl AgentSession {
             Pending::SetMode | Pending::Logout => self.notice(message, true),
             // The limits are extra information: no error shown.
             Pending::UsageSession | Pending::UsagePrompt => self.usage_text.clear(),
+            Pending::SetConfig => self.notice(format!("Einstellung nicht übernommen: {message}"), true),
+        }
+    }
+
+    /// Changes a session setting (value of a select, or "true"/"false").
+    pub fn set_config(&mut self, id: &str, value: &str) {
+        let Some(session_id) = self.session_id.clone() else { return };
+        let Some(opt) = self.config.iter_mut().find(|o| o.id == id) else { return };
+        let params = match &mut opt.value {
+            ConfigValue::Select { current, .. } => {
+                *current = value.to_string();
+                json!({ "sessionId": session_id, "configId": id, "value": value })
+            }
+            ConfigValue::Boolean(b) => {
+                *b = value == "true";
+                json!({ "sessionId": session_id, "configId": id, "type": "boolean", "value": *b })
+            }
+        };
+        self.send("session/set_config_option", Pending::SetConfig, params);
+    }
+
+    /// Choices remembered for this agent (model, effort …) on a new session.
+    fn apply_saved_options(&mut self) {
+        let saved: Vec<(String, String)> = self.agent.options.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        for (id, value) in saved {
+            let differs = self.config.iter().any(|o| {
+                o.id == id
+                    && match &o.value {
+                        ConfigValue::Select { current, options } => *current != value && options.iter().any(|(v, _, _)| *v == value),
+                        ConfigValue::Boolean(b) => b.to_string() != value,
+                    }
+            });
+            if differs {
+                self.set_config(&id, &value);
+            }
         }
     }
 
