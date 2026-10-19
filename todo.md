@@ -1,3 +1,13 @@
+# Gefundene Bugs / Verbesserungen:
+- Rechter Mausklick auf den Root Ordner in der lokalen Dateiansicht wirft einen Fehler aus.
+- Startseite: Die Liste der zuletzt geöffneten Dateien und Projekte läuft über das Fenster.
+- Desweiteren Möglichkeit einbauen die Liste der zuletzt geladenen Dateien, Ordner und Projekte zu leeren.
+- Rechtes Panel: Beim öffnen von Bilddateien zeigt diese eine leere Seite an. (SVG zeigt korrekt Vorschau an und Quellcode). Vorschlag: Bilddateien immer nur im Vorschau Panel laden. Sollten wir einen HEX Editor einbauen, könnte dieser bei Binärdateien dies anzeigen.
+- Rechtes Panel Vorschau: zurück/vor Buttons einbauen, falls man einem Link gefolgt ist, um wieder zurück zu kommen.
+- Einstellungen Tastenkürzel: Fenster etwas größer als bei dem Rest der Einstellungen. ggf. die anderen Seiten an die Größe anpassen, damit das Fenster beim Wechsel der Seiten nicht "springt".
+- Linkes Panel unten Textbox "Filtern": Text nicht vertikal zentriert und zu weit oben.
+- Linkes Panel unten Textbox "Filtern": Eintippen von Filtern lässt das Programm kurzzeitig einfrieren.
+
 # Nebula – offene Ideen
 
 Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, **C** = nice to have.
@@ -7,11 +17,11 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 - **C** `.bak`-Kopie auf dem Server vor dem Überschreiben (eine lokale Kopie leistet schon der lokale Verlauf).
 
 ## Editor
-
 - **B** Eigene Snippets pro Sprache in den Einstellungen anlegen/bearbeiten (mit Platzhaltern `$1`, `${2:name}`).
 - **C** Makros aufnehmen und abspielen.
 - **C** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
 - **C** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
+- **C** Lesezeichen im Panel rechts einbauen. Doppel Klick auf Zeilennummer setzt/entfernt Lesezeichen (mit Markierung bei Zeilennummer) und trägt dieses in die Liste der Lesezeichen im rechten Panel ein. Mit Klick auf ein Lesezeichen im rechten Panel springt es im Editor an besagte Stelle.
 
 ## Suchen und Navigieren
 
