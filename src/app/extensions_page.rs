@@ -367,7 +367,8 @@ impl NebulaApp {
             if !item.description.is_empty() {
                 ui.add(egui::Label::new(RichText::new(&item.description).small().color(theme.text_muted)).wrap());
             }
-            ui.indent(("cfg", &item.title), |ui| {
+            // Extensions often repeat sections in the project settings: keep their IDs apart.
+            ui.indent(("cfg", ws, &item.title), |ui| {
                 for c in &item.children {
                     self.config_item(ui, st, ext, c, ws);
                 }
@@ -411,7 +412,7 @@ impl NebulaApp {
                     ui.label(&item.title);
                     let cur = current.as_str().unwrap_or("").to_string();
                     let shown = item.values.iter().find(|v| v.0 == cur).map_or(cur.clone(), |v| v.1.clone());
-                    egui::ComboBox::from_id_salt(("enum", &key)).selected_text(shown).show_ui(ui, |ui| {
+                    egui::ComboBox::from_id_salt(("enum", ws, &key)).selected_text(shown).show_ui(ui, |ui| {
                         for (raw, title) in &item.values {
                             if ui.selectable_label(*raw == cur, title).clicked() {
                                 new = Some(Value::String(raw.clone()));
