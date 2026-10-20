@@ -1419,7 +1419,7 @@ impl NebulaApp {
             });
             ui.menu_button("Einstellungen", |ui| {
                 let settings_key = self.shortcut_label(palette::Command::Settings);
-                for (label, page) in [("Editor…", Page::Editor), ("Design und Themes…", Page::Design), ("Sprachen…", Page::Languages), ("Tastenkürzel…", Page::Keys), ("Erweiterungen…", Page::Extensions)] {
+                for (label, page) in [("Editor…", Page::Editor), ("Design und Themes…", Page::Design), ("Sprachen…", Page::Languages), ("Tastenkürzel…", Page::Keys), ("KI-Agenten…", Page::Agents), ("Erweiterungen…", Page::Extensions)] {
                     if ui.add(egui::Button::new(label).shortcut_text(if page == Page::Editor { settings_key.as_str() } else { "" })).clicked() {
                         self.open_settings(page);
                         ui.close();
