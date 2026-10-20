@@ -1331,50 +1331,51 @@ impl NebulaApp {
                 });
             });
             ui.menu_button("Ansicht", |ui| {
-                if ui
-                    .add(egui::Button::new("Seitenleiste").shortcut_text(self.shortcut_label(palette::Command::ToggleSidebar)).selected(self.show_sidebar))
-                    .clicked()
-                {
-                    self.show_sidebar = !self.show_sidebar;
-                    ui.close();
-                }
+                ui.menu_button("Seitenleisten", |ui| {
+                    ui.set_min_width(230.0);
+                    let key = self.shortcut_label(palette::Command::ToggleSidebar);
+                    if menu_check(ui, self.show_sidebar, "Linkes Panel", &key) {
+                        self.show_sidebar = !self.show_sidebar;
+                    }
+                    let key = self.shortcut_label(palette::Command::TogglePreview);
+                    if menu_check(ui, self.settings.right_panel, "Rechtes Panel", &key) {
+                        self.toggle_right_panel();
+                    }
+                    let key = self.shortcut_label(palette::Command::ToggleTerminal);
+                    if menu_check(ui, self.terminals.visible, "Unteres Panel", &key) {
+                        self.toggle_terminal(&ui.ctx().clone());
+                    }
+                });
                 if ui.add(egui::Button::new("Zen-Modus").shortcut_text(self.shortcut_label(palette::Command::ToggleZen))).clicked() {
                     ui.close();
                     self.toggle_zen(&ui.ctx().clone());
                 }
-                if ui
-                    .add(egui::Button::new("Terminal").shortcut_text(self.shortcut_label(palette::Command::ToggleTerminal)).selected(self.terminals.visible))
-                    .clicked()
-                {
-                    self.toggle_terminal(&ui.ctx().clone());
-                    ui.close();
-                }
-                if ui
-                    .add(egui::Button::new("Geteilte Ansicht").shortcut_text(self.shortcut_label(palette::Command::ToggleSplit)).selected(self.split.is_some()))
-                    .clicked()
-                {
+                ui.separator();
+                let key = self.shortcut_label(palette::Command::ToggleSplit);
+                if menu_check(ui, self.split.is_some(), "Geteilte Ansicht", &key) {
                     self.toggle_split();
-                    ui.close();
                 }
                 let wrap_key = self.shortcut_label(palette::Command::ToggleWordWrap);
                 let e = &mut self.settings.editor;
-                if ui
-                    .add(egui::Button::new("Automatischer Zeilenumbruch").shortcut_text(wrap_key).selected(e.word_wrap))
-                    .clicked()
-                {
+                if menu_check(ui, e.word_wrap, "Automatischer Zeilenumbruch", &wrap_key) {
                     e.word_wrap = !e.word_wrap;
-                    ui.close();
                 }
-                ui.checkbox(&mut e.show_invisibles, "Unsichtbare Zeichen");
-                ui.checkbox(&mut e.show_indent_guides, "Einrückungshilfslinien");
-                ui.checkbox(&mut e.highlight_current_line, "Aktuelle Zeile hervorheben");
+                for (on, label) in [
+                    (&mut e.minimap, "Minimap"),
+                    (&mut e.show_invisibles, "Unsichtbare Zeichen"),
+                    (&mut e.show_indent_guides, "Einrückungshilfslinien"),
+                    (&mut e.highlight_current_line, "Aktuelle Zeile hervorheben"),
+                ] {
+                    if menu_check(ui, *on, label, "") {
+                        *on = !*on;
+                    }
+                }
                 ui.separator();
                 ui.menu_button("Erscheinungsbild", |ui| {
                     use crate::settings::Appearance;
                     for a in [Appearance::Light, Appearance::Dark, Appearance::System] {
-                        if ui.add(egui::Button::new(a.label()).selected(self.settings.appearance == a)).clicked() {
+                        if menu_check(ui, self.settings.appearance == a, a.label(), "") {
                             self.set_appearance(&ui.ctx().clone(), a);
-                            ui.close();
                         }
                     }
                 });
@@ -3162,6 +3163,32 @@ fn welcome_row(
     painter.text(pos2(rect.left() + 34.0, cy), Align2::LEFT_CENTER, label, FontId::proportional(13.5), theme.foreground);
     painter.text(pos2(rect.right() - 8.0, cy), Align2::RIGHT_CENTER, hint, FontId::proportional(11.5), theme.text_faint);
     resp
+}
+
+/// Menu entry that switches something on or off: a checkbox, with the
+/// shortcut right-aligned like on the other menu entries. True when clicked.
+fn menu_check(ui: &mut egui::Ui, checked: bool, label: &str, shortcut: &str) -> bool {
+    let mut on = checked;
+    ui.horizontal(|ui| {
+        // Menus draw widgets without frame; the box needs one to be visible when empty.
+        let w = &mut ui.visuals_mut().widgets;
+        let border = w.noninteractive.fg_stroke.color.gamma_multiply(0.6);
+        w.inactive.bg_stroke = egui::Stroke::new(1.0, border);
+        w.hovered.bg_stroke = egui::Stroke::new(1.0, border);
+        let resp = ui.checkbox(&mut on, label);
+        if !shortcut.is_empty() {
+            // Painted at the menu's right edge without taking room, which would
+            // widen the menu a little more every frame.
+            let font = egui::TextStyle::Body.resolve(ui.style());
+            let color = ui.visuals().weak_text_color();
+            let right = ui.max_rect().right();
+            let w = ui.fonts_mut(|f| f.layout_no_wrap(shortcut.to_string(), font.clone(), color).size().x);
+            ui.add_space(w + 24.0);
+            ui.painter().text(pos2(right, resp.rect.center().y), Align2::RIGHT_CENTER, shortcut, font, color);
+        }
+        resp.clicked()
+    })
+    .inner
 }
 
 /// Filled button for the main action of a dialog.
