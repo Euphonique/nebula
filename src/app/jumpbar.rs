@@ -132,18 +132,24 @@ impl NebulaApp {
 
         // Contents on the line of the panel tabs (10 pt from the top, 26 pt high).
         let inner = full.with_min_y(full.top() + 6.0);
-        // Split view toggle at the right end.
-        let button = Rect::from_min_size(pos2(full.right() - 42.0, full.top() + 10.0), vec2(34.0, 26.0));
-        let mut right = ui.new_child(egui::UiBuilder::new().max_rect(button));
+        // Minimap and split view toggles at the right end.
+        let buttons = Rect::from_min_size(pos2(full.right() - 78.0, full.top() + 10.0), vec2(70.0, 26.0));
+        let mut right = ui.new_child(egui::UiBuilder::new().max_rect(buttons).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        right.spacing_mut().item_spacing.x = 2.0;
+        let size = vec2(34.0, 26.0);
+        let minimap = self.settings.editor.minimap;
+        if icons::icon_button(&mut right, &theme, size, minimap, icons::minimap).on_hover_text("Minimap ein/aus").clicked() {
+            self.settings.editor.minimap = !minimap;
+        }
         let tip = format!("Geteilte Ansicht ({})", self.shortcut_label(super::palette::Command::ToggleSplit));
-        if icons::icon_button(&mut right, &theme, button.size(), self.split.is_some(), icons::split_view)
+        if icons::icon_button(&mut right, &theme, size, self.split.is_some(), icons::split_view)
             .on_hover_text(tip)
             .clicked()
         {
             self.toggle_split();
         }
 
-        let bar = inner.with_max_x(button.left() - 4.0);
+        let bar = inner.with_max_x(buttons.left() - 4.0);
         let painter = ui.painter().with_clip_rect(bar);
 
         let parts = self.jump_parts(i);

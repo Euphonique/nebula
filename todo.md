@@ -7,7 +7,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 - **C** `.bak`-Kopie auf dem Server vor dem Überschreiben (eine lokale Kopie leistet schon der lokale Verlauf).
 
 ## Editor
-- **B** Über Minimap ein Icon Button einbauen um diese ein/auszublenden.
 - **B** Eigene Snippets pro Sprache in den Einstellungen anlegen/bearbeiten (mit Platzhaltern `$1`, `${2:name}`).
 - **C** Makros aufnehmen und abspielen.
 - **C** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
@@ -91,4 +90,4 @@ Bugrunde vom 19.10.: Rechtsklick auf den Projektordner, Startseite (Karte wächs
 
 KI-Agenten (19.10.): Claude Code, Codex (ChatGPT) und Gemini CLI über ACP im rechten Panel (Reiter „KI“): Verlauf mit Markdown, Plänen, Werkzeugaufrufen und Diffs, Rückfragen, Stop; Modell, Aufwand und Modus wählbar (pro Agent gemerkt); Dateien anhängen (Büroklammer, Rechtsklick in der Seitenleiste, auch vom Server); 5-Stunden- und Wochenlimit von Claude; Einstellungsseite „KI-Agenten“ mit Anmeldung über die Anbieter, API-Schlüsseln und Node.js-Verwaltung (Node wird bei Bedarf nach `%APPDATA%\nebula\runtime` geladen, Agenten liegen in `%APPDATA%\nebula\agents`); Änderungen des Agenten werden bei „Beim Speichern hochladen“ auf den Server übertragen. Außerdem: Reiter im rechten Panel jetzt Gliederung, KI, Vorschau.
 
-Bugrunde vom 20.10.: Theme je für helles und dunkles Design mit Umschalter Hell/Dunkel/Automatisch (Einstellungen, Menü „Ansicht“, Knopf in der Titelleiste), Menüeintrag „KI-Agenten…“, Terminal-Knopf in der Titelleiste, geteilte Ansicht als Knopf in der (jetzt so hohen wie die Panel-Reiter) Pfadleiste, ID-Kollisionsmeldungen in den Einstellungen von Erweiterungen (z. B. Rust).
+Bugrunde vom 20.10.: Theme je für helles und dunkles Design mit Umschalter Hell/Dunkel/Automatisch (Einstellungen, Menü „Ansicht“, Knopf in der Titelleiste), Menüeintrag „KI-Agenten…“, Terminal-Knopf in der Titelleiste, geteilte Ansicht als Knopf in der (jetzt so hohen wie die Panel-Reiter) Pfadleiste, ID-Kollisionsmeldungen in den Einstellungen von Erweiterungen (z. B. Rust), Knopf für die Minimap neben dem für die geteilte Ansicht.

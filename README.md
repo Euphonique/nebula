@@ -47,7 +47,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Automatisch speichern (Einstellungen → Editor): nach einer Tipppause oder beim Wechsel von Tab bzw. Fenster, Serverdateien nur auf Wunsch
 - Lokaler Verlauf: Beim Öffnen und bei jedem Speichern (auch auf dem Server) wird eine Fassung aufbewahrt; über das Tab-Menü „Lokaler Verlauf…“ mit dem aktuellen Stand vergleichen und wiederherstellen. Beim Neuladen verworfene Änderungen bleiben dort ebenfalls erhalten
 - Externe Änderungen: Wird eine geöffnete Datei von einem anderen Programm geändert (z. B. Git), lädt Nebula sie neu (rückgängig machbar); bei eigenen ungespeicherten Änderungen wird nachgefragt, mit Unterschiede-Ansicht. Gelöschte Dateien werden gemeldet, die Seitenleiste aktualisiert sich selbst.
-- Geteilte Ansicht (Knopf rechts in der Pfadleiste, Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
+- Geteilte Ansicht (Knopf rechts in der Pfadleiste, daneben einer für die Minimap; Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
 - Zen-Modus (Strg+Alt+Enter oder F11, Esc beendet): nur der Editor, Vollbild, mittige Textspalte
 - Minimap am rechten Rand des Editors (Token-Farben, sichtbarer Bereich hervorgehoben, Klicken/Ziehen scrollt; abschaltbar unter Einstellungen → Editor)
 - Editorschrift frei wählbar (alle installierten Schriften, mit Suche) und Zeilenhöhe einstellbar (Einstellungen → Editor)

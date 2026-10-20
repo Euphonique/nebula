@@ -446,16 +446,22 @@ pub fn moon(painter: &Painter, c: Pos2, color: Color32) {
     let eps = h.atan2(d - a);
     let c2 = c + u * d;
     let n = 24;
-    let mut points = Vec::with_capacity(2 * n + 2);
-    for i in 0..=n {
-        let t = alpha + delta + (2.0 * PI - 2.0 * delta) * i as f32 / n as f32;
-        points.push(c + vec2(t.cos(), t.sin()) * r1);
-    }
-    for i in 0..=n {
-        let t = alpha + PI + eps - 2.0 * eps * i as f32 / n as f32;
-        points.push(c2 + vec2(t.cos(), t.sin()) * r2);
-    }
-    painter.add(Shape::closed_line(points, Stroke::new(1.3, color)));
+    let outer: Vec<Pos2> = (0..=n)
+        .map(|i| {
+            let t = alpha + delta + (2.0 * PI - 2.0 * delta) * i as f32 / n as f32;
+            c + vec2(t.cos(), t.sin()) * r1
+        })
+        .collect();
+    let inner: Vec<Pos2> = (0..=n)
+        .map(|i| {
+            let t = alpha + PI + eps - 2.0 * eps * i as f32 / n as f32;
+            c2 + vec2(t.cos(), t.sin()) * r2
+        })
+        .collect();
+    // Two open arcs: a closed line would get mitre spikes at the sharp tips.
+    let stroke = Stroke::new(1.3, color);
+    painter.add(Shape::line(outer, stroke));
+    painter.add(Shape::line(inner, stroke));
 }
 
 /// Circle, half filled (design follows Windows).
@@ -475,4 +481,18 @@ pub fn panel_bottom(painter: &Painter, c: Pos2, color: Color32) {
     let r = Rect::from_center_size(c, vec2(16.0, 13.0));
     painter.rect_stroke(r, 2.5, Stroke::new(1.3, color), eframe::egui::StrokeKind::Inside);
     painter.rect_filled(Rect::from_min_max(pos2(r.left(), r.bottom() - 4.5), r.max), 2.0, color);
+}
+
+/// Page with a narrow strip of code lines on the right (minimap toggle).
+pub fn minimap(painter: &Painter, c: Pos2, color: Color32) {
+    let r = Rect::from_center_size(c, vec2(16.0, 13.0));
+    let stroke = Stroke::new(1.3, color);
+    painter.rect_stroke(r, 2.5, stroke, eframe::egui::StrokeKind::Inside);
+    let x = r.right() - 5.5;
+    painter.line_segment([pos2(x, r.top() + 1.0), pos2(x, r.bottom() - 1.0)], stroke);
+    let thin = Stroke::new(1.0, color);
+    for (i, w) in [2.5f32, 1.6, 2.2].iter().enumerate() {
+        let y = r.top() + 3.5 + i as f32 * 3.0;
+        painter.line_segment([pos2(x + 1.5, y), pos2(x + 1.5 + w, y)], thin);
+    }
 }

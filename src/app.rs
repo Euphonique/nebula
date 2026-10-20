@@ -1652,6 +1652,17 @@ impl NebulaApp {
         }
         // Panel toggles (sidebar, terminal, right panel) and the design switch.
         row.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            let appearance = self.settings.appearance;
+            let paint: fn(&egui::Painter, egui::Pos2, Color32) = match appearance {
+                crate::settings::Appearance::Light => icons::sun,
+                crate::settings::Appearance::Dark => icons::moon,
+                crate::settings::Appearance::System => icons::auto_theme,
+            };
+            let tip = format!("Design: {} – Klick: {}", appearance.label(), appearance.next().label());
+            if icons::icon_button(ui, &theme, btn, false, paint).on_hover_text(tip).clicked() {
+                self.set_appearance(&ui.ctx().clone(), appearance.next());
+            }
+            ui.add_space(6.0);
             let tip = format!("Rechtes Panel: Vorschau und Gliederung ({})", self.shortcut_label(palette::Command::TogglePreview));
             if icons::icon_button(ui, &theme, btn, self.settings.right_panel, |p, c, col| icons::panel_right(p, c, col))
                 .on_hover_text(tip)
@@ -1669,17 +1680,6 @@ impl NebulaApp {
                 .clicked()
             {
                 self.show_sidebar = !self.show_sidebar;
-            }
-            ui.add_space(6.0);
-            let appearance = self.settings.appearance;
-            let paint: fn(&egui::Painter, egui::Pos2, Color32) = match appearance {
-                crate::settings::Appearance::Light => icons::sun,
-                crate::settings::Appearance::Dark => icons::moon,
-                crate::settings::Appearance::System => icons::auto_theme,
-            };
-            let tip = format!("Design: {} – Klick: {}", appearance.label(), appearance.next().label());
-            if icons::icon_button(ui, &theme, btn, false, paint).on_hover_text(tip).clicked() {
-                self.set_appearance(&ui.ctx().clone(), appearance.next());
             }
         });
         if let Some(i) = activate {
