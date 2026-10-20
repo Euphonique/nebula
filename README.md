@@ -18,7 +18,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 
 **Server und Dateien**
 - Server-Verwaltung für SFTP, FTP und FTPS (explizites TLS über Windows SChannel)
-- Terminal im Panel unter dem Editor (Strg+Ö): lokale Shells (PowerShell, Windows PowerShell, Git Bash, Eingabeaufforderung) im Projektordner, z. B. für Claude Code oder npm; Standard-Shell in den Einstellungen wählbar. SSH-Terminals über das +-Menü, das Kontextmenü eines Servers oder die Befehlspalette: mehrere Sitzungen als Tabs, 256 Farben, Scrollback per Mausrad, Markieren und Kopieren, Einfügen, Neuverbinden mit Enter. Nutzt Zugangsdaten und Host-Key-Prüfung der Server (bei FTP-Servern Port 22) und wechselt in den Startpfad.
+- Terminal im Panel unter dem Editor (Strg+Ö oder Knopf in der Titelleiste): lokale Shells (PowerShell, Windows PowerShell, Git Bash, Eingabeaufforderung) im Projektordner, z. B. für Claude Code oder npm; Standard-Shell in den Einstellungen wählbar. SSH-Terminals über das +-Menü, das Kontextmenü eines Servers oder die Befehlspalette: mehrere Sitzungen als Tabs, 256 Farben, Scrollback per Mausrad, Markieren und Kopieren, Einfügen, Neuverbinden mit Enter. Nutzt Zugangsdaten und Host-Key-Prüfung der Server (bei FTP-Servern Port 22) und wechselt in den Startpfad.
 - Gespeicherte Serverbefehle (z. B. Cache leeren, Deploy): im SSH-Terminal über „Befehle ▾“ anlegen und ausführen, außerdem per Rechtsklick auf den Server („Befehl ausführen“) und in der Befehlspalette; öffnet bei Bedarf ein Terminal und führt den Befehl im Startordner aus
 - Berechtigungen (chmod) für Dateien und Ordner auf dem Server, auf Wunsch rekursiv (nur Dateien, nur Ordner oder alles); die aktuellen Rechte stehen im Tooltip
 - Dateien auf dem Server öffnen und mit Strg+S direkt hochladen
@@ -47,7 +47,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Automatisch speichern (Einstellungen → Editor): nach einer Tipppause oder beim Wechsel von Tab bzw. Fenster, Serverdateien nur auf Wunsch
 - Lokaler Verlauf: Beim Öffnen und bei jedem Speichern (auch auf dem Server) wird eine Fassung aufbewahrt; über das Tab-Menü „Lokaler Verlauf…“ mit dem aktuellen Stand vergleichen und wiederherstellen. Beim Neuladen verworfene Änderungen bleiben dort ebenfalls erhalten
 - Externe Änderungen: Wird eine geöffnete Datei von einem anderen Programm geändert (z. B. Git), lädt Nebula sie neu (rückgängig machbar); bei eigenen ungespeicherten Änderungen wird nachgefragt, mit Unterschiede-Ansicht. Gelöschte Dateien werden gemeldet, die Seitenleiste aktualisiert sich selbst.
-- Geteilte Ansicht (Knopf in der Titelleiste, Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
+- Geteilte Ansicht (Knopf rechts in der Pfadleiste, Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
 - Zen-Modus (Strg+Alt+Enter oder F11, Esc beendet): nur der Editor, Vollbild, mittige Textspalte
 - Minimap am rechten Rand des Editors (Token-Farben, sichtbarer Bereich hervorgehoben, Klicken/Ziehen scrollt; abschaltbar unter Einstellungen → Editor)
 - Editorschrift frei wählbar (alle installierten Schriften, mit Suche) und Zeilenhöhe einstellbar (Einstellungen → Editor)
@@ -95,7 +95,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Seitenleiste mit Dateien, Servern und Projektsuche; Git-Status (Branch, geänderte und neue Dateien)
 - Zuletzt geöffnete Projekte: Klick auf den Projektnamen in der Seitenleiste, Menü, Startseite oder Befehlspalette. Pro Projekt merkt sich Nebula die offenen Dateien. Die Listen der zuletzt geöffneten Projekte und Dateien lassen sich auf der Startseite („Leeren“) und im Datei-Menü leeren.
 - Befehlspalette mit allen Befehlen
-- Themes „Nebula Dunkel“ und „Nebula Hell“ (Paletten nach Novas Themes). Eigene Themes lassen sich bearbeiten, als JSON importieren und exportieren, und Nova-Themes (.css) können importiert werden.
+- Themes „Nebula Dunkel“ und „Nebula Hell“ (Paletten nach Novas Themes). Eigene Themes lassen sich bearbeiten, als JSON importieren und exportieren, und Nova-Themes (.css) können importiert werden. Für helles und dunkles Design ist je ein Theme wählbar; umgeschaltet wird in den Einstellungen, im Menü „Ansicht → Erscheinungsbild“ oder per Knopf in der Titelleiste (Sonne, Mond oder automatisch wie Windows).
 - Einstellungen für Editor, Design und Sprachen (Dateiendungen, Einrückung, eigene Vervollständigungen)
 - Eigene Tastenkürzel (Einstellungen → Tastenkürzel): neue Kombination aufnehmen, weitere hinzufügen, auf Standard zurücksetzen; doppelt belegte Kürzel werden rot markiert
 
