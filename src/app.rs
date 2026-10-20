@@ -1650,7 +1650,7 @@ impl NebulaApp {
         {
             self.new_document();
         }
-        // Split view and right panel, mirroring the sidebar button on the left.
+        // Panel toggles (sidebar, terminal, right panel) and the design switch.
         row.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let tip = format!("Rechtes Panel: Vorschau und Gliederung ({})", self.shortcut_label(palette::Command::TogglePreview));
             if icons::icon_button(ui, &theme, btn, self.settings.right_panel, |p, c, col| icons::panel_right(p, c, col))
@@ -1659,12 +1659,9 @@ impl NebulaApp {
             {
                 self.toggle_right_panel();
             }
-            let tip = format!("Geteilte Ansicht ({})", self.shortcut_label(palette::Command::ToggleSplit));
-            let resp = ui.add_enabled_ui(self.active.is_some(), |ui| {
-                icons::icon_button(ui, &theme, btn, self.split.is_some(), |p, c, col| icons::split_view(p, c, col))
-            });
-            if resp.inner.on_hover_text(tip).clicked() {
-                self.toggle_split();
+            let tip = format!("Terminal ({})", self.shortcut_label(palette::Command::ToggleTerminal));
+            if icons::icon_button(ui, &theme, btn, self.terminals.visible, icons::panel_bottom).on_hover_text(tip).clicked() {
+                self.toggle_terminal(&ui.ctx().clone());
             }
             let tip = format!("Seitenleiste ein/aus ({})", self.shortcut_label(palette::Command::ToggleSidebar));
             if icons::icon_button(ui, &theme, btn, self.show_sidebar, |p, c, col| icons::sidebar_toggle(p, c, col))

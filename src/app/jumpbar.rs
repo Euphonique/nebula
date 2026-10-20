@@ -122,13 +122,29 @@ impl NebulaApp {
     pub(super) fn jump_bar(&mut self, ui: &mut egui::Ui) {
         let Some(i) = self.active else { return };
         let theme = self.theme.clone();
-        let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
-        let painter = ui.painter().with_clip_rect(bar);
-        painter.rect_filled(bar, 0.0, theme.jumpbar_bg);
-        painter.line_segment(
-            [bar.left_bottom(), bar.right_bottom()],
+        // As high as the tab rows of the side panels.
+        let (full, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
+        ui.painter().rect_filled(full, 0.0, theme.jumpbar_bg);
+        ui.painter().line_segment(
+            [full.left_bottom(), full.right_bottom()],
             egui::Stroke::new(1.0, theme.separator.gamma_multiply(if theme.dark { 0.8 } else { 0.5 })),
         );
+
+        // Contents on the line of the panel tabs (10 pt from the top, 26 pt high).
+        let inner = full.with_min_y(full.top() + 6.0);
+        // Split view toggle at the right end.
+        let button = Rect::from_min_size(pos2(full.right() - 42.0, full.top() + 10.0), vec2(34.0, 26.0));
+        let mut right = ui.new_child(egui::UiBuilder::new().max_rect(button));
+        let tip = format!("Geteilte Ansicht ({})", self.shortcut_label(super::palette::Command::ToggleSplit));
+        if icons::icon_button(&mut right, &theme, button.size(), self.split.is_some(), icons::split_view)
+            .on_hover_text(tip)
+            .clicked()
+        {
+            self.toggle_split();
+        }
+
+        let bar = inner.with_max_x(button.left() - 4.0);
+        let painter = ui.painter().with_clip_rect(bar);
 
         let parts = self.jump_parts(i);
         let remote = matches!(self.docs[i].source, DocSource::Remote { .. });
