@@ -10,6 +10,7 @@ A beautiful and streamlined editor.
 <p>
 nebula puts the essence of a modern editor in one streamlined and beautiful UI completely written from scratch.
 What does nebula different than other editors? It's simple UI brings all features you expect but doesn't distract from what's important: Your work.
-It has lokal and remote SFTP file browsers, git, a powerful project wide search, a terminal and even support for your Ai agents build right in.  
+It has lokal and remote SFTP file browsers, git, a powerful project wide search, a terminal and even support for your Ai agents build right in.
+Code completion, split view, minimap, full theme support, extensions...
 </p>
 
