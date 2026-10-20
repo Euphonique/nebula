@@ -375,11 +375,9 @@ impl NebulaApp {
                 self.open_settings(super::settings_page::Page::Extensions);
             }
             Command::ToggleTheme => {
-                self.settings.dark_theme = !self.theme.dark;
-                self.settings.theme = if self.settings.dark_theme { crate::theme::BUILTIN_DARK } else { crate::theme::BUILTIN_LIGHT }.into();
-                self.theme = crate::theme::Theme::for_settings(&self.settings);
-                self.theme.apply(ctx);
-                self.backdrop_state = None;
+                use crate::settings::Appearance;
+                let a = if self.settings.is_dark() { Appearance::Light } else { Appearance::Dark };
+                self.set_appearance(ctx, a);
             }
             Command::FontBigger => self.settings.editor.font_size = (self.settings.editor.font_size + 1.0).min(40.0),
             Command::FontSmaller => self.settings.editor.font_size = (self.settings.editor.font_size - 1.0).max(8.0),

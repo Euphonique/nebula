@@ -606,16 +606,13 @@ impl Theme {
 
     /// The theme selected in the settings, with Mica transparency applied.
     pub fn for_settings(settings: &crate::settings::AppSettings) -> Self {
-        let wanted = if settings.theme.is_empty() {
-            if settings.dark_theme { BUILTIN_DARK } else { BUILTIN_LIGHT }
-        } else {
-            settings.theme.as_str()
-        };
+        let dark = settings.is_dark();
+        let wanted = settings.active_theme();
         let mut t = load_themes()
             .iter()
             .find(|f| f.name == wanted)
             .map(Theme::from_file)
-            .unwrap_or_else(Theme::dark);
+            .unwrap_or_else(|| if dark { Theme::dark() } else { Theme::light() });
         if settings.mica {
             // Let the backdrop shine through the sidebar, slightly tinted.
             let c = t.sidebar_bg;

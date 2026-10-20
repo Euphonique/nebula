@@ -101,9 +101,15 @@ impl Default for EditorSettings {
 #[serde(default)]
 pub struct AppSettings {
     pub editor: EditorSettings,
-    pub dark_theme: bool,
-    /// Name of the selected theme (empty: follow `dark_theme`).
-    pub theme: String,
+    /// Light, dark or following Windows, and the theme used for each.
+    pub appearance: Appearance,
+    pub theme_light: String,
+    pub theme_dark: String,
+    /// Before `appearance`: dark or light, and the one selected theme.
+    #[serde(rename = "dark_theme", skip_serializing)]
+    legacy_dark: Option<bool>,
+    #[serde(rename = "theme", skip_serializing)]
+    legacy_theme: Option<String>,
     /// Windows 11 Mica backdrop behind sidebar and title bar.
     pub mica: bool,
     pub sidebar_width: f32,
@@ -138,6 +144,34 @@ pub struct AppSettings {
     /// Coding agents (ACP) and the one used for new sessions (by name).
     pub agents: Vec<crate::acp::AgentConfig>,
     pub agent: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Appearance {
+    Light,
+    Dark,
+    /// Follow the Windows setting for apps.
+    #[default]
+    System,
+}
+
+impl Appearance {
+    pub fn label(self) -> &'static str {
+        match self {
+            Appearance::Light => "Hell",
+            Appearance::Dark => "Dunkel",
+            Appearance::System => "Automatisch (wie Windows)",
+        }
+    }
+
+    /// Next mode for the title bar button.
+    pub fn next(self) -> Self {
+        match self {
+            Appearance::System => Appearance::Light,
+            Appearance::Light => Appearance::Dark,
+            Appearance::Dark => Appearance::System,
+        }
+    }
 }
 
 /// Where a local project is published to (like Nova's project publishing).
@@ -184,8 +218,11 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             editor: EditorSettings::default(),
-            dark_theme: true,
-            theme: String::new(),
+            appearance: Appearance::System,
+            theme_light: crate::theme::BUILTIN_LIGHT.into(),
+            theme_dark: crate::theme::BUILTIN_DARK.into(),
+            legacy_dark: None,
+            legacy_theme: None,
             mica: true,
             sidebar_width: 260.0,
             last_folder: None,
@@ -217,10 +254,40 @@ impl AppSettings {
     }
 
     pub fn load() -> Self {
-        std::fs::read(Self::path())
+        let mut s: Self = std::fs::read(Self::path())
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        s.migrate_theme();
+        s
+    }
+
+    /// Settings from before light/dark themes: keep the chosen design and theme.
+    fn migrate_theme(&mut self) {
+        let Some(dark) = self.legacy_dark.take() else { return };
+        self.appearance = if dark { Appearance::Dark } else { Appearance::Light };
+        if let Some(theme) = self.legacy_theme.take().filter(|t| !t.is_empty()) {
+            *self.theme_slot_mut(dark) = theme;
+        }
+    }
+
+    /// Whether the dark theme is in use (asks Windows in automatic mode).
+    pub fn is_dark(&self) -> bool {
+        match self.appearance {
+            Appearance::Light => false,
+            Appearance::Dark => true,
+            Appearance::System => crate::win32::system_dark(),
+        }
+    }
+
+    /// Name of the theme for the light or dark design.
+    pub fn theme_slot_mut(&mut self, dark: bool) -> &mut String {
+        if dark { &mut self.theme_dark } else { &mut self.theme_light }
+    }
+
+    /// Name of the theme in use.
+    pub fn active_theme(&self) -> &str {
+        if self.is_dark() { &self.theme_dark } else { &self.theme_light }
     }
 
     pub fn save(&self) -> Result<()> {

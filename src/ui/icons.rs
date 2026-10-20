@@ -421,3 +421,58 @@ pub fn split_view(painter: &Painter, c: Pos2, color: Color32) {
     painter.rect_stroke(r, 2.5, stroke, eframe::egui::StrokeKind::Inside);
     painter.line_segment([pos2(c.x, r.top() + 1.0), pos2(c.x, r.bottom() - 1.0)], stroke);
 }
+
+/// Sun (light design).
+pub fn sun(painter: &Painter, c: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    painter.circle_stroke(c, 3.3, stroke);
+    for i in 0..8 {
+        let a = i as f32 * std::f32::consts::FRAC_PI_4;
+        let d = vec2(a.cos(), a.sin());
+        painter.line_segment([c + d * 5.6, c + d * 7.6], stroke);
+    }
+}
+
+/// Crescent moon (dark design).
+pub fn moon(painter: &Painter, c: Pos2, color: Color32) {
+    use std::f32::consts::PI;
+    // Outer circle minus a second one shifted up and to the right.
+    let (r1, r2, d) = (6.5f32, 5.4f32, 4.6f32);
+    let alpha = (-0.8f32).atan2(0.6);
+    let u = vec2(alpha.cos(), alpha.sin());
+    let a = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d);
+    let h = (r1 * r1 - a * a).sqrt();
+    let delta = (a / r1).acos();
+    let eps = h.atan2(d - a);
+    let c2 = c + u * d;
+    let n = 24;
+    let mut points = Vec::with_capacity(2 * n + 2);
+    for i in 0..=n {
+        let t = alpha + delta + (2.0 * PI - 2.0 * delta) * i as f32 / n as f32;
+        points.push(c + vec2(t.cos(), t.sin()) * r1);
+    }
+    for i in 0..=n {
+        let t = alpha + PI + eps - 2.0 * eps * i as f32 / n as f32;
+        points.push(c2 + vec2(t.cos(), t.sin()) * r2);
+    }
+    painter.add(Shape::closed_line(points, Stroke::new(1.3, color)));
+}
+
+/// Circle, half filled (design follows Windows).
+pub fn auto_theme(painter: &Painter, c: Pos2, color: Color32) {
+    use std::f32::consts::PI;
+    let r = 6.5;
+    painter.circle_stroke(c, r, Stroke::new(1.3, color));
+    let half: Vec<Pos2> = (0..=16).map(|i| {
+        let t = PI / 2.0 + PI * i as f32 / 16.0;
+        c + vec2(t.cos(), t.sin()) * r
+    }).collect();
+    painter.add(Shape::convex_polygon(half, color, Stroke::NONE));
+}
+
+/// Window with a panel along the bottom (terminal toggle).
+pub fn panel_bottom(painter: &Painter, c: Pos2, color: Color32) {
+    let r = Rect::from_center_size(c, vec2(16.0, 13.0));
+    painter.rect_stroke(r, 2.5, Stroke::new(1.3, color), eframe::egui::StrokeKind::Inside);
+    painter.rect_filled(Rect::from_min_max(pos2(r.left(), r.bottom() - 4.5), r.max), 2.0, color);
+}

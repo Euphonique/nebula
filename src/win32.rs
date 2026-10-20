@@ -218,6 +218,36 @@ pub fn set_backdrop(dark: bool, mica: bool) {
     }
 }
 
+/// Windows app mode, cached: 0 = not read yet, 1 = light, 2 = dark.
+static SYSTEM_DARK: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn read_system_dark() -> bool {
+    winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .and_then(|k| k.get_value::<u32, _>("AppsUseLightTheme"))
+        .map_or(true, |light| light == 0)
+}
+
+/// Whether Windows uses dark mode for apps.
+pub fn system_dark() -> bool {
+    match SYSTEM_DARK.load(Ordering::Relaxed) {
+        0 => {
+            let dark = read_system_dark();
+            SYSTEM_DARK.store(if dark { 2 } else { 1 }, Ordering::Relaxed);
+            dark
+        }
+        v => v == 2,
+    }
+}
+
+/// Reads the Windows app mode again; true when it changed.
+pub fn refresh_system_dark() -> bool {
+    let before = system_dark();
+    let dark = read_system_dark();
+    SYSTEM_DARK.store(if dark { 2 } else { 1 }, Ordering::Relaxed);
+    dark != before
+}
+
 // ---- file clipboard (interop with Explorer) ---------------------------------
 
 use windows_sys::Win32::System::DataExchange::{

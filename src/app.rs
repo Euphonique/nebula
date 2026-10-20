@@ -140,6 +140,8 @@ pub struct NebulaApp {
     /// The "nebula" lettering, rasterized for the current pixel size.
     wordmark_tex: Vec<(usize, egui::TextureHandle)>,
     backdrop_state: Option<(bool, bool)>,
+    /// When the Windows app mode was last read, and what egui reported then.
+    system_theme_check: (f64, Option<egui::Theme>),
     settings_ui: SettingsUi,
     /// Cursor positions for remote files reopened from the last session.
     pending_cursors: HashMap<(String, String), usize>,
@@ -218,6 +220,7 @@ impl NebulaApp {
             icon_texture: None,
             wordmark_tex: Vec::new(),
             backdrop_state: None,
+            system_theme_check: (0.0, None),
             settings_ui: SettingsUi::default(),
             pending_cursors: HashMap::new(),
             pending_lines: HashMap::new(),
@@ -1366,12 +1369,15 @@ impl NebulaApp {
                 ui.checkbox(&mut e.show_indent_guides, "Einrückungshilfslinien");
                 ui.checkbox(&mut e.highlight_current_line, "Aktuelle Zeile hervorheben");
                 ui.separator();
-                if ui.button(if self.settings.dark_theme { "Helles Design" } else { "Dunkles Design" }).clicked() {
-                    self.settings.dark_theme = !self.settings.dark_theme;
-                    self.theme = Theme::for_settings(&self.settings);
-                    self.theme.apply(ui.ctx());
-                    ui.close();
-                }
+                ui.menu_button("Erscheinungsbild", |ui| {
+                    use crate::settings::Appearance;
+                    for a in [Appearance::Light, Appearance::Dark, Appearance::System] {
+                        if ui.add(egui::Button::new(a.label()).selected(self.settings.appearance == a)).clicked() {
+                            self.set_appearance(&ui.ctx().clone(), a);
+                            ui.close();
+                        }
+                    }
+                });
                 ui.separator();
                 if ui.add(egui::Button::new("Schrift größer").shortcut_text(self.shortcut_label(palette::Command::FontBigger))).clicked() {
                     self.settings.editor.font_size = (self.settings.editor.font_size + 1.0).min(40.0);
@@ -1510,7 +1516,7 @@ impl NebulaApp {
 
         // Tabs as rounded pills; room is left for the + and the panel buttons.
         let count = self.docs.len();
-        let available = row.available_width() - 60.0 - 72.0;
+        let available = row.available_width() - 60.0 - 112.0;
         let font = FontId::proportional(13.0);
         let natural: Vec<f32> = self
             .docs
@@ -1666,6 +1672,17 @@ impl NebulaApp {
                 .clicked()
             {
                 self.show_sidebar = !self.show_sidebar;
+            }
+            ui.add_space(6.0);
+            let appearance = self.settings.appearance;
+            let paint: fn(&egui::Painter, egui::Pos2, Color32) = match appearance {
+                crate::settings::Appearance::Light => icons::sun,
+                crate::settings::Appearance::Dark => icons::moon,
+                crate::settings::Appearance::System => icons::auto_theme,
+            };
+            let tip = format!("Design: {} – Klick: {}", appearance.label(), appearance.next().label());
+            if icons::icon_button(ui, &theme, btn, false, paint).on_hover_text(tip).clicked() {
+                self.set_appearance(&ui.ctx().clone(), appearance.next());
             }
         });
         if let Some(i) = activate {
@@ -2798,6 +2815,7 @@ impl eframe::App for NebulaApp {
         let ctx = root.ctx().clone();
         let ui = root;
         crate::win32::init(frame, &ctx);
+        self.follow_system_theme(&ctx);
         let backdrop = (self.theme.dark, self.settings.mica);
         if self.backdrop_state != Some(backdrop) {
             crate::win32::set_backdrop(backdrop.0, backdrop.1);

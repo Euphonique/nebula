@@ -4,7 +4,7 @@ use eframe::egui::{self, Color32, RichText, Ui};
 
 use super::{NebulaApp, primary_button};
 use crate::lang::Language;
-use crate::settings::LanguageSettings;
+use crate::settings::{Appearance, LanguageSettings};
 use crate::theme::{
     self, BUILTIN_DARK, HIGHLIGHT_NAMES, Theme, ThemeFile, UI_COLORS, color_from_hex, color_to_hex,
 };
@@ -277,10 +277,37 @@ impl NebulaApp {
         ui.label(RichText::new("Strg+Ö öffnet bei lokalen Dateien diese Shell im Projektordner, bei Serverdateien ein SSH-Terminal.").small().color(self.theme.text_faint));
     }
 
-    fn apply_theme(&mut self, ctx: &egui::Context) {
+    pub(super) fn apply_theme(&mut self, ctx: &egui::Context) {
         self.theme = Theme::for_settings(&self.settings);
         self.theme.apply(ctx);
         self.backdrop_state = None;
+    }
+
+    pub(super) fn set_appearance(&mut self, ctx: &egui::Context, appearance: Appearance) {
+        self.settings.appearance = appearance;
+        if appearance == Appearance::System {
+            crate::win32::refresh_system_dark();
+        }
+        self.apply_theme(ctx);
+        let _ = self.settings.save();
+    }
+
+    /// In automatic mode, switches the theme when Windows changes between light and dark.
+    pub(super) fn follow_system_theme(&mut self, ctx: &egui::Context) {
+        if self.settings.appearance != Appearance::System {
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        let reported = ctx.system_theme();
+        let (last, last_reported) = self.system_theme_check;
+        if now - last < 2.0 && reported == last_reported {
+            return;
+        }
+        self.system_theme_check = (now, reported);
+        if crate::win32::refresh_system_dark() {
+            self.apply_theme(ctx);
+        }
+        ctx.request_repaint_after(std::time::Duration::from_secs(3));
     }
 
     fn design_page(&mut self, ui: &mut Ui, state: &mut SettingsUi) {
@@ -289,25 +316,43 @@ impl NebulaApp {
         if state.themes_gen != theme::themes_generation() {
             state.reload_themes();
         }
-        section(ui, "Theme");
-        let current = if self.settings.theme.is_empty() { self.theme.name.clone() } else { self.settings.theme.clone() };
+        section(ui, "Erscheinungsbild");
         ui.horizontal(|ui| {
-            egui::ComboBox::from_id_salt("theme-select")
-                .selected_text(&current)
-                .width(260.0)
-                .show_ui(ui, |ui| {
-                    for t in &state.themes {
-                        let label = match &t.extension {
-                            _ if t.is_builtin() => format!("{} (mitgeliefert)", t.name),
-                            Some(ext) => format!("{} ({ext})", t.name),
-                            None => t.name.clone(),
-                        };
-                        if ui.selectable_label(t.name == current, label).clicked() {
-                            self.settings.theme = t.name.clone();
-                            self.settings.dark_theme = t.dark;
+            for a in [Appearance::Light, Appearance::Dark, Appearance::System] {
+                if ui.selectable_label(self.settings.appearance == a, a.label()).clicked() && self.settings.appearance != a {
+                    self.set_appearance(&ctx, a);
+                }
+            }
+        });
+        ui.add_space(6.0);
+        let dark = self.settings.is_dark();
+        egui::Grid::new("theme-slots").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+            for (slot_dark, label) in [(false, "Theme für helles Design"), (true, "Theme für dunkles Design")] {
+                ui.label(label);
+                let slot = self.settings.theme_slot_mut(slot_dark);
+                egui::ComboBox::from_id_salt(("theme-select", slot_dark))
+                    .selected_text(slot.as_str())
+                    .width(260.0)
+                    .show_ui(ui, |ui| {
+                        // Themes of the matching kind first.
+                        let themes = state.themes.iter().filter(|t| t.dark == slot_dark).chain(state.themes.iter().filter(|t| t.dark != slot_dark));
+                        for t in themes {
+                            let label = match &t.extension {
+                                _ if t.is_builtin() => format!("{} (mitgeliefert)", t.name),
+                                Some(ext) => format!("{} ({ext})", t.name),
+                                None => t.name.clone(),
+                            };
+                            if ui.selectable_label(t.name == *slot, label).clicked() {
+                                *slot = t.name.clone();
+                            }
                         }
-                    }
-                });
+                    });
+                ui.end_row();
+            }
+        });
+        let current = self.settings.active_theme().to_string();
+        section(ui, &format!("Aktives Theme: {current}"));
+        ui.horizontal(|ui| {
             if ui.button("Duplizieren").on_hover_text("Eigene, bearbeitbare Kopie anlegen").clicked() {
                 let mut name = format!("{current} Kopie");
                 let mut n = 2;
@@ -318,7 +363,7 @@ impl NebulaApp {
                 let file = self.theme_without_mica().to_file(&name);
                 match theme::save_theme(&file) {
                     Ok(()) => {
-                        self.settings.theme = name;
+                        *self.settings.theme_slot_mut(dark) = name;
                         state.themes = theme::load_themes();
                     }
                     Err(e) => self.error(format!("Theme konnte nicht gespeichert werden: {e:#}")),
@@ -369,7 +414,7 @@ impl NebulaApp {
             ui.horizontal(|ui| {
                 if ui.button("Theme löschen").clicked() {
                     theme::delete_theme(&current);
-                    self.settings.theme = if self.theme.dark { BUILTIN_DARK.into() } else { theme::BUILTIN_LIGHT.into() };
+                    *self.settings.theme_slot_mut(dark) = if dark { BUILTIN_DARK.into() } else { theme::BUILTIN_LIGHT.into() };
                     state.themes = theme::load_themes();
                     self.apply_theme(&ctx);
                 }
@@ -462,8 +507,11 @@ impl NebulaApp {
                     return;
                 }
                 self.info(format!("Theme „{}“ importiert", file.name));
-                self.settings.theme = file.name.clone();
-                self.settings.dark_theme = file.dark;
+                // Use it for its kind of design and show it right away.
+                *self.settings.theme_slot_mut(file.dark) = file.name.clone();
+                if self.settings.is_dark() != file.dark {
+                    self.settings.appearance = if file.dark { Appearance::Dark } else { Appearance::Light };
+                }
                 state.themes = theme::load_themes();
             }
             Err(e) => self.error(format!("{e:#}")),
