@@ -2915,10 +2915,12 @@ impl eframe::App for NebulaApp {
         let preview_rect = if self.zen { None } else { self.right_panel(ui) };
         egui::CentralPanel::no_frame().show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            // Below the (translucent) title bar everything sits on the document color.
-            ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, self.theme.background);
+            // Below the (translucent) title bar everything sits on the document color,
+            // except the terminal panel, which lets the backdrop through like the side panels.
+            let fill_background = |ui: &mut egui::Ui, color| ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, color);
             if self.docs.is_empty() {
                 self.terminal_panel(ui);
+                fill_background(ui, self.theme.background);
                 self.welcome(ui);
                 return;
             }
@@ -2929,7 +2931,10 @@ impl eframe::App for NebulaApp {
                     .frame(egui::Frame::new().fill(self.theme.jumpbar_bg).inner_margin(egui::Margin::symmetric(12, 0)))
                     .show(ui, |ui| self.status_bar(ui));
                 self.terminal_panel(ui);
+                fill_background(ui, self.theme.background);
                 self.jump_bar(ui);
+            } else {
+                fill_background(ui, self.theme.background);
             }
             if self.find.visible {
                 self.find_bar(ui);

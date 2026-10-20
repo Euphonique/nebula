@@ -137,16 +137,16 @@ impl NebulaApp {
         let mut right = ui.new_child(egui::UiBuilder::new().max_rect(buttons).layout(egui::Layout::left_to_right(egui::Align::Center)));
         right.spacing_mut().item_spacing.x = 2.0;
         let size = vec2(34.0, 26.0);
-        let minimap = self.settings.editor.minimap;
-        if icons::icon_button(&mut right, &theme, size, minimap, icons::minimap).on_hover_text("Minimap ein/aus").clicked() {
-            self.settings.editor.minimap = !minimap;
-        }
         let tip = format!("Geteilte Ansicht ({})", self.shortcut_label(super::palette::Command::ToggleSplit));
         if icons::icon_button(&mut right, &theme, size, self.split.is_some(), icons::split_view)
             .on_hover_text(tip)
             .clicked()
         {
             self.toggle_split();
+        }
+        let minimap = self.settings.editor.minimap;
+        if icons::icon_button(&mut right, &theme, size, minimap, icons::minimap).on_hover_text("Minimap ein/aus").clicked() {
+            self.settings.editor.minimap = !minimap;
         }
 
         let bar = inner.with_max_x(buttons.left() - 4.0);

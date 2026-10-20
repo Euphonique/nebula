@@ -8,7 +8,8 @@ use crate::remote::terminal::{LocalShell, TermStatus, Terminal, key_bytes, local
 use crate::ui::icons;
 
 const PADDING: f32 = 8.0;
-const HEADER_H: f32 = 30.0;
+/// As high as the tab rows of the side panels.
+const HEADER_H: f32 = 40.0;
 
 /// A terminal with what the panel remembers about its view.
 pub(super) struct TermTab {
@@ -192,7 +193,7 @@ impl NebulaApp {
             .default_size(self.settings.terminal_height)
             .size_range(120.0..=900.0)
             .show_separator_line(false)
-            .frame(egui::Frame::new().fill(theme.background))
+            .frame(egui::Frame::new().fill(theme.sidebar_bg))
             .show(ui, |ui| {
                 let full = ui.max_rect();
                 ui.painter().line_segment([full.left_top(), full.right_top()], Stroke::new(1.0, theme.separator));
@@ -223,11 +224,11 @@ impl NebulaApp {
 
     fn terminal_header(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let theme = self.theme.clone();
-        ui.painter().rect_filled(rect, 0.0, theme.jumpbar_bg);
-        ui.painter().line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, theme.separator.gamma_multiply(0.6)));
+        // The tab row sits like the button rows of the side panels: 10 pt in, 26 pt high.
+        let row = Rect::from_min_size(rect.min + vec2(10.0, 10.0), vec2(rect.width() - 20.0, 26.0));
         let mut child = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(rect.shrink2(vec2(8.0, 3.0)))
+                .max_rect(row)
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         let ui = &mut child;
@@ -238,11 +239,12 @@ impl NebulaApp {
             let active = i == self.terminals.active;
             let font = FontId::proportional(12.5);
             let w = ui.fonts_mut(|f| f.layout_no_wrap(tab.title.clone(), font.clone(), theme.foreground).size().x) + 50.0;
-            let (r, resp) = ui.allocate_exact_size(vec2(w, 24.0), Sense::click());
+            let (r, resp) = ui.allocate_exact_size(vec2(w, 26.0), Sense::click());
+            // Highlighted like the selected icon buttons of the side panels.
             if active {
-                ui.painter().rect_filled(r, 6.0, theme.tab_active_bg);
+                ui.painter().rect_filled(r, 6.0, theme.hover.gamma_multiply(2.2));
             } else if resp.hovered() {
-                ui.painter().rect_filled(r, 6.0, theme.tab_hover_bg);
+                ui.painter().rect_filled(r, 6.0, theme.hover);
             }
             let dot = match &tab.term.status {
                 TermStatus::Connecting => theme.modified,
@@ -267,7 +269,7 @@ impl NebulaApp {
             }
         }
         // New terminal: a local shell or an SSH session on a server.
-        let plus = icons::icon_button(ui, &theme, vec2(24.0, 24.0), false, |p, c, col| icons::plus(p, c, col)).on_hover_text("Neues Terminal");
+        let plus = icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::plus(p, c, col)).on_hover_text("Neues Terminal");
         let sites: Vec<(String, String)> = self.sites.sites.iter().map(|s| (s.id.clone(), s.display_name())).collect();
         let mut open = None;
         let mut open_local = None;
@@ -296,7 +298,7 @@ impl NebulaApp {
         let mut run: Option<String> = None;
         let mut sites_changed = false;
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if icons::icon_button(ui, &theme, vec2(24.0, 24.0), false, |p, c, col| icons::close(p, c, 7.0, col))
+            if icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::close(p, c, 7.0, col))
                 .on_hover_text("Terminal ausblenden (Strg+Ö)")
                 .clicked()
             {
@@ -527,8 +529,10 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
 
     // Drawing.
     let painter = ui.painter_at(body);
-    let default_bg = theme.background;
-    painter.rect_filled(body, 0.0, default_bg);
+    // The panel's (possibly translucent) background shows through; the opaque
+    // version stands in where a color is needed (e.g. inverse text).
+
+    let default_bg = theme.sidebar_bg.to_opaque();
     let palette = ansi_palette(theme.dark);
     let color = |c: vt100::Color, fg: bool, bold: bool| -> Color32 {
         match c {
