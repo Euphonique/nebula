@@ -19,6 +19,7 @@ mod remote;
 mod server_import;
 mod snippet_io;
 mod settings;
+mod settings_io;
 mod theme;
 mod theme_import;
 mod ui;

@@ -47,6 +47,7 @@ mod servers;
 mod quick_open;
 mod crash_ui;
 mod snippets_panel;
+mod settings_transfer;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -78,6 +79,8 @@ enum Dialog {
     EditSite(Box<SiteForm>),
     ImportSites(Box<servers::ImportForm>),
     ImportSnippets(Box<snippets_panel::SnippetImport>),
+    SettingsExport(Box<settings_transfer::ExportForm>),
+    SettingsImport(Box<settings_transfer::ImportForm>),
     /// The report of the last crash.
     CrashReport(Box<crate::crash::Report>),
     AskName { title: String, value: String, action: NameAction, focus: bool },
@@ -173,6 +176,8 @@ pub struct NebulaApp {
     preview: crate::preview::Preview,
     preview_state: preview::PreviewState,
     ext: extensions::ExtUi,
+    /// Extensions being reinstalled after importing settings.
+    reinstall: Option<settings_transfer::Reinstall>,
     /// Print job running in the background; yields the number of pages.
     printing: Option<std::thread::JoinHandle<Result<usize, String>>>,
     /// SSH terminals in the bottom panel.
@@ -243,6 +248,7 @@ impl NebulaApp {
             preview: Default::default(),
             preview_state: Default::default(),
             ext: extensions::ExtUi::new(&cc.egui_ctx, &settings.disabled_extensions),
+            reinstall: None,
             printing: None,
             terminals: Default::default(),
             disk: Default::default(),
@@ -1445,6 +1451,15 @@ impl NebulaApp {
                         self.open_settings(page);
                         ui.close();
                     }
+                }
+                ui.separator();
+                if ui.button("Einstellungen exportieren…").on_hover_text("Für einen anderen Rechner oder als Sicherung").clicked() {
+                    self.open_settings_export();
+                    ui.close();
+                }
+                if ui.button("Einstellungen importieren…").clicked() {
+                    ui.close();
+                    self.open_settings_import();
                 }
             });
             ui.menu_button("Erweiterungen", |ui| {
@@ -2681,6 +2696,14 @@ impl NebulaApp {
                 }
                 Dialog::Permissions { items, mode, octal, recurse }
             }
+            Dialog::SettingsExport(mut form) => {
+                keep = self.settings_export_dialog(ctx, &mut form);
+                Dialog::SettingsExport(form)
+            }
+            Dialog::SettingsImport(mut form) => {
+                keep = self.settings_import_dialog(ctx, &mut form);
+                Dialog::SettingsImport(form)
+            }
             Dialog::ImportSnippets(mut form) => {
                 keep = self.snippet_import_dialog(ctx, &mut form);
                 Dialog::ImportSnippets(form)
@@ -2995,6 +3018,7 @@ impl eframe::App for NebulaApp {
                 Err(e) => self.error(format!("Git – {label} fehlgeschlagen:\n{e}")),
             }
         }
+        self.poll_reinstall();
         self.toasts(&ctx);
         self.ext_notices(&ctx);
         self.place_preview(&ctx, frame, preview_rect);

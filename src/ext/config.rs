@@ -43,6 +43,11 @@ impl ConfigStore {
         self.defaults = defaults.into_iter().collect();
     }
 
+    /// All global preferences (for exporting the settings).
+    pub fn global_values(&self) -> &Map<String, Value> {
+        &self.global
+    }
+
     /// The explicitly set value, if any.
     pub fn explicit(&self, workspace: bool, key: &str) -> Option<&Value> {
         if workspace { self.workspace.get(key) } else { self.global.get(key) }

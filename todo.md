@@ -49,7 +49,6 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 
 - **B** Tabs anheften; mehrere Fenster/Projekte gleichzeitig.
 - **B** Große Dateien (> 64 MB) schreibgeschützt öffnen statt ablehnen; Hex-Ansicht für Binärdateien.
-- **B** Einstellungen exportieren/importieren (Themes, Tastenkürzel; die Serverliste lässt sich schon exportieren).
 - **B** Update-Hinweis, Installer und Eintrag „Mit Nebula öffnen“ im Explorer-Kontextmenü, Dateizuordnungen.
 - **C** Oberfläche auch auf Englisch (Texte in Übersetzungsdateien auslagern).
 - **C** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
@@ -71,7 +70,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 3. ~~Server duplizieren, gruppieren, Import/Export~~ (erledigt).
 4. ~~Vorschau in Gerätebreiten~~ (erledigt; kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
 5. ~~Eigene Snippets pro Sprache~~ (erledigt, als Panel „{ }“).
-6. Tabs anheften; Einstellungen exportieren/importieren.
+6. Tabs anheften; ~~Einstellungen exportieren/importieren~~ (erledigt).
 7. Große Dateien schreibgeschützt öffnen, Hex-Ansicht.
 8. Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“.
 
@@ -98,3 +97,5 @@ Absturzbericht (22.10.): Panics landen mit Meldung, Stelle und Backtrace in `cra
 Gerätebreiten (22.10.): Vorschau wahlweise in Panelbreite, Handy (390 px), Tablet (768 px) oder Desktop (1440 px), bei Bedarf verkleinert (WebView-Zoom).
 
 Snippets (22.10.): Tab-Sprünge durch Platzhalter mit Mehrfachbearbeitung gleicher Nummern, eingebaute Snippets mit Platzhaltern, eigener Reiter „{ }“ im rechten Panel zum Einfügen, Anlegen (auch aus der Auswahl) und Bearbeiten, pro Sprache oder für alle Sprachen. Export/Import als JSON, Import von VS-Code-Snippets.
+
+Einstellungen exportieren/importieren (22.10.): alle Bereiche einzeln wählbar in einer JSON-Datei, ohne Passwörter und API-Schlüssel; Import ergänzt Server/Snippets/Agenten und installiert fehlende Erweiterungen aus der Bibliothek nach.

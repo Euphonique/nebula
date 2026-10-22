@@ -96,6 +96,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - macOS-typische Aufrufe werden übersetzt (`/usr/bin/env`, Shell-Skripte über Git Bash, npm-Shims). Erweiterungen mit macOS-Programmen oder Tree-sitter-Grammatiken als `.dylib` laufen unter Windows nicht.
 
 **Oberfläche**
+- Einstellungen exportieren und importieren (Menü Einstellungen oder Befehlspalette), z. B. für einen neuen Rechner: Editor und Darstellung, eigene Themes, Sprachen und Snippets, Tastenkürzel, Server, KI-Agenten und Erweiterungen, einzeln wählbar, als eine JSON-Datei. Passwörter und API-Schlüssel kommen nicht mit; Server, Snippets und Agenten werden beim Import ergänzt, fehlende Erweiterungen aus der Bibliothek nachinstalliert
 - Eigene Titelleiste mit Tabs; Tabs scrollen, lassen sich per Drag sortieren und haben ein Kontextmenü (Speichern, Duplizieren, Drucken, Schließen, andere/rechts/alle schließen, Pfad kopieren, im Explorer zeigen)
 - Windows-11-Andocklayouts am Maximieren-Knopf, Mica-Hintergrund in der Seitenleiste, native Schatten und abgerundete Ecken
 - Seitenleiste mit Dateien, Servern und Projektsuche; Git-Status (Branch, geänderte und neue Dateien)
