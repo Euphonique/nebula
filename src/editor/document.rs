@@ -317,6 +317,8 @@ pub struct Document {
     pub disk_stamp: Option<DiskStamp>,
     /// Number of checks in a row that found the local file missing.
     pub disk_missing: u8,
+    /// Pinned tab: stays at the left and survives "close others/all".
+    pub pinned: bool,
     /// Settings from `.editorconfig` files for this file.
     pub config: crate::editorconfig::Props,
     undo: Vec<Transaction>,
@@ -355,6 +357,7 @@ impl Document {
             image: None,
             disk_stamp: None,
             disk_missing: 0,
+            pinned: false,
             config: Default::default(),
             undo: Vec::new(),
             redo: Vec::new(),

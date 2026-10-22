@@ -23,6 +23,7 @@ pub enum Command {
     SaveAs,
     SaveAll,
     CloseTab,
+    TogglePin,
     Find,
     Replace,
     FindInProject,
@@ -120,6 +121,7 @@ impl Command {
             (SaveAs, "Datei: Speichern unter…"),
             (SaveAll, "Datei: Alle speichern"),
             (CloseTab, "Datei: Tab schließen"),
+            (TogglePin, "Datei: Tab anheften/lösen"),
             (CloseOthers, "Datei: Andere Tabs schließen"),
             (CloseAll, "Datei: Alle Tabs schließen"),
             (DuplicateDoc, "Datei: Duplizieren"),
@@ -335,6 +337,11 @@ impl NebulaApp {
                 }
             }
             Command::SaveAll => self.save_all(),
+            Command::TogglePin => {
+                if let Some(i) = self.active {
+                    self.toggle_pin(i);
+                }
+            }
             Command::CloseTab => {
                 if let Some(i) = self.active {
                     self.close_doc(i, false);

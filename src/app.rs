@@ -156,6 +156,8 @@ pub struct NebulaApp {
     settings_ui: SettingsUi,
     /// Cursor positions for remote files reopened from the last session.
     pending_cursors: HashMap<(String, String), usize>,
+    /// Server files from the last session whose tab was pinned.
+    pending_pins: std::collections::HashSet<(String, String)>,
     /// Line and column to jump to once a remote file from the search arrives.
     pending_lines: HashMap<(String, String), (usize, usize)>,
     /// Publish uploads in flight: tag -> (project, relative path, mtime).
@@ -236,6 +238,7 @@ impl NebulaApp {
             system_theme_check: (0.0, None),
             settings_ui: SettingsUi::default(),
             pending_cursors: HashMap::new(),
+            pending_pins: Default::default(),
             pending_lines: HashMap::new(),
             pending_publish: HashMap::new(),
             reveal_active_tab: true,
@@ -1545,6 +1548,7 @@ impl NebulaApp {
         row.add_space(6.0);
 
         // Tabs as rounded pills; room is left for the + and the panel buttons.
+        self.sort_pinned();
         let count = self.docs.len();
         let available = row.available_width() - 60.0 - 112.0;
         let font = FontId::proportional(13.0);
@@ -1634,6 +1638,13 @@ impl NebulaApp {
                                 ui.interact(close_rect, egui::Id::unique(("tab-close", doc.id)), Sense::click());
                             if doc.saving {
                                 ui.put(close_rect.shrink(2.0), egui::Spinner::new().size(12.0).color(theme.accent));
+                            } else if doc.pinned {
+                                // Pinned: the pin instead of the close button; clicking it unpins.
+                                if close_resp.hovered() {
+                                    painter.rect_filled(close_rect, 5.0, theme.hover.gamma_multiply(2.0));
+                                }
+                                let pin_color = if doc.is_dirty() { theme.modified } else { color };
+                                icons::pin(&painter, close_rect.center(), pin_color);
                             } else if doc.is_dirty() && !close_resp.hovered() {
                                 painter.circle_filled(close_rect.center(), 3.8, theme.modified);
                             } else if resp.hovered() || active || close_resp.hovered() {
@@ -1642,7 +1653,10 @@ impl NebulaApp {
                                 }
                                 icons::close(&painter, close_rect.center(), 7.0, color);
                             }
-                            if close_resp.clicked() || resp.middle_clicked() {
+                            let close_resp = if doc.pinned { close_resp.on_hover_text("Angeheftet – Klick löst den Tab") } else { close_resp };
+                            if doc.pinned && close_resp.clicked() {
+                                tab_cmd = Some((i, tabs::TabCmd::Pin));
+                            } else if !doc.pinned && (close_resp.clicked() || resp.middle_clicked()) {
                                 close = Some(i);
                             } else if resp.clicked() {
                                 activate = Some(i);

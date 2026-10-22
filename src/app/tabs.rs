@@ -12,6 +12,7 @@ pub(super) enum TabCmd {
     SaveAs,
     Duplicate,
     Split,
+    Pin,
     Print,
     Close,
     CloseOthers,
@@ -37,6 +38,7 @@ pub(super) fn tab_menu(ui: &mut egui::Ui, doc: &Document, i: usize, count: usize
     item(ui, "Speichern unter…", &keys[1], true, TabCmd::SaveAs);
     item(ui, "Duplizieren", "", true, TabCmd::Duplicate);
     item(ui, "In geteilter Ansicht öffnen", "", true, TabCmd::Split);
+    item(ui, if doc.pinned { "Lösen" } else { "Anheften" }, "", true, TabCmd::Pin);
     item(ui, "Drucken…", &keys[2], true, TabCmd::Print);
     ui.separator();
     item(ui, "Schließen", &keys[3], true, TabCmd::Close);
@@ -69,14 +71,15 @@ impl NebulaApp {
             }
             TabCmd::Duplicate => self.duplicate_doc(i),
             TabCmd::Split => self.open_in_split(i),
+            TabCmd::Pin => self.toggle_pin(i),
             TabCmd::Print => {
                 self.activate(i);
                 self.print_active(ctx);
             }
             TabCmd::Close => self.close_doc(i, false),
             TabCmd::CloseOthers => self.close_others(i),
-            TabCmd::CloseRight => self.close_many((i + 1..self.docs.len()).collect()),
-            TabCmd::CloseAll => self.close_many((0..self.docs.len()).collect()),
+            TabCmd::CloseRight => self.close_many((i + 1..self.docs.len()).filter(|&n| !self.docs[n].pinned).collect()),
+            TabCmd::CloseAll => self.close_many((0..self.docs.len()).filter(|&n| !self.docs[n].pinned).collect()),
             TabCmd::CopyPath => ctx.copy_text(self.docs[i].source.path_string()),
             TabCmd::Reveal => {
                 if let DocSource::Local(p) = &self.docs[i].source {
@@ -110,8 +113,25 @@ impl NebulaApp {
         self.activate(i + 1);
     }
 
+    pub(super) fn toggle_pin(&mut self, i: usize) {
+        let Some(doc) = self.docs.get_mut(i) else { return };
+        doc.pinned = !doc.pinned;
+        self.sort_pinned();
+        self.reveal_active_tab = true;
+    }
+
+    /// Keeps pinned tabs at the left (in their order), the others after them.
+    pub(super) fn sort_pinned(&mut self) {
+        if self.docs.windows(2).all(|w| w[0].pinned || !w[1].pinned) {
+            return;
+        }
+        let active_id = self.active.and_then(|a| self.docs.get(a)).map(|d| d.id);
+        self.docs.sort_by_key(|d| !d.pinned);
+        self.active = active_id.and_then(|id| self.doc_index(id));
+    }
+
     pub(super) fn close_others(&mut self, keep: usize) {
-        self.close_many((0..self.docs.len()).filter(|&i| i != keep).collect());
+        self.close_many((0..self.docs.len()).filter(|&i| i != keep && !self.docs[i].pinned).collect());
         if let Some(i) = self.active {
             self.activate(i);
         }

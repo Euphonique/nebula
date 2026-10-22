@@ -309,6 +309,19 @@ pub fn menu(painter: &Painter, c: Pos2, color: Color32) {
     }
 }
 
+/// Push pin, tilted ("pinned tab").
+pub fn pin(painter: &Painter, c: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    // Head, body and needle along the diagonal from top right to bottom left.
+    let d = vec2(-0.7071, 0.7071);
+    let n = vec2(0.7071, 0.7071);
+    let head = c + d * -3.5;
+    painter.line_segment([head + n * -3.2, head + n * 3.2], Stroke::new(2.2, color));
+    painter.line_segment([c + d * -3.0, c + d * 0.5], Stroke::new(2.6, color));
+    painter.line_segment([c + d * 0.5 + n * -3.0, c + d * 0.5 + n * 3.0], stroke);
+    painter.line_segment([c + d * 0.5, c + d * 5.0], stroke);
+}
+
 /// Curly braces ("snippets").
 pub fn snippets(painter: &Painter, c: Pos2, color: Color32) {
     painter.text(c + vec2(0.0, -0.5), eframe::egui::Align2::CENTER_CENTER, "{ }", eframe::egui::FontId::monospace(13.0), color);

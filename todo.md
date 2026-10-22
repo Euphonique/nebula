@@ -47,7 +47,7 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 
 ## Oberfläche und Allgemein
 
-- **B** Tabs anheften; mehrere Fenster/Projekte gleichzeitig.
+- **B** Mehrere Fenster/Projekte gleichzeitig.
 - **B** Große Dateien (> 64 MB) schreibgeschützt öffnen statt ablehnen; Hex-Ansicht für Binärdateien.
 - **B** Update-Hinweis, Installer und Eintrag „Mit Nebula öffnen“ im Explorer-Kontextmenü, Dateizuordnungen.
 - **C** Oberfläche auch auf Englisch (Texte in Übersetzungsdateien auslagern).
@@ -70,7 +70,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 3. ~~Server duplizieren, gruppieren, Import/Export~~ (erledigt).
 4. ~~Vorschau in Gerätebreiten~~ (erledigt; kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
 5. ~~Eigene Snippets pro Sprache~~ (erledigt, als Panel „{ }“).
-6. Tabs anheften; ~~Einstellungen exportieren/importieren~~ (erledigt).
+6. ~~Tabs anheften; Einstellungen exportieren/importieren~~ (erledigt).
 7. Große Dateien schreibgeschützt öffnen, Hex-Ansicht.
 8. Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“.
 
@@ -99,3 +99,5 @@ Gerätebreiten (22.10.): Vorschau wahlweise in Panelbreite, Handy (390 px), Tabl
 Snippets (22.10.): Tab-Sprünge durch Platzhalter mit Mehrfachbearbeitung gleicher Nummern, eingebaute Snippets mit Platzhaltern, eigener Reiter „{ }“ im rechten Panel zum Einfügen, Anlegen (auch aus der Auswahl) und Bearbeiten, pro Sprache oder für alle Sprachen. Export/Import als JSON, Import von VS-Code-Snippets.
 
 Einstellungen exportieren/importieren (22.10.): alle Bereiche einzeln wählbar in einer JSON-Datei, ohne Passwörter und API-Schlüssel; Import ergänzt Server/Snippets/Agenten und installiert fehlende Erweiterungen aus der Bibliothek nach.
+
+Tabs anheften (22.10.): angeheftete Tabs stehen links mit Nadel statt Schließen-Knopf, bleiben bei „Andere/Rechts/Alle schließen“ und Mittelklick stehen und werden in Sitzung und Projekt-Tabs gemerkt.

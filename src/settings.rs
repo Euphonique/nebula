@@ -205,6 +205,8 @@ pub struct SessionEntry {
     pub remote_path: Option<String>,
     /// Cursor position (char index).
     pub cursor: usize,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

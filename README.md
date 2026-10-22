@@ -98,6 +98,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 **Oberfläche**
 - Einstellungen exportieren und importieren (Menü Einstellungen oder Befehlspalette), z. B. für einen neuen Rechner: Editor und Darstellung, eigene Themes, Sprachen und Snippets, Tastenkürzel, Server, KI-Agenten und Erweiterungen, einzeln wählbar, als eine JSON-Datei. Passwörter und API-Schlüssel kommen nicht mit; Server, Snippets und Agenten werden beim Import ergänzt, fehlende Erweiterungen aus der Bibliothek nachinstalliert
 - Eigene Titelleiste mit Tabs; Tabs scrollen, lassen sich per Drag sortieren und haben ein Kontextmenü (Speichern, Duplizieren, Drucken, Schließen, andere/rechts/alle schließen, Pfad kopieren, im Explorer zeigen)
+- Tabs anheften (Kontextmenü oder Befehlspalette): angeheftete Tabs stehen links, zeigen eine Nadel statt des Schließen-Knopfs (Klick löst sie) und bleiben bei „Andere schließen“, „Rechts davon schließen“, „Alle schließen“ und Mittelklick erhalten; der Zustand wird mit der Sitzung gespeichert
 - Windows-11-Andocklayouts am Maximieren-Knopf, Mica-Hintergrund in der Seitenleiste, native Schatten und abgerundete Ecken
 - Seitenleiste mit Dateien, Servern und Projektsuche; Git-Status (Branch, geänderte und neue Dateien)
 - Zuletzt geöffnete Projekte: Klick auf den Projektnamen in der Seitenleiste, Menü, Startseite oder Befehlspalette. Pro Projekt merkt sich Nebula die offenen Dateien. Die Listen der zuletzt geöffneten Projekte und Dateien lassen sich auf der Startseite („Leeren“) und im Datei-Menü leeren.

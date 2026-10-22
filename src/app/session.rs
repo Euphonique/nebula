@@ -14,11 +14,12 @@ impl NebulaApp {
         for (i, d) in self.docs.iter().enumerate() {
             let cursor = d.primary_selection().head;
             let entry = match &d.source {
-                DocSource::Local(p) => SessionEntry { local: Some(p.clone()), cursor, ..Default::default() },
+                DocSource::Local(p) => SessionEntry { local: Some(p.clone()), cursor, pinned: d.pinned, ..Default::default() },
                 DocSource::Remote { site_id, path } => SessionEntry {
                     site_id: Some(site_id.clone()),
                     remote_path: Some(path.clone()),
                     cursor,
+                    pinned: d.pinned,
                     ..Default::default()
                 },
                 DocSource::Untitled(_) => continue,
@@ -47,6 +48,7 @@ impl NebulaApp {
                     let pos = e.cursor.min(doc.len_chars());
                     doc.set_selection(Selection::cursor(pos));
                     doc.view.center_line = Some(doc.char_to_line(pos));
+                    doc.pinned = e.pinned;
                     if active == Some(n) {
                         active_id = Some(doc.id);
                     }
@@ -56,6 +58,9 @@ impl NebulaApp {
             {
                 // Remote files open once the connection delivers them.
                 self.pending_cursors.insert((site_id.clone(), path.clone()), e.cursor);
+                if e.pinned {
+                    self.pending_pins.insert((site_id.clone(), path.clone()));
+                }
                 self.open_remote(site_id, path);
             }
         }
@@ -68,6 +73,9 @@ impl NebulaApp {
     /// Applies a cursor remembered from the last session to a freshly opened remote file.
     pub(super) fn apply_pending_cursor(&mut self, index: usize) {
         let DocSource::Remote { site_id, path } = self.docs[index].source.clone() else { return };
+        if self.pending_pins.remove(&(site_id.clone(), path.clone())) {
+            self.docs[index].pinned = true;
+        }
         if let Some((line, column)) = self.pending_lines.remove(&(site_id.clone(), path.clone())) {
             self.goto_line_column(index, line, column);
         } else if let Some(cursor) = self.pending_cursors.remove(&(site_id, path)) {
@@ -103,7 +111,7 @@ impl NebulaApp {
                     tabs.active = Some(tabs.entries.len());
                 }
                 let DocSource::Local(p) = &d.source else { continue };
-                tabs.entries.push(SessionEntry { local: Some(p.clone()), cursor: d.primary_selection().head, ..Default::default() });
+                tabs.entries.push(SessionEntry { local: Some(p.clone()), cursor: d.primary_selection().head, pinned: d.pinned, ..Default::default() });
             }
             self.settings.project_tabs.insert(old.to_string_lossy().into_owned(), tabs);
             let active_id = self.active.map(|i| self.docs[i].id);
@@ -123,6 +131,7 @@ impl NebulaApp {
                     let pos = e.cursor.min(doc.len_chars());
                     doc.set_selection(Selection::cursor(pos));
                     doc.view.center_line = Some(doc.char_to_line(pos));
+                    doc.pinned = e.pinned;
                     if tabs.active == Some(n) {
                         active_id = Some(doc.id);
                     }
