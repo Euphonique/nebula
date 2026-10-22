@@ -355,9 +355,19 @@ impl NebulaApp {
     }
 
     fn new_document(&mut self) {
+        self.new_document_in(Language::Html, false);
+    }
+
+    /// New untitled document in `language`; `named` gives it the language's
+    /// file extension (“Unbenannt 2.css”), used when saving.
+    fn new_document_in(&mut self, language: Language, named: bool) {
         self.untitled += 1;
         let mut doc = Document::new(DocSource::Untitled(self.untitled), "");
-        doc.language = Language::Html;
+        doc.language = language;
+        if named && let Some(ext) = language.default_extensions().first() {
+            doc.suggested_name = Some(format!("{}.{ext}", doc.title()));
+        }
+        doc.highlight_version = u64::MAX;
         let at = self.active.map_or(self.docs.len(), |i| i + 1);
         self.docs.insert(at, doc);
         self.activate(at);
@@ -608,7 +618,9 @@ impl NebulaApp {
         if let DocSource::Untitled(_) = doc.source
             && doc.suggested_name.is_none()
         {
-            dialog = dialog.set_file_name(format!("{}.html", doc.title()));
+            // The extension follows the language chosen for the document.
+            let ext = doc.language.default_extensions().first().copied().unwrap_or("txt");
+            dialog = dialog.set_file_name(format!("{}.{ext}", doc.title()));
         }
         if let Some(root) = &self.sidebar.root {
             dialog = dialog.set_directory(root);
@@ -1797,11 +1809,37 @@ impl NebulaApp {
             self.docs.insert(to, doc);
             self.active = active_id.and_then(|id| self.doc_index(id));
         }
-        if icons::icon_button(&mut row, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::plus(p, c, col))
-            .on_hover_text("Neue Datei (Strg+N)")
-            .clicked()
-        {
+        let plus = icons::icon_button(&mut row, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::plus(p, c, col))
+            .on_hover_text("Neue Datei (Strg+N) – Rechtsklick oder Umschalt+Klick: Sprache wählen");
+        // Right click or Shift+click: pick the language (and extension) first.
+        let shift = row.input(|i| i.modifiers.shift);
+        let pick = plus.secondary_clicked() || (plus.clicked() && shift);
+        if plus.clicked() && !shift {
             self.new_document();
+        }
+        let mut chosen = None;
+        let set = if pick {
+            Some(egui::containers::SetOpenCommand::Bool(true))
+        } else if plus.clicked() {
+            Some(egui::containers::SetOpenCommand::Bool(false))
+        } else {
+            None
+        };
+        egui::Popup::menu(&plus).open_memory(set).at_pointer_fixed().show(|ui| {
+            ui.label(RichText::new("Neue Datei als …").small().color(theme.text_faint));
+            egui::ScrollArea::vertical().max_height(460.0).show(ui, |ui| {
+                ui.set_min_width(190.0);
+                for l in Language::ALL {
+                    let ext = l.default_extensions().first().map(|e| format!("  .{e}")).unwrap_or_default();
+                    if icons::language_item(ui, false, l, &format!("{}{ext}", l.name())).clicked() {
+                        chosen = Some(l);
+                        ui.close();
+                    }
+                }
+            });
+        });
+        if let Some(l) = chosen {
+            self.new_document_in(l, true);
         }
         // Panel toggles (sidebar, terminal, right panel) and the design switch.
         row.with_layout(Layout::right_to_left(Align::Center), |ui| {
