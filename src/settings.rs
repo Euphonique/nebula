@@ -102,6 +102,8 @@ impl Default for EditorSettings {
 pub struct AppSettings {
     pub editor: EditorSettings,
     /// Light, dark or following Windows, and the theme used for each.
+    /// Language of the user interface (code); empty = like Windows.
+    pub ui_language: String,
     pub appearance: Appearance,
     pub theme_light: String,
     pub theme_dark: String,
@@ -251,6 +253,7 @@ impl Default for AppSettings {
         Self {
             editor: EditorSettings::default(),
             appearance: Appearance::System,
+            ui_language: String::new(),
             theme_light: crate::theme::BUILTIN_LIGHT.into(),
             theme_dark: crate::theme::BUILTIN_DARK.into(),
             legacy_dark: None,

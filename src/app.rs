@@ -214,6 +214,8 @@ pub struct NebulaApp {
 impl NebulaApp {
     pub fn new(cc: &eframe::CreationContext<'_>, open_paths: Vec<PathBuf>) -> Self {
         let settings = AppSettings::load();
+        crate::i18n::load();
+        crate::i18n::set_language(&settings.ui_language);
         settings.apply_languages();
         let theme = Theme::for_settings(&settings);
         theme.apply(&cc.egui_ctx);

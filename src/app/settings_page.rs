@@ -127,6 +127,7 @@ impl NebulaApp {
     }
 
     fn editor_page(&mut self, ui: &mut Ui, state: &mut SettingsUi) {
+        self.language_section(ui);
         let e = &mut self.settings.editor;
         section(ui, "Darstellung");
         egui::Grid::new("editor-grid").num_columns(2).spacing([16.0, 10.0]).show(ui, |ui| {
@@ -655,6 +656,82 @@ impl NebulaApp {
                 }
             });
         });
+    }
+}
+
+impl NebulaApp {
+    /// Language of the user interface, with export and import of language files.
+    fn language_section(&mut self, ui: &mut Ui) {
+        section(ui, t!("Sprache"));
+        let languages = crate::i18n::available();
+        let name_of = |code: &str| languages.iter().find(|(c, _)| c == code).map_or(code.to_string(), |(_, n)| n.clone());
+        let auto = t!("Automatisch ({name})", name = name_of(&crate::i18n::current()));
+        let selected = if self.settings.ui_language.is_empty() { auto.clone() } else { name_of(&self.settings.ui_language) };
+        let mut choice = None;
+        ui.horizontal(|ui| {
+            ui.label(t!("Oberfläche"));
+            egui::ComboBox::from_id_salt("ui-language").selected_text(selected).width(240.0).show_ui(ui, |ui| {
+                if ui.selectable_label(self.settings.ui_language.is_empty(), &auto).on_hover_text(t!("Folgt der Windows-Anzeigesprache; ohne Übersetzung Englisch")).clicked() {
+                    choice = Some(String::new());
+                }
+                for (code, name) in &languages {
+                    if ui.selectable_label(&self.settings.ui_language == code, name).clicked() {
+                        choice = Some(code.clone());
+                    }
+                }
+            });
+        });
+        if let Some(code) = choice {
+            self.settings.ui_language = code;
+            crate::i18n::set_language(&self.settings.ui_language);
+            let _ = self.settings.save();
+        }
+        ui.horizontal(|ui| {
+            if ui.button(t!("Sprachdatei exportieren…")).on_hover_text(t!("Alle Texte als Vorlage für eine Übersetzung")).clicked() {
+                self.export_language_file();
+            }
+            if ui.button(t!("Sprachdatei importieren…")).clicked() {
+                self.import_language_file();
+            }
+        });
+        ui.label(
+            RichText::new(t!("Eigene Sprachdateien liegen in {dir}.", dir = crate::i18n::user_dir().display()))
+                .small()
+                .color(self.theme.text_faint),
+        );
+    }
+
+    fn export_language_file(&mut self) {
+        let code = crate::i18n::current();
+        // German is the source: export an English-based template then.
+        let code = if code == crate::i18n::SOURCE { crate::i18n::FALLBACK.to_string() } else { code };
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(t!("Sprachdatei exportieren"))
+            .set_file_name(format!("nebula-{code}.json"))
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        match crate::i18n::export(&code, &crate::i18n::all_keys()).and_then(|b| Ok(std::fs::write(&path, b)?)) {
+            Ok(()) => self.info(t!("Sprachdatei gespeichert: {path}", path = path.display())),
+            Err(e) => self.error(t!("Export fehlgeschlagen: {e}", e = format!("{e:#}"))),
+        }
+    }
+
+    fn import_language_file(&mut self) {
+        let Some(path) = rfd::FileDialog::new().set_title(t!("Sprachdatei importieren")).add_filter("JSON", &["json"]).pick_file() else {
+            return;
+        };
+        match std::fs::read(&path).map_err(anyhow::Error::from).and_then(|b| crate::i18n::import(&b)) {
+            Ok((code, name)) => {
+                self.settings.ui_language = code;
+                crate::i18n::set_language(&self.settings.ui_language);
+                let _ = self.settings.save();
+                self.info(t!("Sprache „{name}“ importiert und eingestellt.", name = name));
+            }
+            Err(e) => self.error(t!("Import fehlgeschlagen: {e}", e = format!("{e:#}"))),
+        }
     }
 }
 
