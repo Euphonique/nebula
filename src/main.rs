@@ -11,6 +11,7 @@ mod hex_view;
 mod image_view;
 mod fonts;
 mod icon;
+mod integration;
 mod ext;
 mod lang;
 mod preview;
@@ -55,7 +56,22 @@ fn main() -> eframe::Result {
     if std::env::var_os("NEBULA_CRASH_TEST").is_some() {
         panic!("Absturztest (NEBULA_CRASH_TEST)");
     }
-    let open_paths: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    // "Deinstallieren" under Windows' "Apps".
+    if args.iter().any(|a| a == "--uninstall") {
+        let text = match integration::uninstall() {
+            Ok(()) => "Nebula wurde entfernt.\n\nDeine Einstellungen bleiben im Ordner %APPDATA%\\nebula erhalten.".to_string(),
+            Err(e) => format!("Nebula konnte nicht vollständig entfernt werden:\n{e:#}"),
+        };
+        win32::message_box("Nebula", &text);
+        return Ok(());
+    }
+    let open_paths: Vec<PathBuf> = args.iter().filter(|a| !a.to_string_lossy().starts_with("--")).map(PathBuf::from).collect();
+    // A second start hands its files to the running window ("Mit Nebula öffnen").
+    let forwarded = !args.iter().any(|a| a == "--new-instance") && win32::forward_to_running(&open_paths);
+    if forwarded {
+        return Ok(());
+    }
     let icon = egui::IconData {
         rgba: icon::render_icon(64),
         width: 64,

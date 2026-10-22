@@ -18,6 +18,8 @@ pub enum Page {
     Keys,
     Agents,
     Extensions,
+    /// Installing, Explorer context menu, file types.
+    System,
 }
 
 /// Transient state of the settings window.
@@ -75,7 +77,7 @@ impl NebulaApp {
                 // Navigation.
                 ui.vertical(|ui| {
                     ui.set_width(150.0);
-                    for (page, label) in [(Page::Editor, "Editor"), (Page::Design, "Design"), (Page::Languages, "Sprachen"), (Page::Keys, "Tastenkürzel"), (Page::Agents, "KI-Agenten"), (Page::Extensions, "Erweiterungen")] {
+                    for (page, label) in [(Page::Editor, "Editor"), (Page::Design, "Design"), (Page::Languages, "Sprachen"), (Page::Keys, "Tastenkürzel"), (Page::Agents, "KI-Agenten"), (Page::Extensions, "Erweiterungen"), (Page::System, "Windows")] {
                         let sel = state.page == page;
                         if ui
                             .add_sized([140.0, 30.0], egui::Button::selectable(sel, RichText::new(label).size(14.0)))
@@ -96,6 +98,7 @@ impl NebulaApp {
                             Page::Languages => self.languages_page(ui, &mut state),
                             Page::Keys => self.keys_page(ui, &mut state.keys),
                             Page::Agents => self.agents_page(ui, &mut state.agents),
+                            Page::System => self.system_page(ui),
                             Page::Extensions => {
                                 self.settings_ui = std::mem::take(&mut state);
                                 self.extensions_page(ui);

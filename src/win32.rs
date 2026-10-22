@@ -46,6 +46,10 @@ pub fn init(frame: &eframe::Frame, ctx: &egui::Context) {
     let hwnd = h.hwnd.get() as HWND;
     WINDOW.store(hwnd as isize, Ordering::Relaxed);
     let _ = CTX.set(ctx.clone());
+    // Lets a second start find this window and hand over its files.
+    let prop = instance_prop();
+    // SAFETY: valid window; the property is a plain marker value.
+    unsafe { windows_sys::Win32::UI::WindowsAndMessaging::SetPropW(hwnd, prop.as_ptr(), 1 as _) };
     // SAFETY: the window outlives the subclass; the proc only reads atomics.
     unsafe {
         // The window was created with a frame around the requested size; once the
@@ -119,6 +123,30 @@ unsafe extern "system" fn subclass_proc(
                 }
             }
             return 0;
+        }
+        // Another Nebula started with files: open them here (see `forward_to_running`).
+        windows_sys::Win32::UI::WindowsAndMessaging::WM_COPYDATA => {
+            // SAFETY: for WM_COPYDATA, lparam points to a COPYDATASTRUCT valid during the call.
+            let cds = unsafe { &*(lparam as *const windows_sys::Win32::System::DataExchange::COPYDATASTRUCT) };
+            if cds.dwData == COPYDATA_OPEN {
+                let len = cds.cbData as usize / 2;
+                // SAFETY: the sender passes `cbData` bytes of UTF-16.
+                let data = unsafe { std::slice::from_raw_parts(cds.lpData as *const u16, len) };
+                let paths = String::from_utf16_lossy(data);
+                OPEN_REQUESTS
+                    .lock()
+                    .unwrap()
+                    .extend(paths.split('\0').filter(|p| !p.is_empty()).map(std::path::PathBuf::from));
+                // SAFETY: plain window calls on our own window.
+                unsafe {
+                    if windows_sys::Win32::UI::WindowsAndMessaging::IsIconic(hwnd) != 0 {
+                        ShowWindow(hwnd, SW_RESTORE);
+                    }
+                    windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd);
+                }
+                repaint();
+                return 1;
+            }
         }
         WM_NCHITTEST => {
             let mut p = POINT {
@@ -556,4 +584,135 @@ pub fn move_to_recycle_bin(path: &std::path::Path) -> bool {
     };
     // SAFETY: `from` is a double-zero-terminated wide string that outlives the call.
     unsafe { SHFileOperationW(&mut op) == 0 && op.fAnyOperationsAborted == 0 }
+}
+
+// ---- single instance ---------------------------------------------------------
+
+/// `WM_COPYDATA` tag for "open these paths".
+const COPYDATA_OPEN: usize = 0x4E42_4F50;
+/// Paths handed over by another start of Nebula, taken by the app each frame.
+static OPEN_REQUESTS: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+/// Window property marking the main window; per config folder, so separate
+/// configurations (tests, portable copies) stay separate instances.
+fn instance_prop() -> Vec<u16> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    crate::settings::config_dir().to_string_lossy().to_lowercase().hash(&mut h);
+    format!("NebulaMain-{:x}", h.finish()).encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Paths another start of Nebula asked this window to open.
+pub fn take_open_requests() -> Vec<std::path::PathBuf> {
+    std::mem::take(&mut *OPEN_REQUESTS.lock().unwrap())
+}
+
+/// Hands `paths` to an already running Nebula (same config folder) and brings
+/// it to the front. False if none runs.
+pub fn forward_to_running(paths: &[std::path::PathBuf]) -> bool {
+    use windows_sys::core::BOOL;
+    use windows_sys::Win32::System::DataExchange::COPYDATASTRUCT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        ASFW_ANY, AllowSetForegroundWindow, EnumWindows, GetPropW, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_COPYDATA,
+    };
+    struct Search {
+        prop: Vec<u16>,
+        found: HWND,
+    }
+    unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        // SAFETY: lparam is the `Search` passed below, alive during EnumWindows.
+        let s = unsafe { &mut *(lparam as *mut Search) };
+        // SAFETY: plain property lookup on a top-level window.
+        if !unsafe { GetPropW(hwnd, s.prop.as_ptr()) }.is_null() {
+            s.found = hwnd;
+            return 0;
+        }
+        1
+    }
+    let mut search = Search { prop: instance_prop(), found: std::ptr::null_mut() };
+    // SAFETY: the callback only touches `search`.
+    unsafe { EnumWindows(Some(each), &mut search as *mut Search as LPARAM) };
+    if search.found.is_null() {
+        return false;
+    }
+    let mut data: Vec<u16> = Vec::new();
+    for p in paths {
+        let abs = std::path::absolute(p).unwrap_or_else(|_| p.clone());
+        data.extend(abs.to_string_lossy().encode_utf16());
+        data.push(0);
+    }
+    let cds = COPYDATASTRUCT { dwData: COPYDATA_OPEN, cbData: (data.len() * 2) as u32, lpData: data.as_ptr() as *mut _ };
+    let mut result = 0usize;
+    // SAFETY: `cds` and `data` live until SendMessageTimeoutW returns.
+    unsafe {
+        // The running window may take the focus.
+        AllowSetForegroundWindow(ASFW_ANY);
+        SendMessageTimeoutW(search.found, WM_COPYDATA, 0, &cds as *const _ as LPARAM, SMTO_ABORTIFHUNG, 5000, &mut result);
+    }
+    result == 1
+}
+
+// ---- shell integration -------------------------------------------------------
+
+/// Creates a shortcut (`.lnk`) to `target` (e.g. in the start menu).
+pub fn create_shortcut(link: &std::path::Path, target: &std::path::Path, description: &str) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx};
+    const CLSID_SHELL_LINK: windows_sys::core::GUID = windows_sys::core::GUID::from_u128(0x00021401_0000_0000_c000_000000000046);
+    const IID_ISHELL_LINK_W: windows_sys::core::GUID = windows_sys::core::GUID::from_u128(0x000214f9_0000_0000_c000_000000000046);
+    const IID_IPERSIST_FILE: windows_sys::core::GUID = windows_sys::core::GUID::from_u128(0x0000010b_0000_0000_c000_000000000046);
+    let wide = |s: &std::ffi::OsStr| -> Vec<u16> { s.encode_wide().chain(std::iter::once(0)).collect() };
+    let target_w = wide(target.as_os_str());
+    let dir_w = wide(target.parent().unwrap_or(target).as_os_str());
+    let link_w = wide(link.as_os_str());
+    let desc_w = wide(std::ffi::OsStr::new(description));
+    type Fn1 = unsafe extern "system" fn(*mut std::ffi::c_void, *const u16) -> i32;
+    type Qi = unsafe extern "system" fn(*mut std::ffi::c_void, *const windows_sys::core::GUID, *mut *mut std::ffi::c_void) -> i32;
+    type Save = unsafe extern "system" fn(*mut std::ffi::c_void, *const u16, i32) -> i32;
+    // SAFETY: COM calls through the documented vtable layouts of IShellLinkW
+    // and IPersistFile; every pointer is released before returning.
+    unsafe {
+        CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as _);
+        let mut link_obj: *mut std::ffi::c_void = std::ptr::null_mut();
+        if CoCreateInstance(&CLSID_SHELL_LINK, std::ptr::null_mut(), CLSCTX_INPROC_SERVER, &IID_ISHELL_LINK_W, &mut link_obj) != 0 {
+            return false;
+        }
+        let vtbl = *(link_obj as *const *const usize);
+        let call = |index: usize, arg: &[u16]| {
+            let f: Fn1 = std::mem::transmute(*vtbl.add(index));
+            f(link_obj, arg.as_ptr())
+        };
+        // IShellLinkW: SetDescription 7, SetWorkingDirectory 9, SetPath 20.
+        call(20, &target_w);
+        call(9, &dir_w);
+        call(7, &desc_w);
+        let qi: Qi = std::mem::transmute(*vtbl);
+        let mut persist: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut ok = false;
+        if qi(link_obj, &IID_IPERSIST_FILE, &mut persist) == 0 {
+            let pv = *(persist as *const *const usize);
+            // IPersistFile::Save is entry 6.
+            let save: Save = std::mem::transmute(*pv.add(6));
+            ok = save(persist, link_w.as_ptr(), 1) == 0;
+            com_release(persist);
+        }
+        com_release(link_obj);
+        ok
+    }
+}
+
+/// Tells Explorer that file associations or context menus changed.
+pub fn notify_associations_changed() {
+    use windows_sys::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify};
+    // SAFETY: no item pointers are passed.
+    unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED as _, SHCNF_IDLIST, std::ptr::null(), std::ptr::null()) };
+}
+
+/// A plain information box (used without a window, e.g. after uninstalling).
+pub fn message_box(title: &str, text: &str) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
+    let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+    let (t, m) = (wide(title), wide(text));
+    // SAFETY: both strings are zero-terminated and outlive the call.
+    unsafe { MessageBoxW(std::ptr::null_mut(), m.as_ptr(), t.as_ptr(), MB_OK | MB_ICONINFORMATION) };
 }

@@ -49,6 +49,7 @@ mod crash_ui;
 mod snippets_panel;
 mod settings_transfer;
 mod sync_ui;
+mod system_page;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -187,6 +188,8 @@ pub struct NebulaApp {
     reinstall: Option<settings_transfer::Reinstall>,
     /// Synchronization in progress (preview or transfers).
     sync: Option<sync_ui::SyncRun>,
+    /// The settings page asks whether to uninstall.
+    confirm_uninstall: bool,
     /// Print job running in the background; yields the number of pages.
     printing: Option<std::thread::JoinHandle<Result<usize, String>>>,
     /// SSH terminals in the bottom panel.
@@ -260,6 +263,7 @@ impl NebulaApp {
             ext: extensions::ExtUi::new(&cc.egui_ctx, &settings.disabled_extensions),
             reinstall: None,
             sync: None,
+            confirm_uninstall: false,
             printing: None,
             terminals: Default::default(),
             disk: Default::default(),
@@ -1554,7 +1558,7 @@ impl NebulaApp {
             });
             ui.menu_button("Einstellungen", |ui| {
                 let settings_key = self.shortcut_label(palette::Command::Settings);
-                for (label, page) in [("Editor…", Page::Editor), ("Design und Themes…", Page::Design), ("Sprachen…", Page::Languages), ("Tastenkürzel…", Page::Keys), ("KI-Agenten…", Page::Agents), ("Erweiterungen…", Page::Extensions)] {
+                for (label, page) in [("Editor…", Page::Editor), ("Design und Themes…", Page::Design), ("Sprachen…", Page::Languages), ("Tastenkürzel…", Page::Keys), ("KI-Agenten…", Page::Agents), ("Erweiterungen…", Page::Extensions), ("Windows-Integration…", Page::System)] {
                     if ui.add(egui::Button::new(label).shortcut_text(if page == Page::Editor { settings_key.as_str() } else { "" })).clicked() {
                         self.open_settings(page);
                         ui.close();
@@ -3147,6 +3151,14 @@ impl eframe::App for NebulaApp {
             }
         }
         self.poll_reinstall();
+        // Files handed over by another start of Nebula.
+        for path in crate::win32::take_open_requests() {
+            if path.is_dir() {
+                self.open_folder(path);
+            } else {
+                self.open_local(&path);
+            }
+        }
         self.toasts(&ctx);
         self.ext_notices(&ctx);
         self.place_preview(&ctx, frame, preview_rect);
