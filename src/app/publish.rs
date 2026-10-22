@@ -33,12 +33,17 @@ impl NebulaApp {
     /// Local files changed since they were last published: (absolute, relative, mtime).
     pub(super) fn changed_files(&self) -> Vec<(PathBuf, String, u64)> {
         let Some((root, target)) = self.publish_target() else { return Vec::new() };
+        // The project's exclusion list (as for synchronizing), e.g. `.env`.
+        let exclude = target.exclude_list();
         let mut out = Vec::new();
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
             let Ok(rd) = std::fs::read_dir(&dir) else { continue };
             for e in rd.flatten() {
                 let name = e.file_name();
+                if exclude.iter().any(|x| name == x.as_str()) {
+                    continue;
+                }
                 let Ok(ft) = e.file_type() else { continue };
                 if ft.is_dir() {
                     if !SKIP_DIRS.iter().any(|s| name == *s) {
@@ -104,6 +109,11 @@ impl NebulaApp {
         }
         let Ok(rel) = path.strip_prefix(&root) else { return };
         let rel = rel.to_string_lossy().replace('\\', "/");
+        // Excluded files (or files in excluded folders) stay local.
+        let exclude = target.exclude_list();
+        if rel.split('/').any(|part| exclude.iter().any(|x| x == part)) {
+            return;
+        }
         self.publish_file(&root, &target, path, &rel, mtime(path));
     }
 

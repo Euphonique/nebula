@@ -87,6 +87,35 @@ impl DirRef {
     }
 }
 
+/// Whether dropping copies (like Explorer): between different places
+/// (another server, local and server) copy, within the same place move;
+/// Shift forces moving, Ctrl copying.
+pub fn drop_copies(items: &[Item], target: &DirRef, mods: Modifiers) -> bool {
+    if mods.shift {
+        return false;
+    }
+    if mods.command {
+        return true;
+    }
+    items.iter().any(|i| match (&i.file, target) {
+        (FileRef::Local(_), DirRef::Local(_)) => false,
+        (FileRef::Remote { site_id: a, .. }, DirRef::Remote { site_id: b, .. }) => a != b,
+        _ => true,
+    })
+}
+
+/// "Kopieren"/"Verschieben" next to the pointer while dragging over a target.
+fn drop_hint(ui: &Ui, theme: &Theme, copy: bool) {
+    let Some(pos) = ui.ctx().pointer_latest_pos() else { return };
+    let text = if copy { "+ Kopieren (Umschalt: verschieben)" } else { "→ Verschieben (Strg: kopieren)" };
+    let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("drop-hint")));
+    let galley = painter.layout_no_wrap(text.to_string(), FontId::proportional(11.5), theme.foreground);
+    let rect = Rect::from_min_size(pos + vec2(16.0, 18.0), galley.size() + vec2(12.0, 6.0));
+    painter.rect_filled(rect, 5.0, theme.sidebar_bg);
+    painter.rect_stroke(rect, 5.0, Stroke::new(1.0, theme.accent), egui::StrokeKind::Inside);
+    painter.galley(rect.min + vec2(6.0, 3.0), galley, theme.foreground);
+}
+
 /// Payload while dragging items inside the app.
 #[derive(Clone)]
 pub struct DragItems(pub Vec<Item>);
@@ -201,6 +230,8 @@ struct RowCtx<'a> {
     /// Folder under an OS drag from Explorer, in screen coordinates.
     external_hover: Option<Pos2>,
     modifiers: Modifiers,
+    /// Connected servers (id, name, start folder) as targets for "copy to server".
+    servers: Vec<(String, String, String)>,
 }
 
 pub struct Sidebar {
@@ -573,11 +604,18 @@ impl Sidebar {
         );
 
         self.drop_targets.clear();
+        let mut servers: Vec<(String, String, String)> = self
+            .remote
+            .iter()
+            .filter_map(|(id, t)| Some((id.clone(), sites.get(id)?.display_name(), t.home.clone()?)))
+            .collect();
+        servers.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
         let rc = RowCtx {
             theme,
             active_path,
             external_hover: self.external_hover,
             modifiers: ui.input(|i| i.modifiers),
+            servers,
         };
         let mut list_ui = ui.new_child(egui::UiBuilder::new().max_rect(list_rect.shrink2(vec2(8.0, 0.0))));
         if self.tab == SidebarTab::Extensions {
@@ -619,12 +657,12 @@ impl Sidebar {
                     self.focused = true;
                 }
                 if let Some(target) = self.default_target() {
+                    if let Some(payload) = resp.dnd_hover_payload::<DragItems>() {
+                        drop_hint(ui, rc.theme, drop_copies(&payload.0, &target, rc.modifiers));
+                    }
                     if let Some(payload) = resp.dnd_release_payload::<DragItems>() {
-                        actions.push(SidebarAction::Transfer {
-                            items: payload.0.clone(),
-                            target,
-                            copy: rc.modifiers.command,
-                        });
+                        let copy = drop_copies(&payload.0, &target, rc.modifiers);
+                        actions.push(SidebarAction::Transfer { items: payload.0.clone(), target, copy });
                     }
                     resp.context_menu(|ui| {
                         if self.clipboard.is_some() && ui.button("Einfügen").clicked() {
@@ -738,10 +776,16 @@ impl Sidebar {
                 _ => self.spring = Some((key, Instant::now())),
             }
         }
+        if let Some(payload) = resp.dnd_hover_payload::<DragItems>()
+            && let Some(t) = &target
+        {
+            drop_hint(ui, rc.theme, drop_copies(&payload.0, t, rc.modifiers));
+        }
         if let Some(payload) = resp.dnd_release_payload::<DragItems>()
             && let Some(t) = target.clone()
         {
-            actions.push(SidebarAction::Transfer { items: payload.0.clone(), target: t, copy: rc.modifiers.command });
+            let copy = drop_copies(&payload.0, &t, rc.modifiers);
+            actions.push(SidebarAction::Transfer { items: payload.0.clone(), target: t, copy });
         }
 
         let painter = ui.painter();
@@ -817,7 +861,7 @@ impl Sidebar {
         let clipboard_ready = self.clipboard.is_some();
         let selection = if selected { self.selection.clone() } else { vec![item.clone()] };
         resp.context_menu(|ui| {
-            item_menu(ui, item, &selection, target.as_ref(), clipboard_ready, url, actions);
+            item_menu(ui, item, &selection, target.as_ref(), clipboard_ready, url, &rc.servers, actions);
         });
         resp
     }
@@ -858,8 +902,12 @@ impl Sidebar {
         }
         let target = DirRef::Local(root.clone());
         self.drop_targets.push((resp.rect, target.clone()));
+        if let Some(payload) = resp.dnd_hover_payload::<DragItems>() {
+            drop_hint(ui, rc.theme, drop_copies(&payload.0, &target, rc.modifiers));
+        }
         if let Some(payload) = resp.dnd_release_payload::<DragItems>() {
-            actions.push(SidebarAction::Transfer { items: payload.0.clone(), target: target.clone(), copy: rc.modifiers.command });
+            let copy = drop_copies(&payload.0, &target, rc.modifiers);
+            actions.push(SidebarAction::Transfer { items: payload.0.clone(), target: target.clone(), copy });
         }
         let clipboard_ready = self.clipboard.is_some();
         resp.context_menu(|ui| dir_menu(ui, &target, clipboard_ready, actions));
@@ -1026,8 +1074,12 @@ impl Sidebar {
         if let Some(home) = tree.and_then(|t| t.home.clone()) {
             let target = DirRef::Remote { site_id: site.id.clone(), path: home };
             self.drop_targets.push((resp.rect, target.clone()));
+            if let Some(payload) = resp.dnd_hover_payload::<DragItems>() {
+                drop_hint(ui, theme, drop_copies(&payload.0, &target, rc.modifiers));
+            }
             if let Some(payload) = resp.dnd_release_payload::<DragItems>() {
-                actions.push(SidebarAction::Transfer { items: payload.0.clone(), target, copy: true });
+                let copy = drop_copies(&payload.0, &target, rc.modifiers);
+                actions.push(SidebarAction::Transfer { items: payload.0.clone(), target, copy });
             }
         }
         if resp.clicked() {
@@ -1224,6 +1276,7 @@ fn item_menu(
     target: Option<&DirRef>,
     clipboard_ready: bool,
     url: Option<&str>,
+    servers: &[(String, String, String)],
     actions: &mut Vec<SidebarAction>,
 ) {
     let mut close = false;
@@ -1285,6 +1338,25 @@ fn item_menu(
     if menu_button(ui, "Duplizieren", "Strg+D") {
         actions.push(SidebarAction::Duplicate(selection.to_vec()));
         close = true;
+    }
+    // To the start folder of another connected server (or the same one from local).
+    let source_site = match &item.file {
+        FileRef::Remote { site_id, .. } => Some(site_id.as_str()),
+        FileRef::Local(_) => None,
+    };
+    let others: Vec<&(String, String, String)> = servers.iter().filter(|(id, _, _)| Some(id.as_str()) != source_site).collect();
+    if !others.is_empty() {
+        for (label, copy) in [("Auf Server kopieren", true), ("Auf Server verschieben", false)] {
+            ui.menu_button(label, |ui| {
+                for (id, name, home) in &others {
+                    if ui.button(name).on_hover_text(format!("In den Startordner {home}")).clicked() {
+                        let target = DirRef::Remote { site_id: id.clone(), path: home.clone() };
+                        actions.push(SidebarAction::Transfer { items: selection.to_vec(), target, copy });
+                        ui.close();
+                    }
+                }
+            });
+        }
     }
     ui.separator();
     if menu_button(ui, "Umbenennen…", "F2") {
@@ -1532,5 +1604,27 @@ pub fn strip_verbatim(p: &Path) -> PathBuf {
     match s.strip_prefix(r"\\?\UNC\") {
         Some(rest) => PathBuf::from(format!(r"\\{rest}")),
         None => PathBuf::from(s.trim_start_matches(r"\\?\")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dropping_copies_between_places_and_moves_within() {
+        let none = Modifiers::NONE;
+        let a = [Item::remote("a", "/www/x.css", false)];
+        let to_a = DirRef::Remote { site_id: "a".into(), path: "/www/css".into() };
+        let to_b = DirRef::Remote { site_id: "b".into(), path: "/".into() };
+        let local = DirRef::Local(PathBuf::from(r"C:\proj"));
+        assert!(!drop_copies(&a, &to_a, none));
+        assert!(drop_copies(&a, &to_b, none));
+        assert!(drop_copies(&a, &local, none));
+        assert!(!drop_copies(&a, &to_b, Modifiers::SHIFT));
+        assert!(drop_copies(&a, &to_a, Modifiers::COMMAND));
+        let l = [Item::local(PathBuf::from(r"C:\proj\a.txt"), false)];
+        assert!(!drop_copies(&l, &local, none));
+        assert!(drop_copies(&l, &to_a, none));
     }
 }

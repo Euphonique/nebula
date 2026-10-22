@@ -1,8 +1,6 @@
 # Ergänzungen und Bugs:
 
 - Server per DragnDrop in die Gruppen sortieren.
-- Falls noch nicht eingebaut: Servergruppen auch bei Import/Export beachten.
-- Dateien/Ordner von einem Server auf den anderen kopieren (Standard) bzw. verschieben (per Kontextmenü und per DragnDrop)
 - Toggle in der Serverliste für: Alle Server anzeigen/ Gruppen anzeigen
 - Snippets: Ebenfalls in Gruppen sortierbar machen. Gruppen auch bei Import und Export beachten.
 
@@ -114,3 +112,5 @@ Tabs anheften (22.10.): angeheftete Tabs stehen links mit Nadel statt Schließen
 Große Dateien und Hex-Editor (22.10.): Binärdateien öffnen im Hex-Editor (Überschreiben, Rückgängig, Speichern nur der geänderten Bytes) (große lokale Dateien werden stückweise gelesen, „Als Text öffnen“ bei Fehlerkennung), Textdateien über 64 MB schreibgeschützt bis 512 MB, darüber als Hex.
 
 Synchronisieren (22.10.): Projekt und Serverordner in beide Richtungen abgleichen – Vorschau mit Hochladen/Herunterladen/Löschen/Konflikten, Stand der letzten Synchronisierung wird gemerkt, Löschungen nicht vorausgewählt (lokal in den Papierkorb), Ausschlussliste pro Projekt.
+
+Kopieren zwischen Servern (22.10.): Ziehen zwischen verschiedenen Orten kopiert (Umschalt verschiebt), Hinweis am Mauszeiger, Kontextmenü „Auf Server kopieren/verschieben ›“; „Veröffentlichen“ und „Beim Speichern hochladen“ beachten jetzt die Ausschlussliste (z. B. `.env`).
