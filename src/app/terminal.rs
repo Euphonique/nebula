@@ -169,7 +169,7 @@ impl NebulaApp {
                 if let Some(site) = self.sites.get(&tab.term.site_id) {
                     let root = site.root_path.trim();
                     if !root.is_empty() {
-                        tab.term.send(t!("cd '{replace}'\r", replace = root.replace('\'', "'\\''")).into_bytes());
+                        tab.term.send(format!("cd '{}'\r", root.replace('\'', "'\\''")).into_bytes());
                     }
                 }
             }

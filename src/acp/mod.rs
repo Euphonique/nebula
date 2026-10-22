@@ -148,7 +148,7 @@ pub fn run_login_console(agent: &AgentConfig, login: &session::TerminalLogin, cw
         }
     };
     // `start` opens a new console; it stays open so messages can be read.
-    let script = t!("title Anmeldung: {name} & {line} & echo. & pause", name = agent.name, line = line);
+    let script = format!("title {} & {line} & echo. & pause", t!("Anmeldung: {name}", name = agent.name));
     // Same Node and package cache as the agent itself.
     let (_, mut env) = node::prepare(&agent.command, agent.process_env())?;
     env.extend(login.env.clone());

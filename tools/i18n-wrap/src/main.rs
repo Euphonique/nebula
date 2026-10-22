@@ -457,7 +457,37 @@ fn main() {
             let list: Vec<&String> = keys.0.iter().collect();
             println!("{}", serde_like(&list));
         }
-        _ => eprintln!("i18n-wrap wrap|keys <src> [--dry]"),
+        // merge <keys.json> <translations.txt> <code> <name> <out.json>: lines "N<TAB>text"
+        // (N = 1-based position in keys.json, `\n` for line breaks).
+        "merge" => {
+            let keys_text = std::fs::read_to_string(&args[1]).unwrap();
+            let keys: Vec<String> = parse_json_strings(&keys_text);
+            let lines = std::fs::read_to_string(&args[2]).unwrap();
+            let mut map: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+            for line in lines.lines().filter(|l| !l.trim().is_empty()) {
+                let Some((n, text)) = line.split_once('\t') else {
+                    eprintln!("Zeile ohne Tab: {line}");
+                    continue;
+                };
+                let Ok(n) = n.trim().parse::<usize>() else { continue };
+                let Some(key) = keys.get(n.wrapping_sub(1)) else {
+                    eprintln!("Nummer {n} gibt es nicht");
+                    continue;
+                };
+                map.insert(key.clone(), text.replace("\\n", "\n"));
+            }
+            let missing = keys.iter().filter(|k| !map.contains_key(*k)).count();
+            let body: Vec<String> = map.iter().map(|(k, v)| format!("    {}: {}", json_string(k), json_string(v))).collect();
+            let out = format!(
+                "{{\n  \"code\": {},\n  \"name\": {},\n  \"strings\": {{\n{}\n  }}\n}}\n",
+                json_string(&args[3]),
+                json_string(&args[4]),
+                body.join(",\n")
+            );
+            std::fs::write(&args[5], out).unwrap();
+            eprintln!("{} übersetzt, {missing} fehlen", map.len());
+        }
+        _ => eprintln!("i18n-wrap wrap|keys <src> [--dry] | merge <keys.json> <tsv> <code> <name> <out.json>"),
     }
 }
 
@@ -480,5 +510,41 @@ fn json_string(s: &str) -> String {
         }
     }
     out.push('"');
+    out
+}
+
+/// The strings of a JSON array written by `keys`.
+fn parse_json_strings(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '"' {
+            i += 1;
+            continue;
+        }
+        let mut s = String::new();
+        i += 1;
+        while i < chars.len() && chars[i] != '"' {
+            if chars[i] == '\\' {
+                i += 1;
+                match chars[i] {
+                    'n' => s.push('\n'),
+                    't' => s.push('\t'),
+                    'u' => {
+                        let hex: String = chars[i + 1..i + 5].iter().collect();
+                        s.push(char::from_u32(u32::from_str_radix(&hex, 16).unwrap()).unwrap());
+                        i += 4;
+                    }
+                    c => s.push(c),
+                }
+            } else {
+                s.push(chars[i]);
+            }
+            i += 1;
+        }
+        out.push(s);
+        i += 1;
+    }
     out
 }

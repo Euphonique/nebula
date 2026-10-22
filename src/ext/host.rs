@@ -779,7 +779,7 @@ fn install<'js>(ctx: Ctx<'js>, shared: Rc<RefCell<Shared>>, ext: usize, info: &V
     native.set(
         "compile",
         Function::new(ctx.clone(), move |ctx: Ctx<'js>, src: String, filename: String| -> rquickjs::Result<JsValue<'js>> {
-            let wrapped = t!("(function (exports, require, module, __filename, __dirname) {{{trim_start_matches}\n}})", trim_start_matches = src.trim_start_matches("#!"));
+            let wrapped = format!("(function (exports, require, module, __filename, __dirname) {{{}\n}})", src.trim_start_matches("#!"));
             let mut opts = EvalOptions::default();
             opts.strict = false;
             opts.filename = Some(filename);

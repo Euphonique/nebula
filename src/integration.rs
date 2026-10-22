@@ -88,7 +88,7 @@ pub fn install() -> Result<PathBuf> {
     key.set_value("Publisher", &"Nebula")?;
     key.set_value("DisplayIcon", &format!("{},0", exe.display()))?;
     key.set_value("InstallLocation", &dir.display().to_string())?;
-    key.set_value("UninstallString", &t!("\"{exe}\" --uninstall", exe = exe.display()))?;
+    key.set_value("UninstallString", &format!("\"{}\" --uninstall", exe.display()))?;
     key.set_value("EstimatedSize", &size_kb)?;
     key.set_value("NoModify", &1u32)?;
     key.set_value("NoRepair", &1u32)?;

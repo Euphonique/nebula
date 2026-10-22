@@ -188,7 +188,7 @@ fn command(root: &str, q: &Query) -> String {
     let skip: Vec<&str> = if q.include_ignored { Vec::new() } else { q.skip_dirs.iter().map(|s| s.as_str()).collect() };
 
     // ripgrep: same regex syntax as Nebula, honours .gitignore itself.
-    let mut rg = t!("rg --no-heading --line-number --null --color never --no-messages --max-filesize 4M{common}", common = common);
+    let mut rg = format!("rg --no-heading --line-number --null --color never --no-messages --max-filesize 4M{common}");
     rg.push_str(if q.regex { "" } else { " -F" });
     rg.push_str(if q.include_ignored { " -uu" } else { " --hidden -g '!.git/'" });
     for p in &includes {
@@ -203,7 +203,7 @@ fn command(root: &str, q: &Query) -> String {
     rg.push_str(&format!(" -e {pattern} ."));
 
     // git grep: tracked and untracked files, without the ignored ones.
-    let mut git = t!("git grep -n -z -I --untracked --no-color{common}", common = common);
+    let mut git = format!("git grep -n -z -I --untracked --no-color{common}");
     git.push_str(if q.regex { " -E" } else { " -F" });
     git.push_str(&format!(" -e {pattern} --"));
     if includes.is_empty() {
