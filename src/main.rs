@@ -14,6 +14,7 @@ mod ext;
 mod lang;
 mod preview;
 mod print;
+mod crash;
 mod remote;
 mod server_import;
 mod settings;
@@ -45,6 +46,11 @@ fn wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
 }
 
 fn main() -> eframe::Result {
+    crash::install();
+    // Checks the crash report (also in release builds, e.g. for symbol names).
+    if std::env::var_os("NEBULA_CRASH_TEST").is_some() {
+        panic!("Absturztest (NEBULA_CRASH_TEST)");
+    }
     let open_paths: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
     let icon = egui::IconData {
         rgba: icon::render_icon(64),

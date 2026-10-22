@@ -68,7 +68,10 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = true
+# Function names and lines for crash report backtraces; on Windows they
+# live in nebula.pdb, the exe stays the same size.
+debug = "line-tables-only"
+strip = false
 
 [profile.dev.package."*"]
 opt-level = 2

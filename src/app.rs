@@ -45,6 +45,7 @@ mod difftab;
 mod transfers_ui;
 mod servers;
 mod quick_open;
+mod crash_ui;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -75,6 +76,8 @@ struct SiteForm {
 enum Dialog {
     EditSite(Box<SiteForm>),
     ImportSites(Box<servers::ImportForm>),
+    /// The report of the last crash.
+    CrashReport(Box<crate::crash::Report>),
     AskName { title: String, value: String, action: NameAction, focus: bool },
     ConfirmDelete(Vec<Item>),
     /// A pasted/dropped item exists in the target folder.
@@ -260,6 +263,11 @@ impl NebulaApp {
             app.remember_folder(&root);
         }
         app.restore_backups();
+        if let Some(report) = crate::crash::take_pending()
+            && app.dialog.is_none()
+        {
+            app.dialog = Some(Dialog::CrashReport(Box::new(report)));
+        }
         for path in open_paths {
             if path.is_dir() {
                 app.open_folder(path);
@@ -2670,6 +2678,10 @@ impl NebulaApp {
                     }
                 }
                 Dialog::Permissions { items, mode, octal, recurse }
+            }
+            Dialog::CrashReport(report) => {
+                keep = self.crash_dialog(ctx, &report);
+                Dialog::CrashReport(report)
             }
             Dialog::QuickOpen(mut state) => {
                 keep = self.quick_open_dialog(ctx, &mut state);

@@ -58,7 +58,7 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 ## Qualität und Technik
 
 - **B** Performance mit sehr großen Dateien (10–50 MB, minifiziertes JS in einer Zeile) und vielen Tabs prüfen; Highlighting inkrementell statt komplett neu.
-- **B** Absturzbericht: Panics in eine Logdatei schreiben und beim nächsten Start anbieten.
+- **C** Absturzbericht auch für harte Abstürze in nativem Code (Zugriffsverletzung in WebView/wgpu), z. B. per `SetUnhandledExceptionFilter` – bisher nur Rust-Panics.
 - **C** Automatisierte UI-Tests für die wichtigsten Abläufe (Öffnen, Bearbeiten, Speichern lokal/Server).
 
 ## Nächste Schritte
@@ -68,7 +68,7 @@ Runde 1 und 2 sind abgeschlossen, dazu Zen-Modus, Schriftwahl, Farbwähler, Bild
 Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
 1. ~~„Schnell öffnen“ (Strg+P) für Serverdateien und mit `:Zeile`~~ (erledigt).
-2. Absturzbericht (Panics in Logdatei, beim nächsten Start anbieten).
+2. ~~Absturzbericht~~ (erledigt).
 3. ~~Server duplizieren, gruppieren, Import/Export~~ (erledigt).
 4. Vorschau in Gerätebreiten (kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
 5. Eigene Snippets pro Sprache.
@@ -93,3 +93,5 @@ Bugrunde vom 20.10.: Theme je für helles und dunkles Design mit Umschalter Hell
 Serververwaltung (22.10.): Server in einklappbaren Gruppen, duplizieren, Import aus FileZilla (`sitemanager.xml`, Ordner als Gruppen, Passwörter auf Wunsch) und aus Nebula-Exporten, Export als JSON ohne Passwörter; Dubletten werden erkannt.
 
 Schnell öffnen (22.10.): auch Dateien aus geladenen Serverordnern, `datei:Zeile[:Spalte]` und `:Zeile` für den aktuellen Tab; Treffer im Dateinamen werden besser gewichtet.
+
+Absturzbericht (22.10.): Panics landen mit Meldung, Stelle und Backtrace in `crashes\` (Release-Build mit Zeilentabellen in `nebula.pdb`), beim nächsten Start Dialog mit Öffnen/Kopieren/Explorer; Testauslöser `NEBULA_CRASH_TEST=1`.

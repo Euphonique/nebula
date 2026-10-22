@@ -47,6 +47,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - HTML-Tags und Klammern werden automatisch geschlossen
 - Die Sitzung wird beim nächsten Start wiederhergestellt (geöffnete Dateien und Cursor)
 - Wiederherstellung nach Absturz: Ungespeicherte Inhalte (auch unbenannte Tabs) werden alle paar Sekunden gesichert und nach einem Absturz beim nächsten Start zurückgeholt
+- Absturzbericht: Stürzt Nebula ab, landet ein Bericht (Meldung, Codestelle, Backtrace – keine Dateiinhalte oder Zugangsdaten) im Ordner `crashes` der Konfiguration; beim nächsten Start bietet ein Dialog an, ihn zu öffnen, zu kopieren oder im Explorer zu zeigen. Die letzten 10 Berichte bleiben erhalten
 - Automatisch speichern (Einstellungen → Editor): nach einer Tipppause oder beim Wechsel von Tab bzw. Fenster, Serverdateien nur auf Wunsch
 - Lokaler Verlauf: Beim Öffnen und bei jedem Speichern (auch auf dem Server) wird eine Fassung aufbewahrt; über das Tab-Menü „Lokaler Verlauf…“ mit dem aktuellen Stand vergleichen und wiederherstellen. Beim Neuladen verworfene Änderungen bleiben dort ebenfalls erhalten
 - Externe Änderungen: Wird eine geöffnete Datei von einem anderen Programm geändert (z. B. Git), lädt Nebula sie neu (rückgängig machbar); bei eigenen ungespeicherten Änderungen wird nachgefragt, mit Unterschiede-Ansicht. Gelöschte Dateien werden gemeldet, die Seitenleiste aktualisiert sich selbst.
