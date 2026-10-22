@@ -21,7 +21,7 @@ impl Kind {
     /// Short badge shown before the name.
     pub fn badge(self) -> &'static str {
         match self {
-            Kind::Function => "ƒ",
+            Kind::Function => t!("ƒ"),
             Kind::Class => "C",
             Kind::Rule => "{}",
             Kind::Heading => "H",

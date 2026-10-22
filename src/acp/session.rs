@@ -300,10 +300,10 @@ impl AgentSession {
                         let tail: Vec<&str> = self.log.iter().rev().take(6).map(String::as_str).collect::<Vec<_>>().into_iter().rev().collect();
                         let reason = if tail.is_empty() { String::new() } else { format!("\n{}", tail.join("\n")) };
                         if self.session_id.is_none() {
-                            self.phase = Phase::Failed(format!("Der Agent wurde beendet.{reason}"));
+                            self.phase = Phase::Failed(t!("Der Agent wurde beendet.{reason}", reason = reason));
                         } else {
                             self.phase = Phase::Exited;
-                            self.notice(format!("Der Agent wurde beendet.{reason}"), true);
+                            self.notice(t!("Der Agent wurde beendet.{reason}", reason = reason), true);
                         }
                     }
                     self.conn = None;
@@ -344,7 +344,7 @@ impl AgentSession {
                     Ok(r) => files.push(FileRequest::Write { rpc_id: id, path: r.path, content: r.content }),
                     Err(e) => self.reply_error(&id, -32602, &e.to_string()),
                 },
-                _ => self.reply_error(&id, -32601, &format!("Methode nicht unterstützt: {method}")),
+                _ => self.reply_error(&id, -32601, &t!("Methode nicht unterstützt: {method}", method = method)),
             },
             // Notification.
             (Some(method), None) => {
@@ -406,7 +406,7 @@ impl AgentSession {
                     self.apply_saved_options();
                     self.refresh_limits();
                 }
-                Err(e) => self.phase = Phase::Failed(format!("Ungültige Antwort auf session/new: {e}")),
+                Err(e) => self.phase = Phase::Failed(t!("Ungültige Antwort auf session/new: {e}", e = e)),
             },
             Pending::Prompt => {
                 self.phase = Phase::Ready;
@@ -414,10 +414,10 @@ impl AgentSession {
                 if let Ok(r) = serde_json::from_value::<PromptResponse>(result) {
                     let note = match r.stop_reason {
                         schema::StopReason::EndTurn => None,
-                        schema::StopReason::Cancelled => Some("Abgebrochen."),
-                        schema::StopReason::MaxTokens => Some("Die Antwort wurde wegen der Längenbegrenzung abgeschnitten."),
-                        schema::StopReason::MaxTurnRequests => Some("Der Agent hat die maximale Anzahl an Schritten erreicht."),
-                        schema::StopReason::Refusal => Some("Der Agent hat die Anfrage abgelehnt."),
+                        schema::StopReason::Cancelled => Some(t!("Abgebrochen.")),
+                        schema::StopReason::MaxTokens => Some(t!("Die Antwort wurde wegen der Längenbegrenzung abgeschnitten.")),
+                        schema::StopReason::MaxTurnRequests => Some(t!("Der Agent hat die maximale Anzahl an Schritten erreicht.")),
+                        schema::StopReason::Refusal => Some(t!("Der Agent hat die Anfrage abgelehnt.")),
                         _ => None,
                     };
                     if let Some(note) = note {
@@ -454,7 +454,7 @@ impl AgentSession {
 
     fn request_failed(&mut self, kind: Pending, err: &Value) {
         let code = err.get("code").and_then(Value::as_i64).unwrap_or(0);
-        let message = err.get("message").and_then(Value::as_str).unwrap_or("Unbekannter Fehler").to_string();
+        let message = err.get("message").and_then(Value::as_str).unwrap_or(t!("Unbekannter Fehler")).to_string();
         match kind {
             // -32000: authentication required.
             Pending::NewSession if code == -32000 => self.phase = Phase::NeedsAuth(self.auth_methods.clone()),
@@ -472,7 +472,7 @@ impl AgentSession {
             Pending::SetMode | Pending::Logout => self.notice(message, true),
             // The limits are extra information: no error shown.
             Pending::UsageSession | Pending::UsagePrompt => self.usage_text.clear(),
-            Pending::SetConfig => self.notice(format!("Einstellung nicht übernommen: {message}"), true),
+            Pending::SetConfig => self.notice(t!("Einstellung nicht übernommen: {message}", message = message), true),
         }
     }
 

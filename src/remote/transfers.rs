@@ -70,10 +70,10 @@ impl Transfer {
     /// Where it goes, e.g. "→ Server:/var/www".
     pub fn detail(&self) -> String {
         match &self.request {
-            Request::Upload { remote, .. } => format!("nach {}:{}", self.site_name, super::parent(remote)),
-            Request::Download { local, .. } => format!("von {} nach {}", self.site_name, local.parent().map(|p| p.display().to_string()).unwrap_or_default()),
+            Request::Upload { remote, .. } => t!("nach {site_name}:{parent}", site_name = self.site_name, parent = super::parent(remote)),
+            Request::Download { local, .. } => t!("von {site_name} nach {map}", site_name = self.site_name, map = local.parent().map(|p| p.display().to_string()).unwrap_or_default()),
             Request::Copy { to, .. } => format!("{}:{}", self.site_name, to),
-            Request::Write { .. } => format!("Speichern auf {}", self.site_name),
+            Request::Write { .. } => t!("Speichern auf {site_name}", site_name = self.site_name),
             _ => String::new(),
         }
     }

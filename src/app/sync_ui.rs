@@ -37,14 +37,14 @@ impl NebulaApp {
             return;
         }
         let Some((root, target)) = self.publish_target() else {
-            self.info("Verknüpfe das Projekt zuerst mit einem Serverordner.");
+            self.info(t!("Verknüpfe das Projekt zuerst mit einem Serverordner."));
             self.open_publish_setup();
             return;
         };
         let local = sync::scan_local(&root, &target.exclude_list(), LOCAL_LIMIT);
         let request = Request::Scan { root: remote::normalize(&target.remote_path), exclude: target.exclude_list() };
         let Some(tag) = self.send_remote(&target.site_id, request) else {
-            self.error("Der verknüpfte Server existiert nicht mehr.");
+            self.error(t!("Der verknüpfte Server existiert nicht mehr."));
             return;
         };
         self.sync = Some(SyncRun { root, target, stage: Stage::Scanning { tag, local } });
@@ -68,7 +68,7 @@ impl NebulaApp {
                     if matches!(self.dialog, Some(Dialog::Sync)) {
                         self.dialog = None;
                     }
-                    self.info("Alles synchron – keine Unterschiede.");
+                    self.info(t!("Alles synchron – keine Unterschiede."));
                 } else {
                     run.stage = Stage::Preview { items, truncated };
                 }
@@ -113,9 +113,9 @@ impl NebulaApp {
         self.sidebar.refresh_local(None);
         self.remote_request(&target.site_id, Request::List(remote::normalize(&target.remote_path)));
         if failed.is_empty() {
-            self.info(if done == 1 { "Synchronisiert: 1 Schritt.".into() } else { format!("Synchronisiert: {done} Schritte.") });
+            self.info(if done == 1 { t!("Synchronisiert: 1 Schritt.").into() } else { t!("Synchronisiert: {done} Schritte.", done = done) });
         } else {
-            self.error(format!("Synchronisiert mit Fehlern ({done} erledigt):\n{}", failed.join("\n")));
+            self.error(t!("Synchronisiert mit Fehlern ({done} erledigt):\n{failed}", done = done, failed = failed.join("\n")));
         }
         let local = sync::scan_local(&root, &target.exclude_list(), LOCAL_LIMIT);
         let request = Request::Scan { root: remote::normalize(&target.remote_path), exclude: target.exclude_list() };
@@ -142,7 +142,7 @@ impl NebulaApp {
             if matches!(self.dialog, Some(Dialog::Sync)) {
                 self.dialog = None;
             }
-            self.error(format!("Synchronisieren fehlgeschlagen: {message}"));
+            self.error(t!("Synchronisieren fehlgeschlagen: {message}", message = message));
         }
         ours
     }
@@ -157,7 +157,7 @@ impl NebulaApp {
         let Some(run) = &mut self.sync else { return false };
         modal(ctx, egui::Id::unique("sync")).show(ctx, |ui| {
             ui.set_width(640.0);
-            ui.heading("Synchronisieren");
+            ui.heading(t!("Synchronisieren"));
             ui.label(
                 RichText::new(format!("{}  ⇄  {site}: {}", run.root.display(), remote::normalize(&run.target.remote_path)))
                     .small()
@@ -168,26 +168,26 @@ impl NebulaApp {
                 Stage::Scanning { .. } | Stage::Rescanning { .. } => {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label("Lese Projekt und Server ein…");
+                        ui.label(t!("Lese Projekt und Server ein…"));
                     });
                     ui.add_space(8.0);
-                    if ui.button("Abbrechen").clicked() {
+                    if ui.button(t!("Abbrechen")).clicked() {
                         cancel = true;
                     }
                 }
                 Stage::Running { .. } => {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label("Überträgt… (Fortschritt in der Übertragungsliste)");
+                        ui.label(t!("Überträgt… (Fortschritt in der Übertragungsliste)"));
                     });
                     ui.add_space(8.0);
-                    if ui.button("Im Hintergrund weiter").clicked() {
+                    if ui.button(t!("Im Hintergrund weiter")).clicked() {
                         keep = false;
                     }
                 }
                 Stage::Preview { items, truncated } => {
                     if *truncated {
-                        ui.label(RichText::new("Der Serverordner enthält sehr viele Dateien – nur die ersten 50 000 wurden verglichen.").small().color(theme.modified));
+                        ui.label(RichText::new(t!("Der Serverordner enthält sehr viele Dateien – nur die ersten 50 000 wurden verglichen.")).small().color(theme.modified));
                     }
                     egui::ScrollArea::vertical().max_height(420.0).auto_shrink([false, true]).show(ui, |ui| {
                         for kind in [Kind::Conflict, Kind::Upload, Kind::Download, Kind::DeleteRemote, Kind::DeleteLocal] {
@@ -199,30 +199,30 @@ impl NebulaApp {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(format!("{} ({})", title(kind), group.len())).strong());
                                 if kind == Kind::Conflict {
-                                    if ui.small_button("Neuere Seite übernehmen").clicked() {
+                                    if ui.small_button(t!("Neuere Seite übernehmen")).clicked() {
                                         for &n in &group {
                                             items[n].resolution = items[n].suggestion;
                                         }
                                     }
                                 } else {
-                                    if ui.small_button("Alle").clicked() {
+                                    if ui.small_button(t!("Alle")).clicked() {
                                         group.iter().for_each(|&n| items[n].selected = true);
                                     }
-                                    if ui.small_button("Keine").clicked() {
+                                    if ui.small_button(t!("Keine")).clicked() {
                                         group.iter().for_each(|&n| items[n].selected = false);
                                     }
                                 }
                             });
                             if matches!(kind, Kind::DeleteLocal) {
-                                ui.label(RichText::new("Lokale Dateien landen im Papierkorb.").small().color(theme.gutter_fg));
+                                ui.label(RichText::new(t!("Lokale Dateien landen im Papierkorb.")).small().color(theme.gutter_fg));
                             }
                             for &n in &group {
                                 let item = &mut items[n];
                                 ui.horizontal(|ui| {
                                     if kind == Kind::Conflict {
-                                        ui.selectable_value(&mut item.resolution, Resolution::Skip, "–").on_hover_text("Überspringen");
-                                        ui.selectable_value(&mut item.resolution, Resolution::Upload, "↑").on_hover_text("Lokale Fassung hochladen");
-                                        ui.selectable_value(&mut item.resolution, Resolution::Download, "↓").on_hover_text("Serverfassung herunterladen");
+                                        ui.selectable_value(&mut item.resolution, Resolution::Skip, "–").on_hover_text(t!("Überspringen"));
+                                        ui.selectable_value(&mut item.resolution, Resolution::Upload, "↑").on_hover_text(t!("Lokale Fassung hochladen"));
+                                        ui.selectable_value(&mut item.resolution, Resolution::Download, "↓").on_hover_text(t!("Serverfassung herunterladen"));
                                         ui.label(RichText::new(&item.rel).monospace());
                                     } else {
                                         let color = if matches!(kind, Kind::DeleteLocal | Kind::DeleteRemote) { theme.danger } else { theme.foreground };
@@ -236,11 +236,11 @@ impl NebulaApp {
                     ui.add_space(10.0);
                     let count = items.iter().filter(|i| i.action().is_some()).count();
                     ui.horizontal(|ui| {
-                        let label = if count == 1 { "1 Änderung ausführen".to_string() } else { format!("{count} Änderungen ausführen") };
+                        let label = if count == 1 { t!("1 Änderung ausführen").to_string() } else { t!("{count} Änderungen ausführen", count = count) };
                         if ui.add_enabled(count > 0, primary_button(&label, theme.accent)).clicked() {
                             run_now = true;
                         }
-                        if ui.button("Abbrechen").clicked() {
+                        if ui.button(t!("Abbrechen")).clicked() {
                             cancel = true;
                         }
                     });
@@ -285,7 +285,7 @@ impl NebulaApp {
         }
         let site_id = run.target.site_id.clone();
         if !trash_failed.is_empty() {
-            self.error(format!("Nicht in den Papierkorb verschoben:\n{}", trash_failed.join("\n")));
+            self.error(t!("Nicht in den Papierkorb verschoben:\n{trash_failed}", trash_failed = trash_failed.join("\n")));
         }
         if ops.is_empty() {
             // Only local deletions: no server round trip needed.
@@ -304,7 +304,7 @@ impl NebulaApp {
             }
             None => {
                 self.sync = None;
-                self.error("Der verknüpfte Server existiert nicht mehr.");
+                self.error(t!("Der verknüpfte Server existiert nicht mehr."));
             }
         }
     }
@@ -322,10 +322,10 @@ fn order(kind: Kind) -> u8 {
 
 fn title(kind: Kind) -> &'static str {
     match kind {
-        Kind::Conflict => "Konflikte – bitte entscheiden",
-        Kind::Upload => "Hochladen",
-        Kind::Download => "Herunterladen",
-        Kind::DeleteRemote => "Auf dem Server löschen",
-        Kind::DeleteLocal => "Lokal löschen",
+        Kind::Conflict => t!("Konflikte – bitte entscheiden"),
+        Kind::Upload => t!("Hochladen"),
+        Kind::Download => t!("Herunterladen"),
+        Kind::DeleteRemote => t!("Auf dem Server löschen"),
+        Kind::DeleteLocal => t!("Lokal löschen"),
     }
 }

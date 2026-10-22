@@ -43,7 +43,7 @@ impl NebulaApp {
         self.sidebar.clipboard = Some((items, cut, win32::clipboard_sequence()));
         self.info(format!(
             "{n} {} {}",
-            if n == 1 { "Objekt" } else { "Objekte" },
+            if n == 1 { t!("Objekt") } else { t!("Objekte") },
             if cut { "ausgeschnitten" } else { "kopiert" }
         ));
     }
@@ -88,7 +88,7 @@ impl NebulaApp {
             .map(|i| (i, target.clone()))
             .collect();
         if items.len() < before {
-            self.error("Ein Ordner kann nicht in sich selbst kopiert oder verschoben werden.");
+            self.error(t!("Ein Ordner kann nicht in sich selbst kopiert oder verschoben werden."));
         }
         self.sidebar.selection.clear();
         self.run_transfers(TransferQueue { items, copy, policy: None });
@@ -155,7 +155,7 @@ impl NebulaApp {
         };
         let mut n = 1;
         loop {
-            let candidate = if n == 1 { format!("{stem} Kopie{ext}") } else { format!("{stem} Kopie {n}{ext}") };
+            let candidate = if n == 1 { t!("{stem} Kopie{ext}", stem = stem, ext = ext) } else { t!("{stem} Kopie {n}{ext}", stem = stem, n = n, ext = ext) };
             if !self.target_has(target, &candidate) {
                 return candidate;
             }
@@ -183,7 +183,7 @@ impl NebulaApp {
                         self.sidebar.refresh_local(Some(dir));
                         self.sidebar.refresh_local(src.parent());
                     }
-                    Err(e) => self.error(format!("{} konnte nicht übertragen werden: {e}", src.display())),
+                    Err(e) => self.error(t!("{src} konnte nicht übertragen werden: {e}", src = src.display(), e = e)),
                 }
             }
             (FileRef::Local(src), DirRef::Remote { site_id, path }) => {
@@ -253,7 +253,7 @@ impl NebulaApp {
             match &item.file {
                 FileRef::Local(p) => match remove_local(p) {
                     Ok(()) => self.sidebar.refresh_local(p.parent()),
-                    Err(e) => self.error(format!("{} konnte nicht gelöscht werden: {e}", p.display())),
+                    Err(e) => self.error(t!("{p} konnte nicht gelöscht werden: {e}", p = p.display(), e = e)),
                 },
                 FileRef::Remote { site_id, path } => {
                     self.send_remote(site_id, Request::Delete { path: path.clone(), is_dir: item.is_dir });
@@ -264,13 +264,13 @@ impl NebulaApp {
     }
 
     pub(super) fn upload_files_dialog(&mut self, site_id: String, dir: String) {
-        let Some(files) = rfd::FileDialog::new().set_title("Dateien hochladen").pick_files() else { return };
+        let Some(files) = rfd::FileDialog::new().set_title(t!("Dateien hochladen")).pick_files() else { return };
         let items = files.into_iter().map(|p| Item::local(p, false)).collect();
         self.transfer(items, DirRef::Remote { site_id, path: dir }, true);
     }
 
     pub(super) fn download_dialog(&mut self, item: Item) {
-        let Some(dir) = rfd::FileDialog::new().set_title("Herunterladen nach").pick_folder() else { return };
+        let Some(dir) = rfd::FileDialog::new().set_title(t!("Herunterladen nach")).pick_folder() else { return };
         self.transfer(vec![item], DirRef::Local(dir), true);
     }
 
@@ -413,10 +413,10 @@ impl NebulaApp {
                     count += n;
                     changed_files += 1;
                 }
-                Err(e) => self.error(format!("{} konnte nicht geschrieben werden: {e}", path.display())),
+                Err(e) => self.error(t!("{path} konnte nicht geschrieben werden: {e}", path = path.display(), e = e)),
             }
         }
-        self.info(format!("{count} Ersetzungen in {changed_files} Dateien (geöffnete Dateien noch speichern)"));
+        self.info(t!("{count} Ersetzungen in {changed_files} Dateien (geöffnete Dateien noch speichern)", count = count, changed_files = changed_files));
         {
             let root = self.sidebar.root.clone();
             self.sidebar.search.start(root.as_deref(), &self.sites, ctx);

@@ -13,9 +13,9 @@ impl NebulaApp {
         let mut open_report = false;
         modal(ctx, egui::Id::unique("crash")).show(ctx, |ui| {
             ui.set_width(520.0);
-            ui.heading("Nebula wurde unerwartet beendet");
+            ui.heading(t!("Nebula wurde unerwartet beendet"));
             ui.add_space(6.0);
-            ui.label("Beim letzten Mal ist ein Fehler aufgetreten. Ungespeicherte Änderungen wurden – soweit vorhanden – wiederhergestellt.");
+            ui.label(t!("Beim letzten Mal ist ein Fehler aufgetreten. Ungespeicherte Änderungen wurden – soweit vorhanden – wiederhergestellt."));
             ui.add_space(8.0);
             egui::Frame::new()
                 .fill(theme.hover)
@@ -30,22 +30,22 @@ impl NebulaApp {
                 });
             ui.add_space(6.0);
             ui.label(
-                RichText::new("Der vollständige Bericht enthält keine Dateiinhalte und keine Zugangsdaten.")
+                RichText::new(t!("Der vollständige Bericht enthält keine Dateiinhalte und keine Zugangsdaten."))
                     .small()
                     .color(theme.gutter_fg),
             );
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if ui.add(primary_button("Bericht öffnen", theme.accent)).clicked() {
+                if ui.add(primary_button(t!("Bericht öffnen"), theme.accent)).clicked() {
                     open_report = true;
                 }
-                if ui.button("Kopieren").on_hover_text("Bericht in die Zwischenablage").clicked() {
+                if ui.button(t!("Kopieren")).on_hover_text(t!("Bericht in die Zwischenablage")).clicked() {
                     ui.ctx().copy_text(report.text.clone());
                 }
-                if ui.button("Im Explorer zeigen").clicked() {
+                if ui.button(t!("Im Explorer zeigen")).clicked() {
                     let _ = std::process::Command::new("explorer").arg(format!("/select,{}", report.path.display())).spawn();
                 }
-                if ui.button("Schließen").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                if ui.button(t!("Schließen")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     keep = false;
                 }
             });

@@ -40,9 +40,9 @@ fn when(ms: u64) -> String {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(ms);
     let ago = now.saturating_sub(ms) / 1000;
     match ago {
-        0..60 => "gerade eben".into(),
-        60..3600 => format!("vor {} Min.", ago / 60),
-        3600..86_400 => format!("vor {} Std.", ago / 3600),
+        0..60 => t!("gerade eben").into(),
+        60..3600 => t!("vor {value} Min.", value = ago / 60),
+        3600..86_400 => t!("vor {value} Std.", value = ago / 3600),
         _ => {
             let t = crate::win32::local_time(ms);
             format!("{:02}.{:02}.{} {:02}:{:02}", t.day, t.month, t.year, t.hour, t.minute)
@@ -127,12 +127,12 @@ impl NebulaApp {
     pub(super) fn open_history(&mut self, i: usize) {
         let Some(doc) = self.docs.get(i) else { return };
         if !self.settings.editor.local_history {
-            self.info("Der lokale Verlauf ist ausgeschaltet (Einstellungen → Editor).");
+            self.info(t!("Der lokale Verlauf ist ausgeschaltet (Einstellungen → Editor)."));
             return;
         }
         let entries = history::list(&doc.source);
         if entries.is_empty() {
-            self.info(format!("Für „{}“ gibt es noch keinen lokalen Verlauf.", doc.title()));
+            self.info(t!("Für „{title}“ gibt es noch keinen lokalen Verlauf.", title = doc.title()));
             return;
         }
         // Start at the newest version that differs from the current text.
@@ -151,7 +151,7 @@ impl NebulaApp {
             let rows = view.entries[view.selected]
                 .read()
                 .map(|bytes| Arc::new(unified(&doc.encoding.decode(&bytes).replace("\r\n", "\n"), &doc.text(), 3)))
-                .map_err(|e| format!("Diese Fassung konnte nicht gelesen werden: {e}"));
+                .map_err(|e| t!("Diese Fassung konnte nicht gelesen werden: {e}", e = e));
             view.diff = Some((view.selected, version, rows));
         }
         let theme = self.theme.clone();
@@ -160,7 +160,7 @@ impl NebulaApp {
         let mut restore = false;
         super::modal(ctx, egui::Id::unique("local-history")).show(ctx, |ui| {
             ui.set_width(860.0);
-            ui.heading(format!("Lokaler Verlauf – {}", view.title));
+            ui.heading(t!("Lokaler Verlauf – {title}", title = view.title));
             ui.add_space(8.0);
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
@@ -184,7 +184,7 @@ impl NebulaApp {
                 ui.vertical(|ui| {
                     ui.set_max_height(460.0);
                     match view.diff.as_ref().map(|(_, _, d)| d) {
-                        Some(Ok(rows)) => super::compare::diff_view(ui, &theme, rows, "diese Fassung", "aktueller Stand", 430.0),
+                        Some(Ok(rows)) => super::compare::diff_view(ui, &theme, rows, t!("diese Fassung"), t!("aktueller Stand"), 430.0),
                         Some(Err(e)) => {
                             ui.colored_label(theme.danger, e);
                         }
@@ -196,16 +196,16 @@ impl NebulaApp {
             ui.horizontal(|ui| {
                 let has_diff = matches!(view.diff.as_ref().map(|(_, _, d)| d), Some(Ok(rows)) if !rows.is_empty());
                 if ui
-                    .add_enabled(has_diff, egui::Button::new("Wiederherstellen"))
-                    .on_hover_text("Ersetzt den Text im Editor durch diese Fassung (rückgängig mit Strg+Z)")
+                    .add_enabled(has_diff, egui::Button::new(t!("Wiederherstellen")))
+                    .on_hover_text(t!("Ersetzt den Text im Editor durch diese Fassung (rückgängig mit Strg+Z)"))
                     .clicked()
                 {
                     restore = true;
                 }
-                if ui.button("Schließen").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+                if ui.button(t!("Schließen")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                     keep = false;
                 }
-                let hint = if autosave { "Wird danach automatisch gespeichert." } else { "Gespeichert wird erst mit Strg+S." };
+                let hint = if autosave { t!("Wird danach automatisch gespeichert.") } else { t!("Gespeichert wird erst mit Strg+S.") };
                 ui.label(RichText::new(hint).small().color(theme.text_faint));
             });
         });
@@ -215,7 +215,7 @@ impl NebulaApp {
             let doc = &mut self.docs[i];
             let text = doc.encoding.decode(&bytes);
             doc.replace_text(&text);
-            self.info(format!("Fassung von {} wiederhergestellt", when(view.entries[view.selected].time)));
+            self.info(t!("Fassung von {when} wiederhergestellt", when = when(view.entries[view.selected].time)));
             keep = false;
         }
         if keep {

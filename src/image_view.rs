@@ -30,17 +30,17 @@ pub fn is_image_name(name: &str) -> bool {
 
 pub fn decode(bytes: &[u8]) -> Result<Image, String> {
     if bytes.len() > MAX_BYTES {
-        return Err("Das Bild ist zu groß für die Vorschau.".into());
+        return Err(t!("Das Bild ist zu groß für die Vorschau.").into());
     }
     if bytes.is_empty() {
-        return Err("Die Datei ist leer.".into());
+        return Err(t!("Die Datei ist leer.").into());
     }
-    let format = image::guess_format(bytes).map_err(|_| "Unbekanntes Bildformat".to_string())?;
+    let format = image::guess_format(bytes).map_err(|_| t!("Unbekanntes Bildformat").to_string())?;
     let img = match format {
         image::ImageFormat::Ico => decode_ico(bytes),
         _ => image::load_from_memory_with_format(bytes, format),
     }
-    .map_err(|e| format!("Bild nicht lesbar: {e}"))?;
+    .map_err(|e| t!("Bild nicht lesbar: {e}", e = e))?;
     let rgba = img.to_rgba8();
     let name = match format {
         image::ImageFormat::Png => "PNG",
@@ -49,7 +49,7 @@ pub fn decode(bytes: &[u8]) -> Result<Image, String> {
         image::ImageFormat::WebP => "WebP",
         image::ImageFormat::Bmp => "BMP",
         image::ImageFormat::Ico => "ICO",
-        _ => "Bild",
+        _ => t!("Bild"),
     };
     Ok(Image {
         width: rgba.width(),
@@ -150,7 +150,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, image: &Image, theme: &Theme, id: egu
     }
 
     let percent = (scale * 100.0).round();
-    let info = format!("{} × {} px  ·  {}  ·  {}  ·  {percent} %", image.width, image.height, image.format, human_size(image.size));
+    let info = t!("{width} × {height} px  ·  {format}  ·  {human_size}  ·  {percent} %", width = image.width, height = image.height, format = image.format, human_size = human_size(image.size), percent = percent);
     painter.text(pos2(rect.center().x, rect.bottom() - info_h / 2.0 - 4.0), Align2::CENTER_CENTER, info, FontId::proportional(12.0), theme.text_muted);
 }
 

@@ -111,98 +111,98 @@ impl Command {
     pub(super) fn all() -> Vec<(Command, String)> {
         use Command::*;
         let mut v: Vec<(Command, String)> = [
-            (NewFile, "Datei: Neu"),
-            (OpenFile, "Datei: Öffnen…"),
-            (OpenFolder, "Datei: Ordner öffnen…"),
-            (QuickOpen, "Datei: Schnell öffnen…"),
-            (CommandPalette, "Befehlspalette…"),
-            (NextTab, "Tabs: Nächster Tab"),
-            (PrevTab, "Tabs: Vorheriger Tab"),
-            (Save, "Datei: Speichern"),
-            (SaveAs, "Datei: Speichern unter…"),
-            (SaveAll, "Datei: Alle speichern"),
-            (CloseTab, "Datei: Tab schließen"),
-            (TogglePin, "Datei: Tab anheften/lösen"),
-            (CloseOthers, "Datei: Andere Tabs schließen"),
-            (CloseAll, "Datei: Alle Tabs schließen"),
-            (DuplicateDoc, "Datei: Duplizieren"),
-            (Print, "Datei: Drucken…"),
-            (LocalHistory, "Datei: Lokaler Verlauf…"),
-            (CompareHead, "Vergleichen: Mit letztem Commit"),
-            (CompareFile, "Vergleichen: Mit Datei…"),
-            (Find, "Suchen: In Datei suchen"),
-            (Replace, "Suchen: Ersetzen"),
-            (FindInProject, "Suchen: Im Projekt suchen"),
-            (FindNext, "Suchen: Nächster Treffer"),
-            (FindPrevious, "Suchen: Vorheriger Treffer"),
-            (GotoLine, "Gehe zu Zeile…"),
-            (GotoSymbol, "Gehe zu Symbol…"),
-            (NavBack, "Navigation: Zurück"),
-            (NavForward, "Navigation: Vor"),
-            (ToggleBookmark, "Lesezeichen: Setzen/entfernen"),
-            (NextBookmark, "Lesezeichen: Nächstes"),
-            (PrevBookmark, "Lesezeichen: Vorheriges"),
-            (ClearBookmarks, "Lesezeichen: Alle entfernen"),
-            (ToggleSidebar, "Ansicht: Seitenleiste ein/aus"),
-            (ToggleZen, "Ansicht: Zen-Modus (nur Editor, Vollbild)"),
-            (ToggleTheme, "Ansicht: Hell/Dunkel umschalten"),
-            (FontBigger, "Ansicht: Schrift größer"),
-            (FontSmaller, "Ansicht: Schrift kleiner"),
-            (FontReset, "Ansicht: Schriftgröße zurücksetzen"),
-            (ToggleInvisibles, "Ansicht: Unsichtbare Zeichen ein/aus"),
-            (ToggleWordWrap, "Ansicht: Automatischer Zeilenumbruch ein/aus"),
-            (ToggleSplit, "Ansicht: Geteilte Ansicht ein/aus"),
-            (ToggleTerminal, "Terminal: Ein/aus"),
-            (LocalTerminal, "Terminal: Neues lokales Terminal"),
-            (Settings, "Einstellungen: Editor"),
-            (Themes, "Einstellungen: Design und Themes"),
-            (Languages, "Einstellungen: Sprachen"),
-            (AddServer, "Server: Hinzufügen…"),
-            (ImportServers, "Server: Aus Datei importieren…"),
-            (ImportFileZilla, "Server: Aus FileZilla importieren…"),
-            (ExportServers, "Server: Exportieren…"),
-            (ImportSnippets, "Snippets: Importieren…"),
-            (ExportSnippets, "Snippets: Exportieren…"),
-            (ExportSettings, "Einstellungen: Alles exportieren…"),
-            (ImportSettings, "Einstellungen: Importieren…"),
-            (Publish, "Projekt: Veröffentlichen"),
-            (PublishSetup, "Projekt: Veröffentlichen einrichten…"),
-            (SyncProject, "Projekt: Synchronisieren…"),
-            (ExtLibrary, "Erweiterungen: Bibliothek durchsuchen…"),
-            (ExtManage, "Erweiterungen: Verwalten…"),
-            (ExtConsole, "Erweiterungen: Konsole"),
-            (TogglePreview, "Vorschau: Live-Vorschau ein/aus"),
-            (ToggleAgent, "KI-Agent: Panel ein/aus"),
-            (NewAgentSession, "KI-Agent: Neue Unterhaltung"),
-            (OpenInBrowser, "Vorschau: Im Browser öffnen"),
-            (ToggleComment, "Bearbeiten: Kommentar umschalten"),
-            (DuplicateLine, "Bearbeiten: Zeile duplizieren"),
-            (DeleteLine, "Bearbeiten: Zeile löschen"),
-            (SelectAllOccurrences, "Bearbeiten: Alle Vorkommen auswählen"),
-            (FoldToggle, "Faltung: Block ein-/ausklappen"),
-            (FoldAll, "Faltung: Alles einklappen"),
-            (UnfoldAll, "Faltung: Alles ausklappen"),
-            (LineEndingLf, "Zeilenenden: LF (Unix)"),
-            (LineEndingCrLf, "Zeilenenden: CRLF (Windows)"),
-            (TrimWhitespace, "Text: Leerzeichen am Zeilenende entfernen"),
-            (SortLines, "Text: Zeilen sortieren (A–Z)"),
-            (SortLinesDesc, "Text: Zeilen sortieren (Z–A)"),
-            (UniqueLines, "Text: Doppelte Zeilen entfernen"),
-            (ReverseLines, "Text: Zeilen umkehren"),
-            (JoinLines, "Text: Zeilen verbinden"),
-            (UpperCase, "Text: GROSSBUCHSTABEN"),
-            (LowerCase, "Text: kleinbuchstaben"),
-            (TitleCase, "Text: Wörter Großschreiben"),
-            (WrapInTag, "Text: Auswahl mit Tag umschließen"),
-            (CursorsAtLineEnds, "Auswahl: Cursor an alle Zeilenenden"),
-            (IndentToSpaces, "Text: Einrückung in Leerzeichen umwandeln"),
-            (IndentToTabs, "Text: Einrückung in Tabs umwandeln"),
+            (NewFile, t!("Datei: Neu")),
+            (OpenFile, t!("Datei: Öffnen…")),
+            (OpenFolder, t!("Datei: Ordner öffnen…")),
+            (QuickOpen, t!("Datei: Schnell öffnen…")),
+            (CommandPalette, t!("Befehlspalette…")),
+            (NextTab, t!("Tabs: Nächster Tab")),
+            (PrevTab, t!("Tabs: Vorheriger Tab")),
+            (Save, t!("Datei: Speichern")),
+            (SaveAs, t!("Datei: Speichern unter…")),
+            (SaveAll, t!("Datei: Alle speichern")),
+            (CloseTab, t!("Datei: Tab schließen")),
+            (TogglePin, t!("Datei: Tab anheften/lösen")),
+            (CloseOthers, t!("Datei: Andere Tabs schließen")),
+            (CloseAll, t!("Datei: Alle Tabs schließen")),
+            (DuplicateDoc, t!("Datei: Duplizieren")),
+            (Print, t!("Datei: Drucken…")),
+            (LocalHistory, t!("Datei: Lokaler Verlauf…")),
+            (CompareHead, t!("Vergleichen: Mit letztem Commit")),
+            (CompareFile, t!("Vergleichen: Mit Datei…")),
+            (Find, t!("Suchen: In Datei suchen")),
+            (Replace, t!("Suchen: Ersetzen")),
+            (FindInProject, t!("Suchen: Im Projekt suchen")),
+            (FindNext, t!("Suchen: Nächster Treffer")),
+            (FindPrevious, t!("Suchen: Vorheriger Treffer")),
+            (GotoLine, t!("Gehe zu Zeile…")),
+            (GotoSymbol, t!("Gehe zu Symbol…")),
+            (NavBack, t!("Navigation: Zurück")),
+            (NavForward, t!("Navigation: Vor")),
+            (ToggleBookmark, t!("Lesezeichen: Setzen/entfernen")),
+            (NextBookmark, t!("Lesezeichen: Nächstes")),
+            (PrevBookmark, t!("Lesezeichen: Vorheriges")),
+            (ClearBookmarks, t!("Lesezeichen: Alle entfernen")),
+            (ToggleSidebar, t!("Ansicht: Seitenleiste ein/aus")),
+            (ToggleZen, t!("Ansicht: Zen-Modus (nur Editor, Vollbild)")),
+            (ToggleTheme, t!("Ansicht: Hell/Dunkel umschalten")),
+            (FontBigger, t!("Ansicht: Schrift größer")),
+            (FontSmaller, t!("Ansicht: Schrift kleiner")),
+            (FontReset, t!("Ansicht: Schriftgröße zurücksetzen")),
+            (ToggleInvisibles, t!("Ansicht: Unsichtbare Zeichen ein/aus")),
+            (ToggleWordWrap, t!("Ansicht: Automatischer Zeilenumbruch ein/aus")),
+            (ToggleSplit, t!("Ansicht: Geteilte Ansicht ein/aus")),
+            (ToggleTerminal, t!("Terminal: Ein/aus")),
+            (LocalTerminal, t!("Terminal: Neues lokales Terminal")),
+            (Settings, t!("Einstellungen: Editor")),
+            (Themes, t!("Einstellungen: Design und Themes")),
+            (Languages, t!("Einstellungen: Sprachen")),
+            (AddServer, t!("Server: Hinzufügen…")),
+            (ImportServers, t!("Server: Aus Datei importieren…")),
+            (ImportFileZilla, t!("Server: Aus FileZilla importieren…")),
+            (ExportServers, t!("Server: Exportieren…")),
+            (ImportSnippets, t!("Snippets: Importieren…")),
+            (ExportSnippets, t!("Snippets: Exportieren…")),
+            (ExportSettings, t!("Einstellungen: Alles exportieren…")),
+            (ImportSettings, t!("Einstellungen: Importieren…")),
+            (Publish, t!("Projekt: Veröffentlichen")),
+            (PublishSetup, t!("Projekt: Veröffentlichen einrichten…")),
+            (SyncProject, t!("Projekt: Synchronisieren…")),
+            (ExtLibrary, t!("Erweiterungen: Bibliothek durchsuchen…")),
+            (ExtManage, t!("Erweiterungen: Verwalten…")),
+            (ExtConsole, t!("Erweiterungen: Konsole")),
+            (TogglePreview, t!("Vorschau: Live-Vorschau ein/aus")),
+            (ToggleAgent, t!("KI-Agent: Panel ein/aus")),
+            (NewAgentSession, t!("KI-Agent: Neue Unterhaltung")),
+            (OpenInBrowser, t!("Vorschau: Im Browser öffnen")),
+            (ToggleComment, t!("Bearbeiten: Kommentar umschalten")),
+            (DuplicateLine, t!("Bearbeiten: Zeile duplizieren")),
+            (DeleteLine, t!("Bearbeiten: Zeile löschen")),
+            (SelectAllOccurrences, t!("Bearbeiten: Alle Vorkommen auswählen")),
+            (FoldToggle, t!("Faltung: Block ein-/ausklappen")),
+            (FoldAll, t!("Faltung: Alles einklappen")),
+            (UnfoldAll, t!("Faltung: Alles ausklappen")),
+            (LineEndingLf, t!("Zeilenenden: LF (Unix)")),
+            (LineEndingCrLf, t!("Zeilenenden: CRLF (Windows)")),
+            (TrimWhitespace, t!("Text: Leerzeichen am Zeilenende entfernen")),
+            (SortLines, t!("Text: Zeilen sortieren (A–Z)")),
+            (SortLinesDesc, t!("Text: Zeilen sortieren (Z–A)")),
+            (UniqueLines, t!("Text: Doppelte Zeilen entfernen")),
+            (ReverseLines, t!("Text: Zeilen umkehren")),
+            (JoinLines, t!("Text: Zeilen verbinden")),
+            (UpperCase, t!("Text: GROSSBUCHSTABEN")),
+            (LowerCase, t!("Text: kleinbuchstaben")),
+            (TitleCase, t!("Text: Wörter Großschreiben")),
+            (WrapInTag, t!("Text: Auswahl mit Tag umschließen")),
+            (CursorsAtLineEnds, t!("Auswahl: Cursor an alle Zeilenenden")),
+            (IndentToSpaces, t!("Text: Einrückung in Leerzeichen umwandeln")),
+            (IndentToTabs, t!("Text: Einrückung in Tabs umwandeln")),
         ]
         .into_iter()
         .map(|(c, l)| (c, l.to_string()))
         .collect();
         for l in crate::lang::Language::ALL {
-            v.push((Command::Language(l), format!("Sprache festlegen: {}", l.name())));
+            v.push((Command::Language(l), t!("Sprache festlegen: {name}", name = l.name())));
         }
         v
     }
@@ -244,17 +244,17 @@ impl NebulaApp {
             all.push((Command::Ext(n), format!("{}: {}", c.ext_name, c.title)));
         }
         for (n, (ext, c)) in self.available_clips().iter().enumerate() {
-            all.push((Command::Clip(n), format!("Clip: {} ({ext})", c.name)));
+            all.push((Command::Clip(n), t!("Clip: {name} ({ext})", name = c.name, ext = ext)));
         }
         for (n, s) in self.sites.sites.iter().enumerate() {
-            all.push((Command::Terminal(n), format!("Terminal: SSH-Terminal für {}", s.display_name())));
+            all.push((Command::Terminal(n), t!("Terminal: SSH-Terminal für {display_name}", display_name = s.display_name())));
             for (k, c) in s.commands.iter().enumerate() {
-                all.push((Command::ServerCommand(n, k), format!("Serverbefehl: {} ({})", c.name, s.display_name())));
+                all.push((Command::ServerCommand(n, k), t!("Serverbefehl: {name} ({display_name})", name = c.name, display_name = s.display_name())));
             }
         }
         for (n, p) in self.settings.recent_folders.iter().enumerate().skip(1) {
             let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            all.push((Command::SwitchProject(n), format!("Projekt wechseln: {name}  ({})", p.display())));
+            all.push((Command::SwitchProject(n), t!("Projekt wechseln: {name}  ({p})", name = name, p = p.display())));
         }
         let mut items: Vec<(Command, String, String, i32)> = all
             .into_iter()
@@ -266,7 +266,7 @@ impl NebulaApp {
             ui.set_width(560.0);
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut state.query)
-                    .hint_text("Befehl eingeben…")
+                    .hint_text(t!("Befehl eingeben…"))
                     .desired_width(f32::INFINITY)
                     .font(egui::TextStyle::Heading),
             );
@@ -296,7 +296,7 @@ impl NebulaApp {
                 }
             }
             if items.is_empty() {
-                ui.label(RichText::new("Kein passender Befehl").color(self.theme.text_faint));
+                ui.label(RichText::new(t!("Kein passender Befehl")).color(self.theme.text_faint));
             }
             if ui.input(|i| i.key_pressed(Key::Enter))
                 && let Some((c, ..)) = items.get(state.selected)

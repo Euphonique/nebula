@@ -179,7 +179,7 @@ impl Terminal {
                 let status = child.wait();
                 master2.lock().unwrap().take();
                 let error = match status {
-                    Ok(s) if !s.success() => Some(format!("Beendet mit Code {}", s.exit_code())),
+                    Ok(s) if !s.success() => Some(t!("Beendet mit Code {exit_code}", exit_code = s.exit_code())),
                     Err(e) => Some(e.to_string()),
                     _ => None,
                 };
@@ -207,7 +207,7 @@ impl Terminal {
             Ok(())
         })();
         if let Err(e) = started {
-            term.status = TermStatus::Closed(Some(format!("{} konnte nicht gestartet werden: {e:#}", shell.name)));
+            term.status = TermStatus::Closed(Some(t!("{name} konnte nicht gestartet werden: {e}", name = shell.name, e = format!("{:#}", e))));
         }
         term
     }

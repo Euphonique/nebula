@@ -166,9 +166,9 @@ pub enum Appearance {
 impl Appearance {
     pub fn label(self) -> &'static str {
         match self {
-            Appearance::Light => "Hell",
-            Appearance::Dark => "Dunkel",
-            Appearance::System => "Automatisch (wie Windows)",
+            Appearance::Light => t!("Hell"),
+            Appearance::Dark => t!("Dunkel"),
+            Appearance::System => t!("Automatisch (wie Windows)"),
         }
     }
 
@@ -347,7 +347,7 @@ impl Protocol {
     pub fn label(self) -> &'static str {
         match self {
             Protocol::Ftp => "FTP",
-            Protocol::Ftps => "FTPS (explizites TLS)",
+            Protocol::Ftps => t!("FTPS (explizites TLS)"),
             Protocol::Sftp => "SFTP",
         }
     }
@@ -432,7 +432,7 @@ impl Site {
 
     fn keyring_entry(&self) -> Result<keyring::Entry> {
         keyring::Entry::new(KEYRING_SERVICE, &format!("{}:{}", self.id, self.user))
-            .context("Zugriff auf die Windows-Anmeldeinformationsverwaltung fehlgeschlagen")
+            .context(t!("Zugriff auf die Windows-Anmeldeinformationsverwaltung fehlgeschlagen"))
     }
 
     /// Password (or key passphrase) from the Windows Credential Manager.
@@ -448,7 +448,7 @@ impl Site {
         } else {
             entry
                 .set_password(password)
-                .context("Passwort konnte nicht gespeichert werden")
+                .context(t!("Passwort konnte nicht gespeichert werden"))
         }
     }
 
@@ -643,10 +643,10 @@ impl PreviewDevice {
 
     pub fn label(self) -> &'static str {
         match self {
-            PreviewDevice::Fit => "Panelbreite",
-            PreviewDevice::Phone => "Handy",
-            PreviewDevice::Tablet => "Tablet",
-            PreviewDevice::Desktop => "Desktop",
+            PreviewDevice::Fit => t!("Panelbreite"),
+            PreviewDevice::Phone => t!("Handy"),
+            PreviewDevice::Tablet => t!("Tablet"),
+            PreviewDevice::Desktop => t!("Desktop"),
         }
     }
 }

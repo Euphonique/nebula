@@ -167,9 +167,9 @@ impl NebulaApp {
         }
         if restored > 0 {
             self.info(if restored == 1 {
-                "Ungespeicherte Änderungen aus der letzten Sitzung wiederhergestellt.".to_string()
+                t!("Ungespeicherte Änderungen aus der letzten Sitzung wiederhergestellt.").to_string()
             } else {
-                format!("{restored} Dateien mit ungespeicherten Änderungen wiederhergestellt.")
+                t!("{restored} Dateien mit ungespeicherten Änderungen wiederhergestellt.", restored = restored)
             });
         }
     }

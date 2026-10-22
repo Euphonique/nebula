@@ -219,6 +219,15 @@ pub fn all_keys() -> Vec<&'static str> {
     file.strings.into_keys().map(leak).collect()
 }
 
+/// Marks a text in a `const`/`static` as translatable without translating
+/// it there (translate where it is shown, with [`tr`]).
+#[macro_export]
+macro_rules! tk {
+    ($key:literal) => {
+        $key
+    };
+}
+
 /// `t!("Text")` translates; `t!("{n} Dateien", n = count)` fills in values.
 #[macro_export]
 macro_rules! t {

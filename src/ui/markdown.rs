@@ -197,7 +197,7 @@ pub fn diff_rows(ui: &mut egui::Ui, theme: &Theme, old: &str, new: &str, max_row
             egui::ScrollArea::horizontal().id_salt(ui.next_auto_id()).show(ui, |ui| {
                 for (n, row) in rows.iter().enumerate() {
                     if n == max_rows {
-                        ui.label(RichText::new(format!("  … {} weitere Zeilen", rows.len() - max_rows)).size(11.5).color(theme.text_faint));
+                        ui.label(RichText::new(t!("  … {value} weitere Zeilen", value = rows.len() - max_rows)).size(11.5).color(theme.text_faint));
                         break;
                     }
                     let (prefix, text, bg) = match row {
@@ -205,7 +205,7 @@ pub fn diff_rows(ui: &mut egui::Ui, theme: &Theme, old: &str, new: &str, max_row
                         DiffLine::Removed(_, t) => ("- ", t.as_str(), removed_bg),
                         DiffLine::Context(_, _, t) => ("  ", t.as_str(), Color32::TRANSPARENT),
                         DiffLine::Skip(n) => {
-                            ui.label(RichText::new(format!("  ⋯ {n} unveränderte Zeilen")).size(11.0).color(theme.text_faint));
+                            ui.label(RichText::new(t!("  ⋯ {n} unveränderte Zeilen", n = n)).size(11.0).color(theme.text_faint));
                             continue;
                         }
                     };

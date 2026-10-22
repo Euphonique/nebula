@@ -122,7 +122,7 @@ impl NebulaApp {
                 if doc.disk_missing == 2 {
                     doc.mark_unsaved();
                     let name = doc.title();
-                    self.error(format!("„{name}“ wurde gelöscht oder umbenannt. Speichern legt die Datei neu an."));
+                    self.error(t!("„{name}“ wurde gelöscht oder umbenannt. Speichern legt die Datei neu an.", name = name));
                 }
                 continue;
             };
@@ -177,7 +177,7 @@ impl NebulaApp {
                 doc.reload_bytes(&bytes);
                 doc.disk_stamp = Some(now);
                 let name = doc.title();
-                self.info(format!("„{name}“ wurde außerhalb geändert und neu geladen."));
+                self.info(t!("„{name}“ wurde außerhalb geändert und neu geladen.", name = name));
             } else if self.dialog.is_none() {
                 // Asked once per change: keeping the own version takes over the stamp.
                 doc.disk_stamp = Some(now);
@@ -203,7 +203,7 @@ impl NebulaApp {
                 doc.disk_stamp = DiskStamp::of(&path);
                 doc.disk_missing = 0;
             }
-            Err(e) => self.error(format!("{} konnte nicht gelesen werden: {e}", path.display())),
+            Err(e) => self.error(t!("{path} konnte nicht gelesen werden: {e}", path = path.display(), e = e)),
         }
     }
 

@@ -20,7 +20,7 @@ pub enum DocSource {
 impl DocSource {
     pub fn file_name(&self) -> String {
         match self {
-            DocSource::Untitled(n) => format!("Ohne Titel {n}"),
+            DocSource::Untitled(n) => t!("Ohne Titel {n}", n = n),
             DocSource::Local(p) => p
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -72,7 +72,7 @@ impl Encoding {
         match self {
             Encoding::Utf8 => "UTF-8",
             Encoding::Utf8Bom => "UTF-8 BOM",
-            Encoding::Latin1 => "Latin-1",
+            Encoding::Latin1 => t!("Latin-1"),
             Encoding::Utf16Le => "UTF-16 LE",
             Encoding::Utf16Be => "UTF-16 BE",
         }
@@ -82,10 +82,10 @@ impl Encoding {
     pub fn description(self) -> &'static str {
         match self {
             Encoding::Utf8 => "UTF-8",
-            Encoding::Utf8Bom => "UTF-8 mit BOM",
-            Encoding::Latin1 => "Westeuropäisch (Windows-1252 / Latin-1)",
-            Encoding::Utf16Le => "UTF-16 Little Endian",
-            Encoding::Utf16Be => "UTF-16 Big Endian",
+            Encoding::Utf8Bom => t!("UTF-8 mit BOM"),
+            Encoding::Latin1 => t!("Westeuropäisch (Windows-1252 / Latin-1)"),
+            Encoding::Utf16Le => t!("UTF-16 Little Endian"),
+            Encoding::Utf16Be => t!("UTF-16 Big Endian"),
         }
     }
 

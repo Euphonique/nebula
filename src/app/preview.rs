@@ -401,17 +401,17 @@ impl NebulaApp {
             paint(ui.painter(), r.center(), if resp.hovered() || active { theme.foreground } else { theme.text_muted });
             resp
         };
-        if button(ui, "Entwicklertools", false, icons::devtools).clicked() {
+        if button(ui, t!("Entwicklertools"), false, icons::devtools).clicked() {
             self.preview.open_devtools();
         }
-        if button(ui, "Im Browser öffnen", false, icons::external).clicked() {
+        if button(ui, t!("Im Browser öffnen"), false, icons::external).clicked() {
             self.open_in_browser(&ui.ctx().clone());
         }
-        let devices = button(ui, "Gerätebreite", device != PreviewDevice::Fit, icons::devices);
+        let devices = button(ui, t!("Gerätebreite"), device != PreviewDevice::Fit, icons::devices);
         egui::Popup::menu(&devices).show(|ui| {
             for d in PreviewDevice::ALL {
                 let label = match d.width() {
-                    Some(w) => format!("{} ({w} px)", d.label()),
+                    Some(w) => t!("{label} ({w} px)", label = d.label(), w = w),
                     None => d.label().to_string(),
                 };
                 if ui.selectable_label(device == d, label).clicked() {
@@ -420,14 +420,14 @@ impl NebulaApp {
                 }
             }
         });
-        if button(ui, "Neu laden", false, icons::refresh).clicked() {
+        if button(ui, t!("Neu laden"), false, icons::refresh).clicked() {
             self.preview_state.cache.clear();
             self.preview.reload();
         }
-        if button(ui, "Vor", false, icons::forward).clicked() {
+        if button(ui, t!("Vor"), false, icons::forward).clicked() {
             self.preview.go(true);
         }
-        if button(ui, "Zurück", false, icons::back).clicked() {
+        if button(ui, t!("Zurück"), false, icons::back).clicked() {
             self.preview.go(false);
         }
 
@@ -439,7 +439,7 @@ impl NebulaApp {
             ui.painter().text(
                 body.center(),
                 Align2::CENTER_CENTER,
-                "Öffne eine HTML-, Markdown- oder Bilddatei.",
+                t!("Öffne eine HTML-, Markdown- oder Bilddatei."),
                 FontId::proportional(12.5),
                 theme.text_muted,
             );
@@ -460,7 +460,7 @@ impl NebulaApp {
         let painter = ui.painter();
         painter.rect_filled(body, 0.0, theme.hover.gamma_multiply(0.6));
         painter.rect_stroke(view.expand(1.0), 2.0, egui::Stroke::new(1.0, theme.gutter_fg.gamma_multiply(0.5)), egui::StrokeKind::Outside);
-        let mut info = format!("{} · {} px", device.label(), width);
+        let mut info = t!("{label} · {width} px", label = device.label(), width = width);
         if zoom < 0.999 {
             info.push_str(&format!(" · {} %", (zoom * 100.0).round()));
         }

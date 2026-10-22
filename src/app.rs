@@ -455,7 +455,7 @@ impl NebulaApp {
                 doc.read_only = true;
                 doc.disk_stamp = DiskStamp::of(&path);
                 self.add_doc(doc);
-                self.info(format!("{} ist sehr groß ({} MB) und wurde schreibgeschützt geöffnet.", path.display(), bytes.len() / 1024 / 1024));
+                self.info(t!("{path} ist sehr groß ({value} MB) und wurde schreibgeschützt geöffnet.", path = path.display(), value = bytes.len() / 1024 / 1024));
             }
             Ok(bytes) => {
                 self.record_history(&DocSource::Local(path.clone()), &bytes, crate::history::Kind::Opened);
@@ -467,7 +467,7 @@ impl NebulaApp {
                 self.settings.recent_files.insert(0, path);
                 self.settings.recent_files.truncate(15);
             }
-            Err(e) => self.error(format!("{} konnte nicht geöffnet werden: {e}", path.display())),
+            Err(e) => self.error(t!("{path} konnte nicht geöffnet werden: {e}", path = path.display(), e = e)),
         }
     }
 
@@ -529,7 +529,7 @@ impl NebulaApp {
                     return false;
                 }
                 if let Err(e) = hex.save_in_place(&path) {
-                    self.error(format!("Speichern fehlgeschlagen: {e}"));
+                    self.error(t!("Speichern fehlgeschlagen: {e}", e = e));
                     return false;
                 }
                 let doc = &mut self.docs[index];
@@ -591,14 +591,14 @@ impl NebulaApp {
                         true
                     }
                     Err(e) => {
-                        self.error(format!("Speichern fehlgeschlagen: {e}"));
+                        self.error(t!("Speichern fehlgeschlagen: {e}", e = e));
                         false
                     }
                 }
             }
             DocSource::Remote { site_id, path } => {
                 let Some(site) = self.sites.get(&site_id).cloned() else {
-                    self.error("Der Server dieser Datei existiert nicht mehr.");
+                    self.error(t!("Der Server dieser Datei existiert nicht mehr."));
                     return false;
                 };
                 let data = Arc::new(doc.to_bytes());
@@ -763,7 +763,7 @@ impl NebulaApp {
                             doc.id = doc_id;
                             doc.remote_stamp = stamp;
                             self.docs[i] = doc;
-                            self.info(format!("{} neu vom Server geladen", self.docs[i].title()));
+                            self.info(t!("{title} neu vom Server geladen", title = self.docs[i].title()));
                         }
                         continue;
                     }
@@ -797,14 +797,14 @@ impl NebulaApp {
                         self.docs[i].saving = false;
                         self.dialog = Some(Dialog::Conflict { doc_id: save.doc_id, close_after: save.close_after, saving: true });
                     } else {
-                        self.error(format!("{path} wurde auf dem Server geändert."));
+                        self.error(t!("{path} wurde auf dem Server geändert.", path = path));
                     }
                 }
                 Reply::Transferred { message, remote_dir, local_dir } => {
                     if self.pending_publish.contains_key(&ev.tag) {
                         self.mark_published(ev.tag);
                         if self.pending_publish.is_empty() {
-                            self.info(format!("Veröffentlicht auf {site_name}"));
+                            self.info(t!("Veröffentlicht auf {site_name}", site_name = site_name));
                         }
                     } else {
                         self.info(format!("{site_name}: {message}"));
@@ -845,7 +845,7 @@ impl NebulaApp {
                     }
                     self.preview_saved(&DocSource::Remote { site_id: ev.site_id.clone(), path: path.clone() });
                     let name = path.rsplit('/').next().unwrap_or(&path).to_string();
-                    self.info(format!("{name} auf {site_name} gespeichert ({})", human_bytes(bytes)));
+                    self.info(t!("{name} auf {site_name} gespeichert ({human_bytes})", name = name, site_name = site_name, human_bytes = human_bytes(bytes)));
                 }
                 Reply::Scanned { files, truncated } => {
                     self.sync_scanned(ev.tag, files, truncated);
@@ -929,7 +929,7 @@ impl NebulaApp {
                 let result = if path.is_dir() { std::fs::remove_dir_all(&path) } else { std::fs::remove_file(&path) };
                 match result {
                     Ok(()) => self.sidebar.refresh_local(path.parent()),
-                    Err(e) => self.error(format!("{} konnte nicht entfernt werden: {e}", path.display())),
+                    Err(e) => self.error(t!("{path} konnte nicht entfernt werden: {e}", path = path.display(), e = e)),
                 }
             }
         }
@@ -955,7 +955,7 @@ impl NebulaApp {
                     doc.set_selection(crate::editor::document::Selection::cursor(head));
                     self.docs[i] = doc;
                 }
-                Err(e) => self.error(format!("{} konnte nicht gelesen werden: {e}", path.display())),
+                Err(e) => self.error(t!("{path} konnte nicht gelesen werden: {e}", path = path.display(), e = e)),
             },
             DocSource::Remote { .. } => {
                 let id = self.docs[i].id;
@@ -998,7 +998,7 @@ impl NebulaApp {
                 } else {
                     self.settings.recent_folders.retain(|p| p != &path);
                     self.sidebar.recent_folders = self.settings.recent_folders.clone();
-                    self.error(format!("{} existiert nicht mehr.", path.display()));
+                    self.error(t!("{path} existiert nicht mehr.", path = path.display()));
                 }
             }
             SidebarAction::OpenRemote { site_id, path } => self.open_remote(&site_id, &path),
@@ -1061,7 +1061,7 @@ impl NebulaApp {
                     match active {
                         Some(DocSource::Local(p)) => self.compare_files(file.clone(), FileRef::Local(p)),
                         Some(DocSource::Remote { site_id, path }) => self.compare_files(file.clone(), FileRef::Remote { site_id, path }),
-                        _ => self.info("Öffne zuerst die Datei, mit der verglichen werden soll."),
+                        _ => self.info(t!("Öffne zuerst die Datei, mit der verglichen werden soll.")),
                     }
                 }
                 _ => {}
@@ -1090,7 +1090,7 @@ impl NebulaApp {
             SidebarAction::RemoveSite(id) => self.dialog = Some(Dialog::ConfirmRemoveSite(id)),
             SidebarAction::OpenUrl(url) => {
                 if !crate::win32::open_url(&url) {
-                    self.error(format!("{url} konnte nicht geöffnet werden."));
+                    self.error(t!("{url} konnte nicht geöffnet werden.", url = url));
                 }
             }
             SidebarAction::CopyText(text) => ctx.copy_text(text),
@@ -1127,7 +1127,7 @@ impl NebulaApp {
             _ => {}
         }
         if name.is_empty() || name.contains(['/', '\\']) {
-            self.error("Ungültiger Name.");
+            self.error(t!("Ungültiger Name."));
             return;
         }
         match action {
@@ -1155,7 +1155,7 @@ impl NebulaApp {
             NameAction::NewLocalFile { dir } => {
                 let path = dir.join(&name);
                 if path.exists() {
-                    self.error(format!("{} existiert bereits.", path.display()));
+                    self.error(t!("{path} existiert bereits.", path = path.display()));
                     return;
                 }
                 match std::fs::write(&path, b"") {
@@ -1163,12 +1163,12 @@ impl NebulaApp {
                         self.sidebar.refresh_local(Some(&dir));
                         self.open_local(&path);
                     }
-                    Err(e) => self.error(format!("Datei konnte nicht angelegt werden: {e}")),
+                    Err(e) => self.error(t!("Datei konnte nicht angelegt werden: {e}", e = e)),
                 }
             }
             NameAction::NewLocalFolder { dir } => match std::fs::create_dir(dir.join(&name)) {
                 Ok(()) => self.sidebar.refresh_local(Some(&dir)),
-                Err(e) => self.error(format!("Ordner konnte nicht angelegt werden: {e}")),
+                Err(e) => self.error(t!("Ordner konnte nicht angelegt werden: {e}", e = e)),
             },
             NameAction::RenameLocal { path } => {
                 let to = path.with_file_name(&name);
@@ -1181,7 +1181,7 @@ impl NebulaApp {
                         }
                         self.sidebar.refresh_local(path.parent());
                     }
-                    Err(e) => self.error(format!("Umbenennen fehlgeschlagen: {e}")),
+                    Err(e) => self.error(t!("Umbenennen fehlgeschlagen: {e}", e = e)),
                 }
             }
             // Handled above.
@@ -1252,7 +1252,7 @@ impl NebulaApp {
             })
             .collect();
         if paths.is_empty() {
-            self.info("Dateien vom Server lassen sich nicht direkt hinausziehen – nutze „Herunterladen nach…“.");
+            self.info(t!("Dateien vom Server lassen sich nicht direkt hinausziehen – nutze „Herunterladen nach…“."));
             return;
         }
         if crate::win32::drag_files_out(&paths) {
@@ -1298,29 +1298,29 @@ impl NebulaApp {
 
     fn menu_contents(&mut self, ui: &mut egui::Ui) {
         {
-            ui.menu_button("Datei", |ui| {
-                if ui.add(egui::Button::new("Neu").shortcut_text(self.shortcut_label(palette::Command::NewFile))).clicked() {
+            ui.menu_button(t!("Datei"), |ui| {
+                if ui.add(egui::Button::new(t!("Neu")).shortcut_text(self.shortcut_label(palette::Command::NewFile))).clicked() {
                     self.new_document();
                     ui.close();
                 }
-                if ui.add(egui::Button::new("Öffnen…").shortcut_text(self.shortcut_label(palette::Command::OpenFile))).clicked() {
+                if ui.add(egui::Button::new(t!("Öffnen…")).shortcut_text(self.shortcut_label(palette::Command::OpenFile))).clicked() {
                     ui.close();
                     self.pick_and_open_file();
                 }
                 if ui
-                    .add(egui::Button::new("Ordner öffnen…").shortcut_text(self.shortcut_label(palette::Command::OpenFolder)))
+                    .add(egui::Button::new(t!("Ordner öffnen…")).shortcut_text(self.shortcut_label(palette::Command::OpenFolder)))
                     .clicked()
                 {
                     ui.close();
                     self.pick_and_open_folder();
                 }
-                if ui.add(egui::Button::new("Schnell öffnen…").shortcut_text(self.shortcut_label(palette::Command::QuickOpen))).clicked() {
+                if ui.add(egui::Button::new(t!("Schnell öffnen…")).shortcut_text(self.shortcut_label(palette::Command::QuickOpen))).clicked() {
                     ui.close();
                     self.open_quick_open();
                 }
                 let folders = self.settings.recent_folders.clone();
                 ui.add_enabled_ui(!folders.is_empty(), |ui| {
-                    ui.menu_button("Zuletzt geöffnete Projekte", |ui| {
+                    ui.menu_button(t!("Zuletzt geöffnete Projekte"), |ui| {
                         for p in folders {
                             if ui.button(p.display().to_string()).clicked() {
                                 ui.close();
@@ -1328,7 +1328,7 @@ impl NebulaApp {
                             }
                         }
                         ui.separator();
-                        if ui.button("Liste leeren").clicked() {
+                        if ui.button(t!("Liste leeren")).clicked() {
                             ui.close();
                             self.clear_recent_folders();
                         }
@@ -1336,7 +1336,7 @@ impl NebulaApp {
                 });
                 let recent = self.settings.recent_files.clone();
                 ui.add_enabled_ui(!recent.is_empty(), |ui| {
-                    ui.menu_button("Zuletzt geöffnet", |ui| {
+                    ui.menu_button(t!("Zuletzt geöffnet"), |ui| {
                         for p in recent {
                             if ui.button(p.display().to_string()).clicked() {
                                 self.open_local(&p);
@@ -1344,7 +1344,7 @@ impl NebulaApp {
                             }
                         }
                         ui.separator();
-                        if ui.button("Liste leeren").clicked() {
+                        if ui.button(t!("Liste leeren")).clicked() {
                             ui.close();
                             self.clear_recent_files();
                         }
@@ -1353,7 +1353,7 @@ impl NebulaApp {
                 ui.separator();
                 let has_doc = self.active.is_some();
                 if ui
-                    .add_enabled(has_doc, egui::Button::new("Speichern").shortcut_text(self.shortcut_label(palette::Command::Save)))
+                    .add_enabled(has_doc, egui::Button::new(t!("Speichern")).shortcut_text(self.shortcut_label(palette::Command::Save)))
                     .clicked()
                 {
                     ui.close();
@@ -1364,7 +1364,7 @@ impl NebulaApp {
                 if ui
                     .add_enabled(
                         has_doc,
-                        egui::Button::new("Speichern unter…").shortcut_text(self.shortcut_label(palette::Command::SaveAs)),
+                        egui::Button::new(t!("Speichern unter…")).shortcut_text(self.shortcut_label(palette::Command::SaveAs)),
                     )
                     .clicked()
                 {
@@ -1373,18 +1373,18 @@ impl NebulaApp {
                         self.save_doc_as(i);
                     }
                 }
-                if ui.add(egui::Button::new("Alle speichern").shortcut_text(self.shortcut_label(palette::Command::SaveAll))).clicked() {
+                if ui.add(egui::Button::new(t!("Alle speichern")).shortcut_text(self.shortcut_label(palette::Command::SaveAll))).clicked() {
                     ui.close();
                     self.save_all();
                 }
-                if ui.add_enabled(has_doc, egui::Button::new("Duplizieren")).clicked() {
+                if ui.add_enabled(has_doc, egui::Button::new(t!("Duplizieren"))).clicked() {
                     ui.close();
                     if let Some(i) = self.active {
                         self.duplicate_doc(i);
                     }
                 }
                 let saved = self.active.and_then(|i| self.docs.get(i)).is_some_and(|d| !matches!(d.source, DocSource::Untitled(_)));
-                if ui.add_enabled(saved, egui::Button::new("Lokaler Verlauf…")).clicked() {
+                if ui.add_enabled(saved, egui::Button::new(t!("Lokaler Verlauf…"))).clicked() {
                     ui.close();
                     if let Some(i) = self.active {
                         self.open_history(i);
@@ -1392,7 +1392,7 @@ impl NebulaApp {
                 }
                 ui.separator();
                 if ui
-                    .add_enabled(has_doc && self.printing.is_none(), egui::Button::new("Drucken…").shortcut_text(self.shortcut_label(palette::Command::Print)))
+                    .add_enabled(has_doc && self.printing.is_none(), egui::Button::new(t!("Drucken…")).shortcut_text(self.shortcut_label(palette::Command::Print)))
                     .clicked()
                 {
                     ui.close();
@@ -1400,7 +1400,7 @@ impl NebulaApp {
                 }
                 ui.separator();
                 if ui
-                    .add_enabled(has_doc, egui::Button::new("Tab schließen").shortcut_text(self.shortcut_label(palette::Command::CloseTab)))
+                    .add_enabled(has_doc, egui::Button::new(t!("Tab schließen")).shortcut_text(self.shortcut_label(palette::Command::CloseTab)))
                     .clicked()
                 {
                     ui.close();
@@ -1408,49 +1408,49 @@ impl NebulaApp {
                         self.close_doc(i, false);
                     }
                 }
-                if ui.button("Beenden").clicked() {
+                if ui.button(t!("Beenden")).clicked() {
                     ui.close();
                     ui.ctx().send_viewport_cmd(ViewportCommand::Close);
                 }
             });
-            ui.menu_button("Bearbeiten", |ui| {
+            ui.menu_button(t!("Bearbeiten"), |ui| {
                 let has_doc = self.active.is_some();
                 ui.add_enabled_ui(has_doc, |ui| {
-                    if ui.add(egui::Button::new("Rückgängig").shortcut_text("Strg+Z")).clicked() {
+                    if ui.add(egui::Button::new(t!("Rückgängig")).shortcut_text("Strg+Z")).clicked() {
                         if let Some(d) = self.active_doc() {
                             d.undo();
                         }
                         ui.close();
                     }
-                    if ui.add(egui::Button::new("Wiederholen").shortcut_text("Strg+Y")).clicked() {
+                    if ui.add(egui::Button::new(t!("Wiederholen")).shortcut_text("Strg+Y")).clicked() {
                         if let Some(d) = self.active_doc() {
                             d.redo();
                         }
                         ui.close();
                     }
                     ui.separator();
-                    if ui.add(egui::Button::new("Suchen…").shortcut_text(self.shortcut_label(palette::Command::Find))).clicked() {
+                    if ui.add(egui::Button::new(t!("Suchen…")).shortcut_text(self.shortcut_label(palette::Command::Find))).clicked() {
                         self.open_find(false);
                         ui.close();
                     }
-                    if ui.add(egui::Button::new("Ersetzen…").shortcut_text(self.shortcut_label(palette::Command::Replace))).clicked() {
+                    if ui.add(egui::Button::new(t!("Ersetzen…")).shortcut_text(self.shortcut_label(palette::Command::Replace))).clicked() {
                         self.open_find(true);
                         ui.close();
                     }
-                    if ui.add(egui::Button::new("Gehe zu Zeile…").shortcut_text(self.shortcut_label(palette::Command::GotoLine))).clicked() {
+                    if ui.add(egui::Button::new(t!("Gehe zu Zeile…")).shortcut_text(self.shortcut_label(palette::Command::GotoLine))).clicked() {
                         self.dialog = Some(Dialog::GotoLine { value: String::new(), focus: true });
                         ui.close();
                     }
                     ui.separator();
                     use crate::editor::commands as cmd;
                     let entries: [(&str, &str, fn(&mut Document)); 7] = [
-                        ("Nächstes Vorkommen auswählen", "Strg+D", cmd::select_next_occurrence),
-                        ("Alle Vorkommen auswählen", "Strg+Umschalt+L", cmd::select_all_occurrences),
-                        ("Zeile auswählen", "Strg+L", cmd::select_line),
-                        ("Zeile duplizieren", "Strg+Umschalt+D", cmd::duplicate_lines),
-                        ("Zeile löschen", "Strg+Umschalt+K", cmd::delete_lines),
-                        ("Kommentar umschalten", "Strg+/", cmd::toggle_comment),
-                        ("Alles auswählen", "Strg+A", cmd::select_all),
+                        (t!("Nächstes Vorkommen auswählen"), "Strg+D", cmd::select_next_occurrence),
+                        (t!("Alle Vorkommen auswählen"), "Strg+Umschalt+L", cmd::select_all_occurrences),
+                        (t!("Zeile auswählen"), "Strg+L", cmd::select_line),
+                        (t!("Zeile duplizieren"), "Strg+Umschalt+D", cmd::duplicate_lines),
+                        (t!("Zeile löschen"), "Strg+Umschalt+K", cmd::delete_lines),
+                        (t!("Kommentar umschalten"), t!("Strg+/"), cmd::toggle_comment),
+                        (t!("Alles auswählen"), "Strg+A", cmd::select_all),
                     ];
                     for (label, shortcut, f) in entries {
                         if ui.add(egui::Button::new(label).shortcut_text(shortcut)).clicked() {
@@ -1463,19 +1463,19 @@ impl NebulaApp {
                     }
                 });
             });
-            ui.menu_button("Ansicht", |ui| {
-                ui.menu_button("Seitenleisten", |ui| {
+            ui.menu_button(t!("Ansicht"), |ui| {
+                ui.menu_button(t!("Seitenleisten"), |ui| {
                     ui.set_min_width(230.0);
                     let key = self.shortcut_label(palette::Command::ToggleSidebar);
-                    if menu_check(ui, self.show_sidebar, "Linkes Panel", &key) {
+                    if menu_check(ui, self.show_sidebar, t!("Linkes Panel"), &key) {
                         self.show_sidebar = !self.show_sidebar;
                     }
                     let key = self.shortcut_label(palette::Command::TogglePreview);
-                    if menu_check(ui, self.settings.right_panel, "Rechtes Panel", &key) {
+                    if menu_check(ui, self.settings.right_panel, t!("Rechtes Panel"), &key) {
                         self.toggle_right_panel();
                     }
                     let key = self.shortcut_label(palette::Command::ToggleTerminal);
-                    if menu_check(ui, self.terminals.visible, "Unteres Panel", &key) {
+                    if menu_check(ui, self.terminals.visible, t!("Unteres Panel"), &key) {
                         self.toggle_terminal(&ui.ctx().clone());
                     }
                 });
@@ -1485,26 +1485,26 @@ impl NebulaApp {
                 }
                 ui.separator();
                 let key = self.shortcut_label(palette::Command::ToggleSplit);
-                if menu_check(ui, self.split.is_some(), "Geteilte Ansicht", &key) {
+                if menu_check(ui, self.split.is_some(), t!("Geteilte Ansicht"), &key) {
                     self.toggle_split();
                 }
                 let wrap_key = self.shortcut_label(palette::Command::ToggleWordWrap);
                 let e = &mut self.settings.editor;
-                if menu_check(ui, e.word_wrap, "Automatischer Zeilenumbruch", &wrap_key) {
+                if menu_check(ui, e.word_wrap, t!("Automatischer Zeilenumbruch"), &wrap_key) {
                     e.word_wrap = !e.word_wrap;
                 }
                 for (on, label) in [
-                    (&mut e.minimap, "Minimap"),
-                    (&mut e.show_invisibles, "Unsichtbare Zeichen"),
-                    (&mut e.show_indent_guides, "Einrückungshilfslinien"),
-                    (&mut e.highlight_current_line, "Aktuelle Zeile hervorheben"),
+                    (&mut e.minimap, t!("Minimap")),
+                    (&mut e.show_invisibles, t!("Unsichtbare Zeichen")),
+                    (&mut e.show_indent_guides, t!("Einrückungshilfslinien")),
+                    (&mut e.highlight_current_line, t!("Aktuelle Zeile hervorheben")),
                 ] {
                     if menu_check(ui, *on, label, "") {
                         *on = !*on;
                     }
                 }
                 ui.separator();
-                ui.menu_button("Erscheinungsbild", |ui| {
+                ui.menu_button(t!("Erscheinungsbild"), |ui| {
                     use crate::settings::Appearance;
                     for a in [Appearance::Light, Appearance::Dark, Appearance::System] {
                         if menu_check(ui, self.settings.appearance == a, a.label(), "") {
@@ -1513,28 +1513,28 @@ impl NebulaApp {
                     }
                 });
                 ui.separator();
-                if ui.add(egui::Button::new("Schrift größer").shortcut_text(self.shortcut_label(palette::Command::FontBigger))).clicked() {
+                if ui.add(egui::Button::new(t!("Schrift größer")).shortcut_text(self.shortcut_label(palette::Command::FontBigger))).clicked() {
                     self.settings.editor.font_size = (self.settings.editor.font_size + 1.0).min(40.0);
                 }
-                if ui.add(egui::Button::new("Schrift kleiner").shortcut_text(self.shortcut_label(palette::Command::FontSmaller))).clicked() {
+                if ui.add(egui::Button::new(t!("Schrift kleiner")).shortcut_text(self.shortcut_label(palette::Command::FontSmaller))).clicked() {
                     self.settings.editor.font_size = (self.settings.editor.font_size - 1.0).max(8.0);
                 }
             });
-            ui.menu_button("Server", |ui| {
-                if ui.button("Server hinzufügen…").clicked() {
+            ui.menu_button(t!("Server"), |ui| {
+                if ui.button(t!("Server hinzufügen…")).clicked() {
                     self.open_site_form(None);
                     ui.close();
                 }
                 let filezilla = crate::server_import::filezilla_path();
-                if filezilla.is_some() && ui.button("Aus FileZilla importieren…").clicked() {
+                if filezilla.is_some() && ui.button(t!("Aus FileZilla importieren…")).clicked() {
                     self.import_sites(filezilla);
                     ui.close();
                 }
-                if ui.button("Aus Datei importieren…").clicked() {
+                if ui.button(t!("Aus Datei importieren…")).clicked() {
                     self.import_sites(None);
                     ui.close();
                 }
-                if ui.add_enabled(!self.sites.sites.is_empty(), egui::Button::new("Exportieren…")).clicked() {
+                if ui.add_enabled(!self.sites.sites.is_empty(), egui::Button::new(t!("Exportieren…"))).clicked() {
                     self.export_sites();
                     ui.close();
                 }
@@ -1545,12 +1545,12 @@ impl NebulaApp {
                     let connected = self.remote.is_connected(&id);
                     ui.menu_button(name, |ui| {
                         if connected {
-                            if ui.button("Trennen").clicked() {
+                            if ui.button(t!("Trennen")).clicked() {
                                 self.remote.disconnect(&id);
                                 self.sidebar.remote.remove(&id);
                                 ui.close();
                             }
-                        } else if ui.button("Verbinden").clicked() {
+                        } else if ui.button(t!("Verbinden")).clicked() {
                             self.show_sidebar = true;
                             self.sidebar.tab = crate::ui::sidebar::SidebarTab::Servers;
                             self.sidebar.expanded_sites.insert(id.clone());
@@ -1559,36 +1559,36 @@ impl NebulaApp {
                             }
                             ui.close();
                         }
-                        if ui.button("SSH-Terminal öffnen").clicked() {
+                        if ui.button(t!("SSH-Terminal öffnen")).clicked() {
                             self.open_terminal(&ui.ctx().clone(), &id);
                             ui.close();
                         }
-                        if ui.button("Bearbeiten…").clicked() {
+                        if ui.button(t!("Bearbeiten…")).clicked() {
                             self.open_site_form(Some(id.clone()));
                             ui.close();
                         }
                     });
                 }
             });
-            ui.menu_button("Einstellungen", |ui| {
+            ui.menu_button(t!("Einstellungen"), |ui| {
                 let settings_key = self.shortcut_label(palette::Command::Settings);
-                for (label, page) in [("Editor…", Page::Editor), ("Design und Themes…", Page::Design), ("Sprachen…", Page::Languages), ("Tastenkürzel…", Page::Keys), ("KI-Agenten…", Page::Agents), ("Erweiterungen…", Page::Extensions), ("Windows-Integration…", Page::System)] {
+                for (label, page) in [(t!("Editor…"), Page::Editor), (t!("Design und Themes…"), Page::Design), (t!("Sprachen…"), Page::Languages), (t!("Tastenkürzel…"), Page::Keys), (t!("KI-Agenten…"), Page::Agents), (t!("Erweiterungen…"), Page::Extensions), (t!("Windows-Integration…"), Page::System)] {
                     if ui.add(egui::Button::new(label).shortcut_text(if page == Page::Editor { settings_key.as_str() } else { "" })).clicked() {
                         self.open_settings(page);
                         ui.close();
                     }
                 }
                 ui.separator();
-                if ui.button("Einstellungen exportieren…").on_hover_text("Für einen anderen Rechner oder als Sicherung").clicked() {
+                if ui.button(t!("Einstellungen exportieren…")).on_hover_text(t!("Für einen anderen Rechner oder als Sicherung")).clicked() {
                     self.open_settings_export();
                     ui.close();
                 }
-                if ui.button("Einstellungen importieren…").clicked() {
+                if ui.button(t!("Einstellungen importieren…")).clicked() {
                     ui.close();
                     self.open_settings_import();
                 }
             });
-            ui.menu_button("Erweiterungen", |ui| {
+            ui.menu_button(t!("Erweiterungen"), |ui| {
                 let cmds = self.available_ext_commands();
                 let mut last_ext = String::new();
                 for c in cmds.iter().filter(|c| c.section != "command-palette") {
@@ -1610,17 +1610,17 @@ impl NebulaApp {
                 if !last_ext.is_empty() {
                     ui.separator();
                 }
-                if ui.button("Erweiterungsbibliothek…").clicked() {
+                if ui.button(t!("Erweiterungsbibliothek…")).clicked() {
                     self.settings_ui.ext.tab = extensions_page::Tab::Library;
                     self.open_settings(Page::Extensions);
                     ui.close();
                 }
-                if ui.button("Erweiterungen verwalten…").clicked() {
+                if ui.button(t!("Erweiterungen verwalten…")).clicked() {
                     self.settings_ui.ext.tab = extensions_page::Tab::Installed;
                     self.open_settings(Page::Extensions);
                     ui.close();
                 }
-                if ui.button("Erweiterungskonsole").clicked() {
+                if ui.button(t!("Erweiterungskonsole")).clicked() {
                     self.settings_ui.ext.tab = extensions_page::Tab::Console;
                     self.open_settings(Page::Extensions);
                     ui.close();
@@ -1663,7 +1663,7 @@ impl NebulaApp {
         row.spacing_mut().item_spacing.x = 4.0;
         let btn = vec2(30.0, 30.0);
         let menu = icons::icon_button(&mut row, &theme, btn, false, |p, c, col| icons::menu(p, c, col))
-            .on_hover_text("Menü");
+            .on_hover_text(t!("Menü"));
         egui::Popup::menu(&menu).show(|ui| {
             ui.set_min_width(190.0);
             self.menu_contents(ui);
@@ -1776,7 +1776,7 @@ impl NebulaApp {
                                 }
                                 icons::close(&painter, close_rect.center(), 7.0, color);
                             }
-                            let close_resp = if doc.pinned { close_resp.on_hover_text("Angeheftet – Klick löst den Tab") } else { close_resp };
+                            let close_resp = if doc.pinned { close_resp.on_hover_text(t!("Angeheftet – Klick löst den Tab")) } else { close_resp };
                             if doc.pinned && close_resp.clicked() {
                                 tab_cmd = Some((i, tabs::TabCmd::Pin));
                             } else if !doc.pinned && (close_resp.clicked() || resp.middle_clicked()) {
@@ -1812,7 +1812,7 @@ impl NebulaApp {
             self.active = active_id.and_then(|id| self.doc_index(id));
         }
         let plus = icons::icon_button(&mut row, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::plus(p, c, col))
-            .on_hover_text("Neue Datei (Strg+N) – Rechtsklick oder Umschalt+Klick: Sprache wählen");
+            .on_hover_text(t!("Neue Datei (Strg+N) – Rechtsklick oder Umschalt+Klick: Sprache wählen"));
         // Right click or Shift+click: pick the language (and extension) first.
         let shift = row.input(|i| i.modifiers.shift);
         let pick = plus.secondary_clicked() || (plus.clicked() && shift);
@@ -1828,7 +1828,7 @@ impl NebulaApp {
             None
         };
         egui::Popup::menu(&plus).open_memory(set).at_pointer_fixed().show(|ui| {
-            ui.label(RichText::new("Neue Datei als …").small().color(theme.text_faint));
+            ui.label(RichText::new(t!("Neue Datei als …")).small().color(theme.text_faint));
             egui::ScrollArea::vertical().max_height(460.0).show(ui, |ui| {
                 ui.set_min_width(190.0);
                 for l in Language::ALL {
@@ -1851,23 +1851,23 @@ impl NebulaApp {
                 crate::settings::Appearance::Dark => icons::moon,
                 crate::settings::Appearance::System => icons::auto_theme,
             };
-            let tip = format!("Design: {} – Klick: {}", appearance.label(), appearance.next().label());
+            let tip = t!("Design: {label} – Klick: {label2}", label = appearance.label(), label2 = appearance.next().label());
             if icons::icon_button(ui, &theme, btn, false, paint).on_hover_text(tip).clicked() {
                 self.set_appearance(&ui.ctx().clone(), appearance.next());
             }
             ui.add_space(6.0);
-            let tip = format!("Rechtes Panel: Vorschau und Gliederung ({})", self.shortcut_label(palette::Command::TogglePreview));
+            let tip = t!("Rechtes Panel: Vorschau und Gliederung ({shortcut_label})", shortcut_label = self.shortcut_label(palette::Command::TogglePreview));
             if icons::icon_button(ui, &theme, btn, self.settings.right_panel, |p, c, col| icons::panel_right(p, c, col))
                 .on_hover_text(tip)
                 .clicked()
             {
                 self.toggle_right_panel();
             }
-            let tip = format!("Terminal ({})", self.shortcut_label(palette::Command::ToggleTerminal));
+            let tip = t!("Terminal ({shortcut_label})", shortcut_label = self.shortcut_label(palette::Command::ToggleTerminal));
             if icons::icon_button(ui, &theme, btn, self.terminals.visible, icons::panel_bottom).on_hover_text(tip).clicked() {
                 self.toggle_terminal(&ui.ctx().clone());
             }
-            let tip = format!("Seitenleiste ein/aus ({})", self.shortcut_label(palette::Command::ToggleSidebar));
+            let tip = t!("Seitenleiste ein/aus ({shortcut_label})", shortcut_label = self.shortcut_label(palette::Command::ToggleSidebar));
             if icons::icon_button(ui, &theme, btn, self.show_sidebar, |p, c, col| icons::sidebar_toggle(p, c, col))
                 .on_hover_text(tip)
                 .clicked()
@@ -1906,7 +1906,7 @@ impl NebulaApp {
                 ui.horizontal(|ui| {
                     let resp = ui.add(
                         egui::TextEdit::singleline(&mut f.query)
-                            .hint_text("Suchen")
+                            .hint_text(t!("Suchen"))
                             .desired_width(260.0),
                     );
                     if std::mem::take(&mut f.focus_query) {
@@ -1916,24 +1916,24 @@ impl NebulaApp {
                         action = Some(if ui.input(|i| i.modifiers.shift) { "prev" } else { "next" });
                         resp.request_focus();
                     }
-                    ui.toggle_value(&mut f.case_sensitive, "Aa").on_hover_text("Groß-/Kleinschreibung");
-                    ui.toggle_value(&mut f.whole_word, "W").on_hover_text("Ganzes Wort");
-                    ui.toggle_value(&mut f.use_regex, ".*").on_hover_text("Regulärer Ausdruck");
+                    ui.toggle_value(&mut f.case_sensitive, t!("Aa")).on_hover_text(t!("Groß-/Kleinschreibung"));
+                    ui.toggle_value(&mut f.whole_word, "W").on_hover_text(t!("Ganzes Wort"));
+                    ui.toggle_value(&mut f.use_regex, ".*").on_hover_text(t!("Regulärer Ausdruck"));
                     let mut in_sel = f.scope.as_ref().is_some_and(|(id, ..)| *id == doc.id);
-                    if ui.toggle_value(&mut in_sel, "⊏⊐").on_hover_text("Nur in der Auswahl suchen").changed() {
+                    if ui.toggle_value(&mut in_sel, "⊏⊐").on_hover_text(t!("Nur in der Auswahl suchen")).changed() {
                         f.set_scope(doc, in_sel);
                     }
                     let label = match (&f.error, f.matches.len(), f.current) {
                         (Some(e), _, _) => RichText::new(e).color(Color32::from_rgb(230, 100, 100)),
-                        (None, 0, _) if !f.query.is_empty() => RichText::new("Keine Treffer"),
+                        (None, 0, _) if !f.query.is_empty() => RichText::new(t!("Keine Treffer")),
                         (None, 0, _) => RichText::new(""),
-                        (None, n, Some(c)) => RichText::new(format!("{} von {n}", c + 1)),
-                        (None, n, None) => RichText::new(format!("{n} Treffer")),
+                        (None, n, Some(c)) => RichText::new(t!("{value} von {n}", value = c + 1, n = n)),
+                        (None, n, None) => RichText::new(t!("{n} Treffer", n = n)),
                     };
-                    if ui.button("▲").on_hover_text("Vorheriger (Umschalt+F3)").clicked() {
+                    if ui.button("▲").on_hover_text(t!("Vorheriger (Umschalt+F3)")).clicked() {
                         action = Some("prev");
                     }
-                    if ui.button("▼").on_hover_text("Nächster (F3)").clicked() {
+                    if ui.button("▼").on_hover_text(t!("Nächster (F3)")).clicked() {
                         action = Some("next");
                     }
                     ui.label(label.small());
@@ -1941,20 +1941,20 @@ impl NebulaApp {
                         if ui.button("×").clicked() {
                             action = Some("close");
                         }
-                        ui.toggle_value(&mut f.show_replace, "Ersetzen");
+                        ui.toggle_value(&mut f.show_replace, t!("Ersetzen"));
                     });
                 });
                 if f.show_replace {
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::TextEdit::singleline(&mut f.replacement)
-                                .hint_text("Ersetzen durch")
+                                .hint_text(t!("Ersetzen durch"))
                                 .desired_width(260.0),
                         );
-                        if ui.button("Ersetzen").clicked() {
+                        if ui.button(t!("Ersetzen")).clicked() {
                             action = Some("replace");
                         }
-                        if ui.button("Alle ersetzen").clicked() {
+                        if ui.button(t!("Alle ersetzen")).clicked() {
                             action = Some("replace_all");
                         }
                     });
@@ -1966,7 +1966,7 @@ impl NebulaApp {
             Some("replace") => self.find.replace_current(doc),
             Some("replace_all") => {
                 let n = self.find.replace_all(doc);
-                self.info(format!("{n} Ersetzungen"));
+                self.info(t!("{n} Ersetzungen", n = n));
             }
             Some("close") => {
                 self.find.visible = false;
@@ -2003,13 +2003,13 @@ impl NebulaApp {
                 // The transfer list says enough.
             } else if pending > 0 {
                 ui.add(egui::Spinner::new().size(11.0).color(theme.accent));
-                ui.label(small("Server …".to_string()));
+                ui.label(small(t!("Server …").to_string()));
             } else if let Some(DocSource::Remote { site_id, .. }) = self.active.and_then(|i| self.docs.get(i)).map(|d| &d.source) {
                 let connected = self.remote.is_connected(site_id);
                 let (rect, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
                 ui.painter().circle_filled(rect.center(), 3.5, if connected { theme.success } else { theme.text_faint });
                 let site = self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_default();
-                ui.label(small(if connected { format!("Verbunden mit {site}") } else { site }));
+                ui.label(small(if connected { t!("Verbunden mit {site}", site = site) } else { site }));
             }
             let Some(i) = self.active else { return };
             // Cursor, encoding and language mean nothing for a picture.
@@ -2029,7 +2029,7 @@ impl NebulaApp {
                 }
                 icons::language(ui.painter(), pos2(rect.left() + 6.0, rect.center().y), doc.language);
                 ui.painter().galley(pos2(rect.right() - galley.size().x, rect.top()), galley, theme.text_muted);
-                let lang = lang.on_hover_text("Sprache");
+                let lang = lang.on_hover_text(t!("Sprache"));
                 egui::Popup::menu(&lang).show(|ui| {
                     egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
                         ui.set_min_width(170.0);
@@ -2042,11 +2042,11 @@ impl NebulaApp {
                         }
                     });
                 });
-                let enc = clickable(ui, doc.encoding.label().to_string()).on_hover_text("Kodierung");
+                let enc = clickable(ui, doc.encoding.label().to_string()).on_hover_text(t!("Kodierung"));
                 egui::Popup::menu(&enc).show(|ui| {
                     use crate::editor::document::Encoding;
                     ui.set_min_width(280.0);
-                    ui.label(RichText::new("Speichern mit Kodierung").small().color(theme.text_faint));
+                    ui.label(RichText::new(t!("Speichern mit Kodierung")).small().color(theme.text_faint));
                     let text = doc.text();
                     for e in Encoding::ALL {
                         let fits = e.can_encode(&text);
@@ -2057,13 +2057,13 @@ impl NebulaApp {
                             ui.close();
                         }
                         if !fits {
-                            resp.on_disabled_hover_text("Der Text enthält Zeichen, die diese Kodierung nicht darstellen kann.");
+                            resp.on_disabled_hover_text(t!("Der Text enthält Zeichen, die diese Kodierung nicht darstellen kann."));
                         }
                     }
                     let reloadable = !matches!(doc.source, DocSource::Untitled(_));
                     if reloadable {
                         ui.separator();
-                        ui.label(RichText::new("Neu laden mit Kodierung").small().color(theme.text_faint));
+                        ui.label(RichText::new(t!("Neu laden mit Kodierung")).small().color(theme.text_faint));
                         let dirty = doc.is_dirty();
                         for e in Encoding::ALL {
                             let resp = ui.add_enabled(!dirty, egui::Button::new(e.description()));
@@ -2072,13 +2072,13 @@ impl NebulaApp {
                                 ui.close();
                             }
                             if dirty {
-                                resp.on_disabled_hover_text("Erst speichern oder Änderungen verwerfen");
+                                resp.on_disabled_hover_text(t!("Erst speichern oder Änderungen verwerfen"));
                             }
                         }
                     }
                 });
                 if clickable(ui, doc.line_ending.label().to_string())
-                    .on_hover_text("Zeilenenden umschalten")
+                    .on_hover_text(t!("Zeilenenden umschalten"))
                     .clicked()
                 {
                     use crate::editor::document::LineEnding;
@@ -2090,19 +2090,19 @@ impl NebulaApp {
                 }
                 ui.label(small(format!(
                     "{} {}",
-                    if e.use_spaces { "Leerzeichen:" } else { "Tabs:" },
+                    if e.use_spaces { t!("Leerzeichen:") } else { t!("Tabs:") },
                     e.tab_size
                 )));
                 let sel = doc.primary_selection();
                 let line = doc.char_to_line(sel.head);
                 let col = doc.column_of(sel.head, tab_size);
-                let mut info = format!("Zeile {}, Spalte {}", line + 1, col + 1);
+                let mut info = t!("Zeile {value}, Spalte {value2}", value = line + 1, value2 = col + 1);
                 if doc.selections.len() > 1 {
-                    info = format!("{} Cursor  ·  {info}", doc.selections.len());
+                    info = t!("{selections_count} Cursor  ·  {info}", selections_count = doc.selections.len(), info = info);
                 } else if !sel.is_empty() {
-                    info = format!("{} ausgewählt  ·  {info}", sel.range().len());
+                    info = t!("{range_count} ausgewählt  ·  {info}", range_count = sel.range().len(), info = info);
                 }
-                if clickable(ui, info).on_hover_text("Gehe zu Zeile (Strg+G)").clicked() {
+                if clickable(ui, info).on_hover_text(t!("Gehe zu Zeile (Strg+G)")).clicked() {
                     goto_line = true;
                 }
 
@@ -2111,7 +2111,7 @@ impl NebulaApp {
                     let errors = doc.view.diagnostics.iter().filter(|d| d.severity == 1).count();
                     let warnings = doc.view.diagnostics.len() - errors;
                     let text = RichText::new(format!("✕ {errors}   ⚠ {warnings}")).size(11.5).color(if errors > 0 { theme.danger } else { theme.modified });
-                    let r = ui.add(egui::Label::new(text).sense(Sense::click())).on_hover_text("Probleme");
+                    let r = ui.add(egui::Label::new(text).sense(Sense::click())).on_hover_text(t!("Probleme"));
                     egui::Popup::menu(&r).show(|ui| {
                         ui.set_max_width(520.0);
                         egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
@@ -2188,7 +2188,7 @@ impl NebulaApp {
         painter.text(
             left.center() + vec2(0.0, 80.0),
             Align2::CENTER_CENTER,
-            format!("Version {}", env!("CARGO_PKG_VERSION")),
+            t!("Version {value}", value = env!("CARGO_PKG_VERSION")),
             FontId::proportional(12.5),
             theme.text_faint,
         );
@@ -2202,13 +2202,13 @@ impl NebulaApp {
         let mut col = ui.new_child(egui::UiBuilder::new().max_rect(right));
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(&mut col, |col| {
             col.spacing_mut().item_spacing.y = 2.0;
-            welcome_heading(col, &theme, "Start", false);
+            welcome_heading(col, &theme, t!("Start"), false);
             type IconFn = fn(&egui::Painter, egui::Pos2, Color32);
             let actions: [(IconFn, &str, &str); 4] = [
-                (icons::new_file, "Neue Datei", "Strg+N"),
-                (|p, c, col| icons::folder(p, c, col, true), "Ordner öffnen…", "Strg+Umschalt+O"),
-                (|p, c, col| icons::search(p, c, col), "Datei öffnen…", "Strg+O"),
-                (icons::server, "Server hinzufügen…", ""),
+                (icons::new_file, t!("Neue Datei"), "Strg+N"),
+                (|p, c, col| icons::folder(p, c, col, true), t!("Ordner öffnen…"), "Strg+Umschalt+O"),
+                (|p, c, col| icons::search(p, c, col), t!("Datei öffnen…"), "Strg+O"),
+                (icons::server, t!("Server hinzufügen…"), ""),
             ];
             for (n, (icon, label, hint)) in actions.into_iter().enumerate() {
                 if welcome_row(col, &theme, |p, c| icon(p, c, theme.accent), label, hint).clicked() {
@@ -2222,9 +2222,9 @@ impl NebulaApp {
             }
 
             if !servers.is_empty() {
-                welcome_heading(col, &theme, "Server", false);
+                welcome_heading(col, &theme, t!("Server"), false);
                 for (id, name) in servers {
-                    if welcome_row(col, &theme, |p, c| icons::server(p, c, theme.text_muted), &name, "Verbinden").clicked() {
+                    if welcome_row(col, &theme, |p, c| icons::server(p, c, theme.text_muted), &name, t!("Verbinden")).clicked() {
                         self.show_sidebar = true;
                         self.sidebar.tab = crate::ui::sidebar::SidebarTab::Servers;
                         self.sidebar.expanded_sites.insert(id.clone());
@@ -2235,7 +2235,7 @@ impl NebulaApp {
                 }
             }
             if !folders.is_empty() {
-                if welcome_heading(col, &theme, "Projekte", true) {
+                if welcome_heading(col, &theme, t!("Projekte"), true) {
                     self.clear_recent_folders();
                 }
                 for p in folders {
@@ -2251,7 +2251,7 @@ impl NebulaApp {
                 }
             }
             if !recent.is_empty() {
-                if welcome_heading(col, &theme, "Zuletzt geöffnet", true) {
+                if welcome_heading(col, &theme, t!("Zuletzt geöffnet"), true) {
                     self.clear_recent_files();
                 }
                 for p in recent {
@@ -2290,21 +2290,21 @@ impl NebulaApp {
             modal(ctx, egui::Id::unique("hostkey")).show(ctx, |ui| {
                 ui.set_width(460.0);
                 if prompt.changed {
-                    ui.heading(RichText::new("⚠ Serverschlüssel hat sich geändert!").color(Color32::from_rgb(240, 90, 90)));
-                    ui.label("Der Server meldet einen anderen Schlüssel als beim letzten Mal. Das kann auf einen Angriff hindeuten – oder der Server wurde neu installiert.");
+                    ui.heading(RichText::new(t!("⚠ Serverschlüssel hat sich geändert!")).color(Color32::from_rgb(240, 90, 90)));
+                    ui.label(t!("Der Server meldet einen anderen Schlüssel als beim letzten Mal. Das kann auf einen Angriff hindeuten – oder der Server wurde neu installiert."));
                 } else {
-                    ui.heading("Unbekannter Server");
-                    ui.label(format!("Die Echtheit von {}:{} ({site_name}) kann nicht bestätigt werden.", prompt.host, prompt.port));
+                    ui.heading(t!("Unbekannter Server"));
+                    ui.label(t!("Die Echtheit von {host}:{port} ({site_name}) kann nicht bestätigt werden.", host = prompt.host, port = prompt.port, site_name = site_name));
                 }
                 ui.add_space(8.0);
                 ui.label(format!("{}-Fingerabdruck:", prompt.algorithm));
                 ui.code(&prompt.fingerprint);
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if ui.add(primary_button("Vertrauen und verbinden", accent)).clicked() {
+                    if ui.add(primary_button(t!("Vertrauen und verbinden"), accent)).clicked() {
                         answer = Some(true);
                     }
-                    if ui.button("Abbrechen").clicked() {
+                    if ui.button(t!("Abbrechen")).clicked() {
                         answer = Some(false);
                     }
                 });
@@ -2328,18 +2328,18 @@ impl NebulaApp {
                 let groups = self.sites.groups();
                 modal(ctx, egui::Id::unique("site")).show(ctx, |ui| {
                     ui.set_width(440.0);
-                    ui.heading(if form.is_new { "Server hinzufügen" } else { "Server bearbeiten" });
+                    ui.heading(if form.is_new { t!("Server hinzufügen") } else { t!("Server bearbeiten") });
                     ui.add_space(8.0);
                     egui::Grid::new("site-grid").num_columns(2).spacing([10.0, 8.0]).show(ui, |ui| {
                         let s = &mut form.site;
-                        ui.label("Name");
-                        ui.add(egui::TextEdit::singleline(&mut s.name).hint_text("Meine Website").desired_width(280.0));
+                        ui.label(t!("Name"));
+                        ui.add(egui::TextEdit::singleline(&mut s.name).hint_text(t!("Meine Website")).desired_width(280.0));
                         ui.end_row();
-                        ui.label("Gruppe");
+                        ui.label(t!("Gruppe"));
                         ui.horizontal(|ui| {
                             ui.add(egui::TextEdit::singleline(&mut s.group).hint_text("keine").desired_width(240.0));
                             if !groups.is_empty() {
-                                let pick = ui.button("▾").on_hover_text("Vorhandene Gruppe wählen");
+                                let pick = ui.button("▾").on_hover_text(t!("Vorhandene Gruppe wählen"));
                                 egui::Popup::menu(&pick).show(|ui| {
                                     for g in &groups {
                                         if ui.selectable_label(&s.group == g, g).clicked() {
@@ -2351,7 +2351,7 @@ impl NebulaApp {
                             }
                         });
                         ui.end_row();
-                        ui.label("Protokoll");
+                        ui.label(t!("Protokoll"));
                         let before = s.protocol;
                         egui::ComboBox::from_id_salt("proto")
                             .selected_text(s.protocol.label())
@@ -2365,20 +2365,20 @@ impl NebulaApp {
                             s.port = s.protocol.default_port();
                         }
                         ui.end_row();
-                        ui.label("Server");
+                        ui.label(t!("Server"));
                         ui.horizontal(|ui| {
                             ui.add(egui::TextEdit::singleline(&mut s.host).hint_text("example.com").desired_width(200.0));
-                            ui.label("Port");
+                            ui.label(t!("Port"));
                             ui.add(egui::DragValue::new(&mut s.port).range(1..=65535));
                         });
                         ui.end_row();
-                        ui.label("Benutzer");
+                        ui.label(t!("Benutzer"));
                         ui.add(egui::TextEdit::singleline(&mut s.user).desired_width(280.0));
                         ui.end_row();
-                        ui.label(if s.protocol == Protocol::Sftp && s.key_file.is_some() { "Passphrase" } else { "Passwort" });
+                        ui.label(if s.protocol == Protocol::Sftp && s.key_file.is_some() { t!("Passphrase") } else { t!("Passwort") });
                         ui.add(egui::TextEdit::singleline(&mut form.password).password(true).desired_width(280.0));
                         ui.end_row();
-                        ui.label("Startpfad");
+                        ui.label(t!("Startpfad"));
                         ui.add(egui::TextEdit::singleline(&mut s.root_path).hint_text("/httpdocs (leer = Home)").desired_width(280.0));
                         ui.end_row();
                         ui.label("Web-URL");
@@ -2386,15 +2386,15 @@ impl NebulaApp {
                         ui.end_row();
                         match s.protocol {
                             Protocol::Sftp => {
-                                ui.label("Schlüssel");
+                                ui.label(t!("Schlüssel"));
                                 ui.horizontal(|ui| {
                                     let label = s
                                         .key_file
                                         .as_ref()
                                         .map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned())
-                                        .unwrap_or_else(|| "automatisch (~/.ssh)".into());
+                                        .unwrap_or_else(|| t!("automatisch (~/.ssh)").into());
                                     ui.label(label);
-                                    if ui.button("Wählen…").clicked()
+                                    if ui.button(t!("Wählen…")).clicked()
                                         && let Some(p) = rfd::FileDialog::new().pick_file()
                                     {
                                         s.key_file = Some(p);
@@ -2407,11 +2407,11 @@ impl NebulaApp {
                             }
                             Protocol::Ftp | Protocol::Ftps => {
                                 ui.label("");
-                                ui.checkbox(&mut s.passive, "Passiver Modus");
+                                ui.checkbox(&mut s.passive, t!("Passiver Modus"));
                                 ui.end_row();
                                 if s.protocol == Protocol::Ftps {
                                     ui.label("");
-                                    ui.checkbox(&mut s.accept_invalid_certs, "Ungültige Zertifikate akzeptieren");
+                                    ui.checkbox(&mut s.accept_invalid_certs, t!("Ungültige Zertifikate akzeptieren"));
                                     ui.end_row();
                                 }
                             }
@@ -2419,17 +2419,17 @@ impl NebulaApp {
                     });
                     if form.site.protocol == Protocol::Ftp {
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Hinweis: FTP überträgt Passwörter unverschlüsselt. Wenn möglich SFTP oder FTPS verwenden.").small().color(self.theme.modified));
+                        ui.label(RichText::new(t!("Hinweis: FTP überträgt Passwörter unverschlüsselt. Wenn möglich SFTP oder FTPS verwenden.")).small().color(self.theme.modified));
                     }
                     ui.add_space(4.0);
-                    ui.label(RichText::new("Passwörter werden in der Windows-Anmeldeinformationsverwaltung gespeichert.").small().color(self.theme.gutter_fg));
+                    ui.label(RichText::new(t!("Passwörter werden in der Windows-Anmeldeinformationsverwaltung gespeichert.")).small().color(self.theme.gutter_fg));
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         let valid = !form.site.host.trim().is_empty();
-                        if ui.add_enabled(valid, primary_button("Sichern", accent)).clicked() {
+                        if ui.add_enabled(valid, primary_button(t!("Sichern"), accent)).clicked() {
                             save = true;
                         }
-                        if ui.button("Abbrechen").clicked() {
+                        if ui.button(t!("Abbrechen")).clicked() {
                             keep = false;
                         }
                     });
@@ -2451,7 +2451,7 @@ impl NebulaApp {
                         None => self.sites.sites.push(site),
                     }
                     if let Err(e) = self.sites.save() {
-                        self.error(format!("Server konnten nicht gespeichert werden: {e:#}"));
+                        self.error(t!("Server konnten nicht gespeichert werden: {e}", e = format!("{:#}", e)));
                     }
                     self.show_sidebar = true;
                     self.sidebar.tab = crate::ui::sidebar::SidebarTab::Servers;
@@ -2483,7 +2483,7 @@ impl NebulaApp {
                         if ui.add(primary_button("OK", accent)).clicked() {
                             ok = true;
                         }
-                        if ui.button("Abbrechen").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+                        if ui.button(t!("Abbrechen")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                             keep = false;
                         }
                     });
@@ -2497,10 +2497,14 @@ impl NebulaApp {
             Dialog::ConfirmDelete(items) => {
                 let mut yes = false;
                 let remote = items.iter().any(|i| matches!(i.file, FileRef::Remote { .. }));
-                let what = if items.len() == 1 { format!("„{}“", items[0].name()) } else { format!("{} Objekte", items.len()) };
-                let folders = if items.iter().any(|i| i.is_dir) { "\nOrdner werden mit allen Inhalten gelöscht." } else { "" };
-                let text = format!("{what} wirklich{} löschen?{folders}", if remote { " vom Server" } else { "" });
-                confirm(ctx, "Löschen?", &text, "Löschen", &mut yes, &mut keep);
+                let what = if items.len() == 1 { format!("„{}“", items[0].name()) } else { t!("{items_count} Objekte", items_count = items.len()) };
+                let folders = if items.iter().any(|i| i.is_dir) { t!("\nOrdner werden mit allen Inhalten gelöscht.") } else { "" };
+                let text = if remote {
+                    t!("{what} wirklich vom Server löschen?{folders}", what = what, folders = folders)
+                } else {
+                    t!("{what} wirklich löschen?{folders}", what = what, folders = folders)
+                };
+                confirm(ctx, t!("Löschen?"), &text, t!("Löschen"), &mut yes, &mut keep);
                 if yes {
                     self.delete_items(items.clone());
                 }
@@ -2511,24 +2515,24 @@ impl NebulaApp {
                 let more = queue.items.len() > 1;
                 modal(ctx, egui::Id::unique("transfer-conflict")).show(ctx, |ui| {
                     ui.set_width(420.0);
-                    ui.heading("Name bereits vorhanden");
-                    ui.add(egui::Label::new(format!("Im Zielordner gibt es bereits „{name}“.")).wrap());
+                    ui.heading(t!("Name bereits vorhanden"));
+                    ui.add(egui::Label::new(t!("Im Zielordner gibt es bereits „{name}“.", name = name)).wrap());
                     if more {
                         ui.add_space(6.0);
-                        ui.checkbox(&mut apply_all, format!("Für alle {} Objekte übernehmen", queue.items.len()));
+                        ui.checkbox(&mut apply_all, t!("Für alle {items_count} Objekte übernehmen", items_count = queue.items.len()));
                     }
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        if ui.add(primary_button("Ersetzen", accent)).clicked() {
+                        if ui.add(primary_button(t!("Ersetzen"), accent)).clicked() {
                             choice = Some(ConflictPolicy::Replace);
                         }
-                        if ui.button("Beide behalten").clicked() {
+                        if ui.button(t!("Beide behalten")).clicked() {
                             choice = Some(ConflictPolicy::KeepBoth);
                         }
-                        if ui.button("Überspringen").clicked() {
+                        if ui.button(t!("Überspringen")).clicked() {
                             choice = Some(ConflictPolicy::Skip);
                         }
-                        if ui.button("Abbrechen").clicked() {
+                        if ui.button(t!("Abbrechen")).clicked() {
                             keep = false;
                         }
                     });
@@ -2543,7 +2547,7 @@ impl NebulaApp {
             Dialog::ConfirmRemoveSite(id) => {
                 let name = self.sites.get(&id).map(|s| s.display_name()).unwrap_or_default();
                 let mut yes = false;
-                confirm(ctx, "Server entfernen?", &format!("„{name}“ aus der Liste entfernen? Dateien auf dem Server bleiben unberührt."), "Entfernen", &mut yes, &mut keep);
+                confirm(ctx, t!("Server entfernen?"), &t!("„{name}“ aus der Liste entfernen? Dateien auf dem Server bleiben unberührt.", name = name), t!("Entfernen"), &mut yes, &mut keep);
                 if yes {
                     self.remote.disconnect(&id);
                     self.sidebar.remote.remove(&id);
@@ -2564,24 +2568,24 @@ impl NebulaApp {
                 let mut choice = None;
                 modal(ctx, egui::Id::unique("unsaved")).show(ctx, |ui| {
                     ui.set_width(380.0);
-                    ui.heading("Ungesicherte Änderungen");
+                    ui.heading(t!("Ungesicherte Änderungen"));
                     if names.len() == 1 {
-                        ui.label(format!("Änderungen an „{}“ speichern?", names[0]));
+                        ui.label(t!("Änderungen an „{value}“ speichern?", value = names[0]));
                     } else {
-                        ui.label("Folgende Dateien haben ungesicherte Änderungen:");
+                        ui.label(t!("Folgende Dateien haben ungesicherte Änderungen:"));
                         for n in &names {
                             ui.label(format!("  • {n}"));
                         }
                     }
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
-                        if ui.add(primary_button("Speichern", accent)).clicked() {
+                        if ui.add(primary_button(t!("Speichern"), accent)).clicked() {
                             choice = Some(0);
                         }
-                        if ui.button("Nicht speichern").clicked() {
+                        if ui.button(t!("Nicht speichern")).clicked() {
                             choice = Some(1);
                         }
-                        if ui.button("Abbrechen").clicked() {
+                        if ui.button(t!("Abbrechen")).clicked() {
                             choice = Some(2);
                         }
                     });
@@ -2602,7 +2606,7 @@ impl NebulaApp {
                             self.allow_close = true;
                             ctx.send_viewport_cmd(ViewportCommand::Close);
                         } else if quit {
-                            self.info("Wird gespeichert… Danach erneut schließen.");
+                            self.info(t!("Wird gespeichert… Danach erneut schließen."));
                         }
                     }
                     Some(1) => {
@@ -2627,35 +2631,35 @@ impl NebulaApp {
                 let index = self.doc_index(doc_id);
                 let name = index.map(|i| self.docs[i].title()).unwrap_or_default();
                 let local = index.is_some_and(|i| matches!(self.docs[i].source, DocSource::Local(_)));
-                let (place, theirs) = if local { ("auf der Festplatte", "Version von der Festplatte laden") } else { ("auf dem Server", "Server-Version laden") };
+                let (place, theirs) = if local { (t!("auf der Festplatte"), t!("Version von der Festplatte laden")) } else { (t!("auf dem Server"), t!("Server-Version laden")) };
                 let mut choice = None;
                 let mut compare = false;
                 let comparing = self.compare.as_ref().is_some_and(|(id, _)| *id == doc_id);
                 modal(ctx, egui::Id::unique("conflict")).show(ctx, |ui| {
                     ui.set_width(if comparing { 760.0 } else { 440.0 });
-                    ui.heading(format!("Datei {place} geändert"));
+                    ui.heading(t!("Datei {place} geändert", place = place));
                     let text = if saving {
-                        format!("„{name}“ wurde {place} verändert, seit du sie geöffnet hast. Beim Speichern würden diese Änderungen überschrieben.")
+                        t!("„{name}“ wurde {place} verändert, seit du sie geöffnet hast. Beim Speichern würden diese Änderungen überschrieben.", name = name, place = place)
                     } else {
-                        format!("„{name}“ wurde von einem anderen Programm verändert. Du hast hier ungespeicherte Änderungen.")
+                        t!("„{name}“ wurde von einem anderen Programm verändert. Du hast hier ungespeicherte Änderungen.", name = name)
                     };
                     ui.add(egui::Label::new(text).wrap());
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         if saving {
-                            if ui.add(primary_button("Überschreiben", Color32::from_rgb(214, 58, 58))).clicked() {
+                            if ui.add(primary_button(t!("Überschreiben"), Color32::from_rgb(214, 58, 58))).clicked() {
                                 choice = Some(0);
                             }
-                        } else if ui.add(primary_button("Meine Version behalten", self.theme.accent)).on_hover_text("Beim Speichern wird die Datei überschrieben").clicked() {
+                        } else if ui.add(primary_button(t!("Meine Version behalten"), self.theme.accent)).on_hover_text(t!("Beim Speichern wird die Datei überschrieben")).clicked() {
                             choice = Some(2);
                         }
-                        if ui.button(theirs).on_hover_text("Eigene Änderungen verwerfen (rückgängig machbar)").clicked() {
+                        if ui.button(theirs).on_hover_text(t!("Eigene Änderungen verwerfen (rückgängig machbar)")).clicked() {
                             choice = Some(1);
                         }
-                        if saving && ui.button("Abbrechen").clicked() {
+                        if saving && ui.button(t!("Abbrechen")).clicked() {
                             choice = Some(2);
                         }
-                        if !comparing && ui.button("Unterschiede anzeigen").clicked() {
+                        if !comparing && ui.button(t!("Unterschiede anzeigen")).clicked() {
                             compare = true;
                         }
                     });
@@ -2687,14 +2691,14 @@ impl NebulaApp {
                 let sites: Vec<(String, String)> = self.sites.sites.iter().map(|s| (s.id.clone(), s.display_name())).collect();
                 modal(ctx, egui::Id::unique("publish-setup")).show(ctx, |ui| {
                     ui.set_width(460.0);
-                    ui.heading("Veröffentlichen einrichten");
-                    ui.label(RichText::new(format!("Projekt: {}", root.display())).color(self.theme.text_faint));
+                    ui.heading(t!("Veröffentlichen einrichten"));
+                    ui.label(RichText::new(t!("Projekt: {root}", root = root.display())).color(self.theme.text_faint));
                     ui.add_space(10.0);
                     if sites.is_empty() {
-                        ui.label("Lege zuerst einen Server an.");
+                        ui.label(t!("Lege zuerst einen Server an."));
                     }
                     egui::Grid::new("publish-grid").num_columns(2).spacing([10.0, 8.0]).show(ui, |ui| {
-                        ui.label("Server");
+                        ui.label(t!("Server"));
                         let current = sites.iter().find(|(id, _)| *id == target.site_id).map(|(_, n)| n.clone()).unwrap_or_default();
                         egui::ComboBox::from_id_salt("publish-site").selected_text(current).width(300.0).show_ui(ui, |ui| {
                             for (id, name) in &sites {
@@ -2702,28 +2706,28 @@ impl NebulaApp {
                             }
                         });
                         ui.end_row();
-                        ui.label("Zielordner");
+                        ui.label(t!("Zielordner"));
                         ui.add(egui::TextEdit::singleline(&mut target.remote_path).hint_text("/httpdocs").desired_width(300.0));
                         ui.end_row();
                         ui.label("");
-                        ui.checkbox(&mut target.upload_on_save, "Beim Speichern automatisch hochladen");
+                        ui.checkbox(&mut target.upload_on_save, t!("Beim Speichern automatisch hochladen"));
                         ui.end_row();
-                        ui.label("Ausschließen");
-                        ui.add(egui::TextEdit::singleline(&mut target.exclude).hint_text(".git, node_modules, .env").desired_width(300.0))
-                            .on_hover_text("Datei- und Ordnernamen, die beim Synchronisieren übersprungen werden (durch Komma getrennt)");
+                        ui.label(t!("Ausschließen"));
+                        ui.add(egui::TextEdit::singleline(&mut target.exclude).hint_text(t!(".git, node_modules, .env")).desired_width(300.0))
+                            .on_hover_text(t!("Datei- und Ordnernamen, die beim Synchronisieren übersprungen werden (durch Komma getrennt)"));
                         ui.end_row();
                     });
                     ui.add_space(4.0);
-                    ui.label(RichText::new("„Veröffentlichen“ lädt alle seit dem letzten Mal geänderten Dateien hoch. „Synchronisieren“ gleicht in beide Richtungen ab, mit Vorschau.").small().color(self.theme.text_faint));
+                    ui.label(RichText::new(t!("„Veröffentlichen“ lädt alle seit dem letzten Mal geänderten Dateien hoch. „Synchronisieren“ gleicht in beide Richtungen ab, mit Vorschau.")).small().color(self.theme.text_faint));
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        if ui.add_enabled(!target.site_id.is_empty(), primary_button("Sichern", accent)).clicked() {
+                        if ui.add_enabled(!target.site_id.is_empty(), primary_button(t!("Sichern"), accent)).clicked() {
                             save = true;
                         }
-                        if ui.button("Abbrechen").clicked() {
+                        if ui.button(t!("Abbrechen")).clicked() {
                             keep = false;
                         }
-                        if linked && ui.button("Verknüpfung entfernen").clicked() {
+                        if linked && ui.button(t!("Verknüpfung entfernen")).clicked() {
                             unlink = true;
                         }
                     });
@@ -2741,7 +2745,7 @@ impl NebulaApp {
                     }
                     self.settings.publish.insert(key, target.clone());
                     let _ = self.settings.save();
-                    self.info("Veröffentlichen eingerichtet");
+                    self.info(t!("Veröffentlichen eingerichtet"));
                 } else if unlink {
                     keep = false;
                     self.settings.publish.remove(&key);
@@ -2753,7 +2757,7 @@ impl NebulaApp {
                 let mut go = false;
                 modal(ctx, egui::Id::unique("goto")).show(ctx, |ui| {
                     ui.set_width(260.0);
-                    ui.label("Gehe zu Zeile");
+                    ui.label(t!("Gehe zu Zeile"));
                     let resp = ui.add(egui::TextEdit::singleline(&mut value).desired_width(f32::INFINITY));
                     if focus {
                         resp.request_focus();
@@ -2780,20 +2784,20 @@ impl NebulaApp {
             Dialog::Permissions { items, mut mode, mut octal, mut recurse } => {
                 let mut ok = false;
                 let any_dir = items.iter().any(|i| i.is_dir);
-                let what = if items.len() == 1 { format!("„{}“", items[0].name()) } else { format!("{} Objekte", items.len()) };
+                let what = if items.len() == 1 { format!("„{}“", items[0].name()) } else { t!("{items_count} Objekte", items_count = items.len()) };
                 modal(ctx, egui::Id::unique("permissions")).show(ctx, |ui| {
                     ui.set_width(400.0);
-                    ui.heading("Berechtigungen");
+                    ui.heading(t!("Berechtigungen"));
                     ui.label(RichText::new(what).color(self.theme.text_muted));
                     ui.add_space(10.0);
                     let before = mode;
                     egui::Grid::new("perm-grid").num_columns(4).spacing([18.0, 8.0]).show(ui, |ui| {
                         ui.label("");
-                        for h in ["Lesen", "Schreiben", "Ausführen"] {
+                        for h in [t!("Lesen"), t!("Schreiben"), t!("Ausführen")] {
                             ui.label(RichText::new(h).color(self.theme.text_muted));
                         }
                         ui.end_row();
-                        for (label, shift) in [("Besitzer", 6), ("Gruppe", 3), ("Andere", 0)] {
+                        for (label, shift) in [(t!("Besitzer"), 6), (t!("Gruppe"), 3), (t!("Andere"), 0)] {
                             ui.label(label);
                             for bit in [4, 2, 1] {
                                 let mask = bit << shift;
@@ -2810,7 +2814,7 @@ impl NebulaApp {
                     }
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        ui.label("Numerisch");
+                        ui.label(t!("Numerisch"));
                         let resp = ui.add(egui::TextEdit::singleline(&mut octal).char_limit(3).desired_width(48.0).font(egui::TextStyle::Monospace));
                         if resp.changed()
                             && let Ok(m) = u32::from_str_radix(octal.trim(), 8)
@@ -2826,24 +2830,24 @@ impl NebulaApp {
                     if any_dir {
                         ui.add_space(8.0);
                         let mut on = recurse.is_some();
-                        if ui.checkbox(&mut on, "Auch auf den Inhalt von Ordnern anwenden").changed() {
+                        if ui.checkbox(&mut on, t!("Auch auf den Inhalt von Ordnern anwenden")).changed() {
                             recurse = on.then_some(remote::Recurse::All);
                         }
                         if let Some(r) = &mut recurse {
                             ui.horizontal(|ui| {
                                 ui.add_space(24.0);
-                                ui.radio_value(r, remote::Recurse::All, "Alles");
-                                ui.radio_value(r, remote::Recurse::Files, "Nur Dateien");
-                                ui.radio_value(r, remote::Recurse::Folders, "Nur Ordner");
+                                ui.radio_value(r, remote::Recurse::All, t!("Alles"));
+                                ui.radio_value(r, remote::Recurse::Files, t!("Nur Dateien"));
+                                ui.radio_value(r, remote::Recurse::Folders, t!("Nur Ordner"));
                             });
                         }
                     }
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        if ui.add(primary_button("Übernehmen", accent)).clicked() {
+                        if ui.add(primary_button(t!("Übernehmen"), accent)).clicked() {
                             ok = true;
                         }
-                        if ui.button("Abbrechen").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+                        if ui.button(t!("Abbrechen")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                             keep = false;
                         }
                     });
@@ -3185,9 +3189,9 @@ impl eframe::App for NebulaApp {
                     }
                     // Short git output (e.g. "Already up to date.") is worth showing.
                     let detail = out.lines().last().filter(|l| l.len() < 120).map(|l| format!(": {l}")).unwrap_or_default();
-                    self.info(format!("Git – {label} erledigt{detail}"));
+                    self.info(t!("Git – {label} erledigt{detail}", label = label, detail = detail));
                 }
-                Err(e) => self.error(format!("Git – {label} fehlgeschlagen:\n{e}")),
+                Err(e) => self.error(t!("Git – {label} fehlgeschlagen:\n{e}", label = label, e = e)),
             }
         }
         self.poll_reinstall();
@@ -3240,7 +3244,7 @@ fn confirm(ctx: &egui::Context, title: &str, text: &str, action: &str, yes: &mut
                 *yes = true;
                 *keep = false;
             }
-            if ui.button("Abbrechen").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+            if ui.button(t!("Abbrechen")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                 *keep = false;
             }
         });
@@ -3281,11 +3285,11 @@ fn welcome_heading(ui: &mut egui::Ui, theme: &Theme, title: &str, clearable: boo
     );
     let mut clicked = false;
     if clearable {
-        let galley = ui.painter().layout_no_wrap("Leeren".into(), FontId::proportional(11.0), theme.text_faint);
+        let galley = ui.painter().layout_no_wrap(t!("Leeren").into(), FontId::proportional(11.0), theme.text_faint);
         let link = Rect::from_min_size(pos2(rect.right() - galley.size().x - 8.0, rect.top()), vec2(galley.size().x + 8.0, rect.height()));
-        let resp = ui.interact(link, ui.scope_id().with(("clear", title)), Sense::click()).on_hover_text("Liste leeren");
+        let resp = ui.interact(link, ui.scope_id().with(("clear", title)), Sense::click()).on_hover_text(t!("Liste leeren"));
         let color = if resp.hovered() { theme.accent } else { theme.text_faint };
-        ui.painter().text(pos2(link.right() - 4.0, link.center().y), Align2::RIGHT_CENTER, "Leeren", FontId::proportional(11.0), color);
+        ui.painter().text(pos2(link.right() - 4.0, link.center().y), Align2::RIGHT_CENTER, t!("Leeren"), FontId::proportional(11.0), color);
         clicked = resp.clicked();
     }
     ui.add_space(4.0);

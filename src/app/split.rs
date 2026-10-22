@@ -191,7 +191,7 @@ impl NebulaApp {
         }
         // Close button on the right.
         let close = Rect::from_center_size(pos2(rect.right() - 14.0, rect.center().y), vec2(18.0, 18.0));
-        let close_resp = ui.interact(close, egui::Id::unique(("pane-close", pane)), Sense::click()).on_hover_text("Geteilte Ansicht schließen");
+        let close_resp = ui.interact(close, egui::Id::unique(("pane-close", pane)), Sense::click()).on_hover_text(t!("Geteilte Ansicht schließen"));
         if close_resp.hovered() {
             ui.painter().rect_filled(close, 4.0, self.theme.hover);
         }

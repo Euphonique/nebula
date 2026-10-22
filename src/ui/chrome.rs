@@ -67,7 +67,7 @@ pub fn caption_buttons(ui: &mut Ui, theme: &Theme, bar: Rect) {
                 _ => ctx.send_viewport_cmd(ViewportCommand::Close),
             }
         }
-        resp.on_hover_text(["Minimieren", if maximized { "Verkleinern" } else { "Maximieren" }, "Schließen"][kind]);
+        resp.on_hover_text([t!("Minimieren"), if maximized { t!("Verkleinern") } else { t!("Maximieren") }, t!("Schließen")][kind]);
     }
 }
 

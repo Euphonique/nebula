@@ -127,7 +127,7 @@ impl NebulaApp {
         self.zen = !self.zen;
         ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.zen));
         if self.zen {
-            self.info("Zen-Modus – Esc zum Beenden");
+            self.info(t!("Zen-Modus – Esc zum Beenden"));
         }
         self.focus_editor = true;
     }
@@ -169,7 +169,7 @@ impl NebulaApp {
                 if let Some(site) = self.sites.get(&tab.term.site_id) {
                     let root = site.root_path.trim();
                     if !root.is_empty() {
-                        tab.term.send(format!("cd '{}'\r", root.replace('\'', "'\\''")).into_bytes());
+                        tab.term.send(t!("cd '{replace}'\r", replace = root.replace('\'', "'\\''")).into_bytes());
                     }
                 }
             }
@@ -269,13 +269,13 @@ impl NebulaApp {
             }
         }
         // New terminal: a local shell or an SSH session on a server.
-        let plus = icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::plus(p, c, col)).on_hover_text("Neues Terminal");
+        let plus = icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::plus(p, c, col)).on_hover_text(t!("Neues Terminal"));
         let sites: Vec<(String, String)> = self.sites.sites.iter().map(|s| (s.id.clone(), s.display_name())).collect();
         let mut open = None;
         let mut open_local = None;
         egui::Popup::menu(&plus).show(|ui| {
             ui.set_min_width(200.0);
-            ui.label(egui::RichText::new("Lokal").small().color(theme.text_faint));
+            ui.label(egui::RichText::new(t!("Lokal")).small().color(theme.text_faint));
             for shell in local_shells() {
                 if ui.button(&shell.name).clicked() {
                     open_local = Some(shell);
@@ -299,19 +299,19 @@ impl NebulaApp {
         let mut sites_changed = false;
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::close(p, c, 7.0, col))
-                .on_hover_text("Terminal ausblenden (Strg+Ö)")
+                .on_hover_text(t!("Terminal ausblenden (Strg+Ö)"))
                 .clicked()
             {
                 self.terminals.visible = false;
                 self.focus_editor = true;
             }
             let Some(site) = site_id.as_ref().and_then(|id| self.sites.sites.iter_mut().find(|s| &s.id == id)) else { return };
-            let menu = ui.add(egui::Button::new(egui::RichText::new("Befehle ▾").size(12.0)).frame(false)).on_hover_text("Gespeicherte Befehle für diesen Server");
+            let menu = ui.add(egui::Button::new(egui::RichText::new(t!("Befehle ▾")).size(12.0)).frame(false)).on_hover_text(t!("Gespeicherte Befehle für diesen Server"));
             let form = (&mut self.terminals.new_name, &mut self.terminals.new_command);
             egui::Popup::menu(&menu).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
                 ui.set_width(320.0);
                 if site.commands.is_empty() {
-                    ui.label(egui::RichText::new("Noch keine Befehle gespeichert.").small().color(theme.text_faint));
+                    ui.label(egui::RichText::new(t!("Noch keine Befehle gespeichert.")).small().color(theme.text_faint));
                 }
                 let mut remove = None;
                 for (n, c) in site.commands.iter().enumerate() {
@@ -321,7 +321,7 @@ impl NebulaApp {
                             run = Some(c.command.clone());
                             ui.close();
                         }
-                        if ui.small_button("✕").on_hover_text("Befehl löschen").clicked() {
+                        if ui.small_button("✕").on_hover_text(t!("Befehl löschen")).clicked() {
                             remove = Some(n);
                         }
                     });
@@ -331,11 +331,11 @@ impl NebulaApp {
                     sites_changed = true;
                 }
                 ui.separator();
-                ui.label(egui::RichText::new("Neuer Befehl").small().color(theme.text_faint));
-                ui.add(egui::TextEdit::singleline(form.0).hint_text("Name, z. B. Cache leeren").desired_width(f32::INFINITY));
-                ui.add(egui::TextEdit::singleline(form.1).hint_text("Befehl, z. B. php artisan cache:clear").desired_width(f32::INFINITY).font(egui::TextStyle::Monospace));
+                ui.label(egui::RichText::new(t!("Neuer Befehl")).small().color(theme.text_faint));
+                ui.add(egui::TextEdit::singleline(form.0).hint_text(t!("Name, z. B. Cache leeren")).desired_width(f32::INFINITY));
+                ui.add(egui::TextEdit::singleline(form.1).hint_text(t!("Befehl, z. B. php artisan cache:clear")).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace));
                 let (name, command) = (form.0.trim().to_string(), form.1.trim().to_string());
-                if ui.add_enabled(!command.is_empty(), egui::Button::new("Speichern")).clicked() {
+                if ui.add_enabled(!command.is_empty(), egui::Button::new(t!("Speichern"))).clicked() {
                     let name = if name.is_empty() { command.clone() } else { name };
                     site.commands.push(crate::settings::ServerCommand { name, command });
                     form.0.clear();
@@ -345,7 +345,7 @@ impl NebulaApp {
             });
         });
         if sites_changed && let Err(e) = self.sites.save() {
-            self.error(format!("Server konnten nicht gespeichert werden: {e}"));
+            self.error(t!("Server konnten nicht gespeichert werden: {e}", e = e));
         }
         if let (Some(site_id), Some(command)) = (site_id, run) {
             self.run_server_command(&ui.ctx().clone(), &site_id, &command);
@@ -505,23 +505,23 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
         ui.ctx().copy_text(t.trim_end().to_string());
     }
     resp.context_menu(|ui| {
-        if ui.add_enabled(selected_text.is_some(), egui::Button::new("Kopieren").shortcut_text("Strg+C")).clicked() {
+        if ui.add_enabled(selected_text.is_some(), egui::Button::new(t!("Kopieren")).shortcut_text("Strg+C")).clicked() {
             ui.ctx().copy_text(selected_text.clone().unwrap_or_default().trim_end().to_string());
             ui.close();
         }
-        if ui.add(egui::Button::new("Einfügen").shortcut_text("Strg+V")).clicked() {
+        if ui.add(egui::Button::new(t!("Einfügen")).shortcut_text("Strg+V")).clicked() {
             if let Some(t) = crate::win32::clipboard_text() {
                 tab.term.send(t.replace('\n', "\r").into_bytes());
             }
             ui.close();
         }
         ui.separator();
-        if ui.button("Verlauf leeren").clicked() {
+        if ui.button(t!("Verlauf leeren")).clicked() {
             tab.term.parser.lock().unwrap().screen_mut().clear_scrollback();
             tab.scroll = 0;
             ui.close();
         }
-        if closed && ui.button("Neu verbinden").clicked() {
+        if closed && ui.button(t!("Neu verbinden")).clicked() {
             reconnect = true;
             ui.close();
         }
@@ -589,15 +589,15 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
     }
     // Scroll position and connection state.
     if tab.scroll > 0 {
-        let label = format!("↑ {} Zeilen zurück", tab.scroll);
+        let label = t!("↑ {scroll} Zeilen zurück", scroll = tab.scroll);
         painter.text(pos2(body.right() - 12.0, body.top() + 8.0), egui::Align2::RIGHT_TOP, label, FontId::proportional(11.5), theme.text_faint);
     }
     let note = match &tab.term.status {
-        TermStatus::Connecting => Some("Verbinde …".to_string()),
-        TermStatus::Closed(Some(err)) if tab.local.is_some() => Some(format!("{err}  –  Enter startet neu")),
-        TermStatus::Closed(None) if tab.local.is_some() => Some("Shell beendet  –  Enter startet neu".to_string()),
-        TermStatus::Closed(Some(err)) => Some(format!("Verbindung fehlgeschlagen: {err}  –  Enter verbindet neu")),
-        TermStatus::Closed(None) => Some("Sitzung beendet  –  Enter verbindet neu".to_string()),
+        TermStatus::Connecting => Some(t!("Verbinde …").to_string()),
+        TermStatus::Closed(Some(err)) if tab.local.is_some() => Some(t!("{err}  –  Enter startet neu", err = err)),
+        TermStatus::Closed(None) if tab.local.is_some() => Some(t!("Shell beendet  –  Enter startet neu").to_string()),
+        TermStatus::Closed(Some(err)) => Some(t!("Verbindung fehlgeschlagen: {err}  –  Enter verbindet neu", err = err)),
+        TermStatus::Closed(None) => Some(t!("Sitzung beendet  –  Enter verbindet neu").to_string()),
         TermStatus::Connected => None,
     };
     if let Some(note) = note {

@@ -57,7 +57,7 @@ pub fn status() -> Status {
 pub fn prepare(command: &str, mut env: HashMap<String, String>) -> Result<(PathBuf, HashMap<String, String>), String> {
     let base = command.trim().trim_end_matches(".cmd").trim_end_matches(".exe").to_ascii_lowercase();
     if !matches!(base.as_str(), "npx" | "node" | "npm") {
-        let program = crate::ext::process::which(command, &env).ok_or_else(|| format!("„{command}“ wurde nicht gefunden."))?;
+        let program = crate::ext::process::which(command, &env).ok_or_else(|| t!("„{command}“ wurde nicht gefunden.", command = command))?;
         return Ok((program, env));
     }
     let dir = match status() {
@@ -67,7 +67,7 @@ pub fn prepare(command: &str, mut env: HashMap<String, String>) -> Result<(PathB
     };
     let program = if base == "node" { dir.join("node.exe") } else { dir.join(format!("{base}.cmd")) };
     if !program.is_file() {
-        return Err(format!("{} wurde nicht gefunden.", program.display()));
+        return Err(t!("{program} wurde nicht gefunden.", program = program.display()));
     }
     // The agent itself starts node again: our Node first in PATH.
     let path = std::env::var("PATH").unwrap_or_default();
@@ -123,7 +123,7 @@ pub fn download(progress: Arc<Progress>) -> Result<String, String> {
             })
         })
         .and_then(|r| r["version"].as_str())
-        .ok_or("Keine passende Node.js-Version gefunden.")?
+        .ok_or(t!("Keine passende Node.js-Version gefunden."))?
         .to_string();
     let file = format!("node-{version}-win-x64.zip");
 
@@ -135,7 +135,7 @@ pub fn download(progress: Arc<Progress>) -> Result<String, String> {
     let expected = sums
         .lines()
         .find_map(|l| l.split_once("  ").filter(|(_, name)| name.trim() == file).map(|(hash, _)| hash.trim().to_ascii_lowercase()))
-        .ok_or("Prüfsumme nicht gefunden.")?;
+        .ok_or(t!("Prüfsumme nicht gefunden."))?;
 
     // The archive, with progress.
     let mut resp = get(&format!("https://nodejs.org/dist/{version}/{file}"))?;
@@ -154,7 +154,7 @@ pub fn download(progress: Arc<Progress>) -> Result<String, String> {
     }
     let actual = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect::<String>();
     if actual != expected {
-        return Err("Die Prüfsumme des Downloads stimmt nicht – abgebrochen.".into());
+        return Err(t!("Die Prüfsumme des Downloads stimmt nicht – abgebrochen.").into());
     }
     install_zip(&bytes, &version)?;
     Ok(version)
@@ -187,7 +187,7 @@ fn install_zip(bytes: &[u8], version: &str) -> Result<(), String> {
         }
     }
     if !tmp.join("node.exe").is_file() {
-        return Err("Im Archiv fehlt node.exe.".into());
+        return Err(t!("Im Archiv fehlt node.exe.").into());
     }
     std::fs::write(tmp.join("VERSION"), version).map_err(|e| e.to_string())?;
     // Swap by renaming: a Node still in use fails cleanly instead of being half deleted.
@@ -197,7 +197,7 @@ fn install_zip(bytes: &[u8], version: &str) -> Result<(), String> {
     let old = runtime.join("node.old");
     let _ = std::fs::remove_dir_all(&old);
     if dir.exists() {
-        std::fs::rename(&dir, &old).map_err(|e| format!("Node.js wird noch benutzt – laufende Agenten beenden und erneut versuchen ({e})."))?;
+        std::fs::rename(&dir, &old).map_err(|e| t!("Node.js wird noch benutzt – laufende Agenten beenden und erneut versuchen ({e}).", e = e))?;
     }
     std::fs::rename(&tmp, &dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let _ = std::fs::remove_dir_all(&old);

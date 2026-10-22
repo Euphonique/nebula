@@ -52,7 +52,7 @@ impl AgentConfig {
 
     /// Stores the API key (empty: removes it).
     pub fn set_api_key(&self, key: &str) -> Result<(), String> {
-        let entry = self.keyring_entry().ok_or("Anmeldeinformationsverwaltung nicht verfügbar")?;
+        let entry = self.keyring_entry().ok_or(t!("Anmeldeinformationsverwaltung nicht verfügbar"))?;
         if key.is_empty() {
             let _ = entry.delete_credential();
             Ok(())
@@ -148,7 +148,7 @@ pub fn run_login_console(agent: &AgentConfig, login: &session::TerminalLogin, cw
         }
     };
     // `start` opens a new console; it stays open so messages can be read.
-    let script = format!("title Anmeldung: {} & {line} & echo. & pause", agent.name);
+    let script = t!("title Anmeldung: {name} & {line} & echo. & pause", name = agent.name, line = line);
     // Same Node and package cache as the agent itself.
     let (_, mut env) = node::prepare(&agent.command, agent.process_env())?;
     env.extend(login.env.clone());
@@ -158,7 +158,7 @@ pub fn run_login_console(agent: &AgentConfig, login: &session::TerminalLogin, cw
         .current_dir(cwd)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Anmeldung konnte nicht gestartet werden: {e}"))
+        .map_err(|e| t!("Anmeldung konnte nicht gestartet werden: {e}", e = e))
 }
 
 /// Something that came from the agent process.
@@ -196,10 +196,10 @@ impl Connection {
             .stderr(Stdio::piped())
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
-            .map_err(|e| format!("{} konnte nicht gestartet werden: {e}", cfg.name))?;
-        let stdin = child.stdin.take().ok_or("stdin fehlt")?;
-        let stdout = child.stdout.take().ok_or("stdout fehlt")?;
-        let stderr = child.stderr.take().ok_or("stderr fehlt")?;
+            .map_err(|e| t!("{name} konnte nicht gestartet werden: {e}", name = cfg.name, e = e))?;
+        let stdin = child.stdin.take().ok_or(t!("stdin fehlt"))?;
+        let stdout = child.stdout.take().ok_or(t!("stdout fehlt"))?;
+        let stderr = child.stderr.take().ok_or(t!("stderr fehlt"))?;
         let (tx, rx) = crossbeam_channel::unbounded();
         let wake = Arc::new(wake);
         spawn_reader(stdout, tx.clone(), wake.clone(), false);

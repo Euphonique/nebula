@@ -34,25 +34,25 @@ pub(super) fn tab_menu(ui: &mut egui::Ui, doc: &Document, i: usize, count: usize
             ui.close();
         }
     };
-    item(ui, "Speichern", &keys[0], true, TabCmd::Save);
-    item(ui, "Speichern unter…", &keys[1], true, TabCmd::SaveAs);
-    item(ui, "Duplizieren", "", true, TabCmd::Duplicate);
-    item(ui, "In geteilter Ansicht öffnen", "", true, TabCmd::Split);
-    item(ui, if doc.pinned { "Lösen" } else { "Anheften" }, "", true, TabCmd::Pin);
-    item(ui, "Drucken…", &keys[2], true, TabCmd::Print);
+    item(ui, t!("Speichern"), &keys[0], true, TabCmd::Save);
+    item(ui, t!("Speichern unter…"), &keys[1], true, TabCmd::SaveAs);
+    item(ui, t!("Duplizieren"), "", true, TabCmd::Duplicate);
+    item(ui, t!("In geteilter Ansicht öffnen"), "", true, TabCmd::Split);
+    item(ui, if doc.pinned { t!("Lösen") } else { t!("Anheften") }, "", true, TabCmd::Pin);
+    item(ui, t!("Drucken…"), &keys[2], true, TabCmd::Print);
     ui.separator();
-    item(ui, "Schließen", &keys[3], true, TabCmd::Close);
-    item(ui, "Andere schließen", "", count > 1, TabCmd::CloseOthers);
-    item(ui, "Rechts davon schließen", "", i + 1 < count, TabCmd::CloseRight);
-    item(ui, "Alle schließen", "", true, TabCmd::CloseAll);
+    item(ui, t!("Schließen"), &keys[3], true, TabCmd::Close);
+    item(ui, t!("Andere schließen"), "", count > 1, TabCmd::CloseOthers);
+    item(ui, t!("Rechts davon schließen"), "", i + 1 < count, TabCmd::CloseRight);
+    item(ui, t!("Alle schließen"), "", true, TabCmd::CloseAll);
     if !matches!(doc.source, DocSource::Untitled(_)) {
         ui.separator();
-        item(ui, "Lokaler Verlauf…", "", true, TabCmd::History);
-        item(ui, "Mit letztem Commit vergleichen", "", matches!(doc.source, DocSource::Local(_)), TabCmd::CompareHead);
-        item(ui, "Vergleichen mit Datei…", "", true, TabCmd::CompareFile);
-        item(ui, "Pfad kopieren", "", true, TabCmd::CopyPath);
+        item(ui, t!("Lokaler Verlauf…"), "", true, TabCmd::History);
+        item(ui, t!("Mit letztem Commit vergleichen"), "", matches!(doc.source, DocSource::Local(_)), TabCmd::CompareHead);
+        item(ui, t!("Vergleichen mit Datei…"), "", true, TabCmd::CompareFile);
+        item(ui, t!("Pfad kopieren"), "", true, TabCmd::CopyPath);
         if matches!(doc.source, DocSource::Local(_)) {
-            item(ui, "Im Explorer zeigen", "", true, TabCmd::Reveal);
+            item(ui, t!("Im Explorer zeigen"), "", true, TabCmd::Reveal);
         }
     }
 }
@@ -105,7 +105,7 @@ impl NebulaApp {
             Some(p) => name.split_at(p),
             None => (name.as_str(), ""),
         };
-        doc.suggested_name = Some(format!("{stem} Kopie{ext}"));
+        doc.suggested_name = Some(t!("{stem} Kopie{ext}", stem = stem, ext = ext));
         doc.set_selection(src.primary_selection());
         // Untitled with content: closing asks to save.
         doc.mark_unsaved();
@@ -165,7 +165,7 @@ impl NebulaApp {
     pub(super) fn print_active(&mut self, ctx: &egui::Context) {
         let Some(i) = self.active else { return };
         if self.printing.is_some() {
-            self.info("Es wird bereits gedruckt …");
+            self.info(t!("Es wird bereits gedruckt …"));
             return;
         }
         let tab = self.settings.editor_for_doc(&self.docs[i]).tab_size;
@@ -200,9 +200,9 @@ impl NebulaApp {
         match self.printing.take().unwrap().join() {
             // Cancelled in the dialog.
             Ok(Ok(0)) => {}
-            Ok(Ok(pages)) => self.info(format!("{pages} Seite(n) an den Drucker gesendet")),
+            Ok(Ok(pages)) => self.info(t!("{pages} Seite(n) an den Drucker gesendet", pages = pages)),
             Ok(Err(e)) => self.error(e),
-            Err(_) => self.error("Drucken fehlgeschlagen."),
+            Err(_) => self.error(t!("Drucken fehlgeschlagen.")),
         }
     }
 }

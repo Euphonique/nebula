@@ -32,7 +32,7 @@ pub fn file_kind(name: &str) -> (Color32, &'static str) {
         "rb" | "erb" => (Color32::from_rgb(200, 60, 70), "rb"),
         "lua" => (Color32::from_rgb(40, 60, 160), "lua"),
         "diff" | "patch" => (Color32::from_rgb(100, 160, 120), "+-"),
-        "woff" | "woff2" | "ttf" | "otf" => (Color32::from_rgb(150, 150, 160), "Aa"),
+        "woff" | "woff2" | "ttf" | "otf" => (Color32::from_rgb(150, 150, 160), t!("Aa")),
         _ => (Color32::from_rgb(140, 146, 156), ""),
     }
 }

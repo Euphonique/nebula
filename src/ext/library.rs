@@ -29,16 +29,16 @@ pub struct LibraryEntry {
 
 /// Categories of the library with German labels.
 pub const CATEGORIES: &[(&str, &str)] = &[
-    ("", "Alle"),
-    ("languages", "Sprachen"),
-    ("themes", "Themes"),
-    ("completions", "Vervollständigung"),
-    ("formatters", "Formatierer"),
-    ("issues", "Prüfung (Issues)"),
-    ("commands", "Befehle"),
-    ("clips", "Clips"),
-    ("sidebars", "Seitenleisten"),
-    ("tasks", "Tasks"),
+    ("", tk!("Alle")),
+    ("languages", tk!("Sprachen")),
+    ("themes", tk!("Themes")),
+    ("completions", tk!("Vervollständigung")),
+    ("formatters", tk!("Formatierer")),
+    ("issues", tk!("Prüfung (Issues)")),
+    ("commands", tk!("Befehle")),
+    ("clips", tk!("Clips")),
+    ("sidebars", tk!("Seitenleisten")),
+    ("tasks", tk!("Tasks")),
 ];
 
 fn agent() -> ureq::Agent {
@@ -187,7 +187,7 @@ pub fn install_zip(bytes: &[u8], identifier: &str) -> anyhow::Result<Extension> 
             }
         }
     }
-    let prefix = prefix.ok_or_else(|| anyhow::anyhow!("Das Archiv enthält keine extension.json"))?;
+    let prefix = prefix.ok_or_else(|| anyhow::anyhow!(t!("Das Archiv enthält keine extension.json")))?;
     for i in 0..zip.len() {
         let mut f = zip.by_index(i)?;
         let Some(p) = f.enclosed_name() else { continue };

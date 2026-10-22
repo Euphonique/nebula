@@ -48,15 +48,15 @@ pub(super) struct SnippetImport {
     entries: Vec<(snippet_io::Imported, bool, bool)>,
 }
 
-const HELP: &str = "$1, ${2:Name} – Platzhalter, Tab springt weiter · $0 – Cursor am Ende · \
-                    $SELECTED_TEXT – Auswahl · $FILENAME, $DATE";
+const HELP: &str = tk!("$1, ${2:Name} – Platzhalter, Tab springt weiter · $0 – Cursor am Ende · \
+                    $SELECTED_TEXT – Auswahl · $FILENAME, $DATE");
 
 impl NebulaApp {
     pub(super) fn snippets_pane(&mut self, ui: &mut egui::Ui, body: Rect) {
         let theme = self.theme.clone();
         let Some(i) = self.active else {
             ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(8.0, 26.0))), |ui| {
-                ui.vertical_centered(|ui| ui.label(RichText::new("Keine Datei geöffnet").color(theme.text_faint)));
+                ui.vertical_centered(|ui| ui.label(RichText::new(t!("Keine Datei geöffnet")).color(theme.text_faint)));
             });
             return;
         };
@@ -80,25 +80,25 @@ impl NebulaApp {
         ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(10.0, 4.0))), |ui| {
             ui.horizontal(|ui| {
                 let add = icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::plus(p, c, col))
-                    .on_hover_text("Neues Snippet (mit der Auswahl als Inhalt)");
+                    .on_hover_text(t!("Neues Snippet (mit der Auswahl als Inhalt)"));
                 if add.clicked() {
                     action = Some(Action::New);
                 }
                 let more = icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::more(p, c, col))
-                    .on_hover_text("Importieren und exportieren");
+                    .on_hover_text(t!("Importieren und exportieren"));
                 egui::Popup::menu(&more).show(|ui| {
-                    if ui.button("Importieren…").on_hover_text("Nebula-Export oder VS-Code-Snippets (.json, .code-snippets)").clicked() {
+                    if ui.button(t!("Importieren…")).on_hover_text(t!("Nebula-Export oder VS-Code-Snippets (.json, .code-snippets)")).clicked() {
                         action = Some(Action::Import);
                         ui.close();
                     }
-                    if ui.add_enabled(!own_all_empty, egui::Button::new("Alle eigenen exportieren…")).clicked() {
+                    if ui.add_enabled(!own_all_empty, egui::Button::new(t!("Alle eigenen exportieren…"))).clicked() {
                         action = Some(Action::Export);
                         ui.close();
                     }
                 });
                 ui.add(
                     egui::TextEdit::singleline(&mut state.query)
-                        .hint_text(format!("Snippets für {} filtern…", language.name()))
+                        .hint_text(t!("Snippets für {name} filtern…", name = language.name()))
                         .desired_width(f32::INFINITY),
                 );
             });
@@ -110,11 +110,11 @@ impl NebulaApp {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 let own_shown: Vec<_> = own.iter().filter(|(_, _, s)| matches(&s.trigger, &s.description, &s.body)).collect();
                 // "Eigene" also takes snippets dragged out of their group.
-                let own_heading = heading(ui, &theme, "Eigene");
+                let own_heading = heading(ui, &theme, t!("Eigene"));
                 snippet_drop_target(ui, &theme, &own_heading, "", &mut action);
                 if own_shown.is_empty() {
                     ui.label(
-                        RichText::new(if own.is_empty() { "Noch keine – mit + anlegen oder ein eingebautes anpassen." } else { "Keine Treffer" })
+                        RichText::new(if own.is_empty() { t!("Noch keine – mit + anlegen oder ein eingebautes anpassen.") } else { t!("Keine Treffer") })
                             .small()
                             .color(theme.text_faint),
                     );
@@ -137,7 +137,7 @@ impl NebulaApp {
                         }
                     }
                     for (key, n, s) in members {
-                        let tag = (key == ALL_LANGUAGES).then_some("alle Sprachen");
+                        let tag = (key == ALL_LANGUAGES).then_some(t!("alle Sprachen"));
                         let resp = row(ui, &theme, &s.trigger, &s.description, &s.body, tag);
                         resp.dnd_set_drag_payload(SnippetDrag(key.clone(), *n));
                         snippet_drop_target(ui, &theme, &resp, &s.group, &mut action);
@@ -145,15 +145,15 @@ impl NebulaApp {
                             action = Some(Action::Insert(s.body.clone()));
                         }
                         resp.context_menu(|ui| {
-                            if ui.button("Einfügen").clicked() {
+                            if ui.button(t!("Einfügen")).clicked() {
                                 action = Some(Action::Insert(s.body.clone()));
                                 ui.close();
                             }
-                            if ui.button("Bearbeiten…").clicked() {
+                            if ui.button(t!("Bearbeiten…")).clicked() {
                                 action = Some(Action::Edit(key.clone(), *n));
                                 ui.close();
                             }
-                            if ui.button("Löschen").clicked() {
+                            if ui.button(t!("Löschen")).clicked() {
                                 action = Some(Action::Delete(key.clone(), *n));
                                 ui.close();
                             }
@@ -162,18 +162,18 @@ impl NebulaApp {
                 }
                 if !builtin.is_empty() {
                     ui.add_space(8.0);
-                    heading(ui, &theme, "Eingebaut");
-                    for (trigger, body, desc) in builtin.iter().filter(|(t, b, d)| matches(t, d, b)) {
-                        let resp = row(ui, &theme, trigger, desc, body, None);
+                    heading(ui, &theme, t!("Eingebaut"));
+                    for (trigger, body, desc) in builtin.iter().filter(|(t, b, d)| matches(t, crate::i18n::tr(d), b)) {
+                        let resp = row(ui, &theme, trigger, crate::i18n::tr(desc), body, None);
                         if resp.clicked() {
                             action = Some(Action::Insert(body.to_string()));
                         }
                         resp.context_menu(|ui| {
-                            if ui.button("Einfügen").clicked() {
+                            if ui.button(t!("Einfügen")).clicked() {
                                 action = Some(Action::Insert(body.to_string()));
                                 ui.close();
                             }
-                            if ui.button("Als eigenes Snippet anpassen…").clicked() {
+                            if ui.button(t!("Als eigenes Snippet anpassen…")).clicked() {
                                 action = Some(Action::Customize(UserSnippet {
                                     group: String::new(),
                                     trigger: trigger.to_string(),
@@ -245,11 +245,11 @@ impl NebulaApp {
 
     pub(super) fn export_snippets(&mut self) {
         if self.settings.snippets.values().all(|l| l.is_empty()) {
-            self.info("Es gibt noch keine eigenen Snippets zum Exportieren.");
+            self.info(t!("Es gibt noch keine eigenen Snippets zum Exportieren."));
             return;
         }
         let Some(path) = rfd::FileDialog::new()
-            .set_title("Snippets exportieren")
+            .set_title(t!("Snippets exportieren"))
             .set_file_name("nebula-snippets.json")
             .add_filter("Nebula-Snippets", &["json"])
             .save_file()
@@ -258,17 +258,17 @@ impl NebulaApp {
         };
         let count: usize = self.settings.snippets.values().map(Vec::len).sum();
         match snippet_io::export(&self.settings.snippets).and_then(|b| Ok(std::fs::write(&path, b)?)) {
-            Ok(()) => self.info(if count == 1 { "1 Snippet exportiert.".to_string() } else { format!("{count} Snippets exportiert.") }),
-            Err(e) => self.error(format!("Export fehlgeschlagen: {e:#}")),
+            Ok(()) => self.info(if count == 1 { t!("1 Snippet exportiert.").to_string() } else { t!("{count} Snippets exportiert.", count = count) }),
+            Err(e) => self.error(t!("Export fehlgeschlagen: {e}", e = format!("{:#}", e))),
         }
     }
 
     /// Asks for files and shows what they contain.
     pub(super) fn import_snippets(&mut self) {
         let mut dialog = rfd::FileDialog::new()
-            .set_title("Snippets importieren")
-            .add_filter("Snippets", &["json", "code-snippets"])
-            .add_filter("Alle Dateien", &["*"]);
+            .set_title(t!("Snippets importieren"))
+            .add_filter(t!("Snippets"), &["json", "code-snippets"])
+            .add_filter(t!("Alle Dateien"), &["*"]);
         // VS Code keeps the user's snippets here.
         if let Some(dir) = std::env::var_os("APPDATA").map(|a| std::path::PathBuf::from(a).join("Code").join("User").join("snippets"))
             && dir.is_dir()
@@ -294,7 +294,7 @@ impl NebulaApp {
         found.sort_by(|a, b| a.key.cmp(&b.key));
         let source = match files.as_slice() {
             [one] => one.file_name().unwrap_or_default().to_string_lossy().into_owned(),
-            many => format!("{} Dateien", many.len()),
+            many => t!("{many_count} Dateien", many_count = many.len()),
         };
         let entries = found
             .into_iter()
@@ -313,18 +313,18 @@ impl NebulaApp {
         let mut import = false;
         super::modal(ctx, egui::Id::unique("import-snippets")).show(ctx, |ui| {
             ui.set_width(540.0);
-            ui.heading(format!("Snippets importieren – {}", form.source));
+            ui.heading(t!("Snippets importieren – {source}", source = form.source));
             ui.add_space(6.0);
             let dupes = form.entries.iter().filter(|e| e.2).count();
             if dupes > 0 {
-                let text = if dupes == 1 { "Eines gibt es schon, es ist abgewählt.".to_string() } else { format!("{dupes} gibt es schon, sie sind abgewählt.") };
+                let text = if dupes == 1 { t!("Eines gibt es schon, es ist abgewählt.").to_string() } else { t!("{dupes} gibt es schon, sie sind abgewählt.", dupes = dupes) };
                 ui.label(RichText::new(text).small().color(theme.gutter_fg));
             }
             ui.horizontal(|ui| {
-                if ui.small_button("Alle").clicked() {
+                if ui.small_button(t!("Alle")).clicked() {
                     form.entries.iter_mut().for_each(|e| e.1 = true);
                 }
-                if ui.small_button("Keine").clicked() {
+                if ui.small_button(t!("Keine")).clicked() {
                     form.entries.iter_mut().for_each(|e| e.1 = false);
                 }
             });
@@ -335,7 +335,7 @@ impl NebulaApp {
                     if last_key != Some(&item.key) {
                         ui.add_space(4.0);
                         let name = if item.key == ALL_LANGUAGES {
-                            "Alle Sprachen"
+                            t!("Alle Sprachen")
                         } else {
                             Language::from_id(&item.key).map_or(item.key.as_str(), |l| l.name())
                         };
@@ -343,11 +343,11 @@ impl NebulaApp {
                     }
                     last_key = Some(&item.key);
                     ui.horizontal(|ui| {
-                        let trigger = if item.snippet.trigger.is_empty() { "(ohne Kürzel)" } else { item.snippet.trigger.as_str() };
+                        let trigger = if item.snippet.trigger.is_empty() { t!("(ohne Kürzel)") } else { item.snippet.trigger.as_str() };
                         ui.checkbox(selected, RichText::new(trigger).monospace().color(theme.accent));
                         ui.label(RichText::new(&item.snippet.description).small().color(theme.gutter_fg));
                         if !item.snippet.group.is_empty() {
-                            ui.label(RichText::new(format!("Gruppe: {}", item.snippet.group)).small().color(theme.text_faint));
+                            ui.label(RichText::new(t!("Gruppe: {group}", group = item.snippet.group)).small().color(theme.text_faint));
                         }
                         if *dup {
                             ui.label(RichText::new("vorhanden").small().color(theme.modified));
@@ -362,11 +362,11 @@ impl NebulaApp {
             ui.add_space(10.0);
             let count = form.entries.iter().filter(|e| e.1).count();
             ui.horizontal(|ui| {
-                let label = if count == 1 { "1 Snippet importieren".to_string() } else { format!("{count} Snippets importieren") };
+                let label = if count == 1 { t!("1 Snippet importieren").to_string() } else { t!("{count} Snippets importieren", count = count) };
                 if ui.add_enabled(count > 0, primary_button(&label, theme.accent)).clicked() {
                     import = true;
                 }
-                if ui.button("Abbrechen").clicked() {
+                if ui.button(t!("Abbrechen")).clicked() {
                     keep = false;
                 }
             });
@@ -380,7 +380,7 @@ impl NebulaApp {
             self.save_snippets();
             self.settings.right_panel = true;
             self.settings.right_tab = crate::settings::RightTab::Snippets;
-            self.info(if count == 1 { "1 Snippet importiert.".to_string() } else { format!("{count} Snippets importiert.") });
+            self.info(if count == 1 { t!("1 Snippet importiert.").to_string() } else { t!("{count} Snippets importiert.", count = count) });
             keep = false;
         }
         keep
@@ -394,24 +394,24 @@ impl NebulaApp {
         let Some(edit) = &mut self.right_state.snippets.edit else { return };
         let (mut save, mut cancel, mut delete) = (false, false, false);
         ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(12.0, 6.0))), |ui| {
-            ui.label(RichText::new(if edit.original.is_some() { "Snippet bearbeiten" } else { "Neues Snippet" }).strong());
+            ui.label(RichText::new(if edit.original.is_some() { t!("Snippet bearbeiten") } else { t!("Neues Snippet") }).strong());
             ui.add_space(6.0);
             egui::Grid::new("snippet-edit").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
-                ui.label("Kürzel");
-                let t = ui.add(egui::TextEdit::singleline(&mut edit.snippet.trigger).hint_text("z. B. card").desired_width(f32::INFINITY));
+                ui.label(t!("Kürzel"));
+                let t = ui.add(egui::TextEdit::singleline(&mut edit.snippet.trigger).hint_text(t!("z. B. card")).desired_width(f32::INFINITY));
                 if edit.focus {
                     t.request_focus();
                     edit.focus = false;
                 }
                 ui.end_row();
-                ui.label("Beschreibung");
+                ui.label(t!("Beschreibung"));
                 ui.add(egui::TextEdit::singleline(&mut edit.snippet.description).hint_text("optional").desired_width(f32::INFINITY));
                 ui.end_row();
-                ui.label("Gruppe");
+                ui.label(t!("Gruppe"));
                 ui.horizontal(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut edit.snippet.group).hint_text("keine").desired_width(ui.available_width() - 34.0));
                     if !all_groups.is_empty() {
-                        let pick = ui.button("▾").on_hover_text("Vorhandene Gruppe wählen");
+                        let pick = ui.button("▾").on_hover_text(t!("Vorhandene Gruppe wählen"));
                         egui::Popup::menu(&pick).show(|ui| {
                             for g in &all_groups {
                                 if ui.selectable_label(&edit.snippet.group == g, g).clicked() {
@@ -423,15 +423,15 @@ impl NebulaApp {
                     }
                 });
                 ui.end_row();
-                ui.label("Gilt für");
+                ui.label(t!("Gilt für"));
                 ui.horizontal(|ui| {
                     ui.radio_value(&mut edit.key, language.id().to_string(), language.name());
-                    ui.radio_value(&mut edit.key, ALL_LANGUAGES.to_string(), "alle Sprachen");
+                    ui.radio_value(&mut edit.key, ALL_LANGUAGES.to_string(), t!("alle Sprachen"));
                 });
                 ui.end_row();
             });
             ui.add_space(6.0);
-            ui.label("Inhalt");
+            ui.label(t!("Inhalt"));
             let rows = ((ui.available_height() - 110.0) / 18.0).clamp(4.0, 24.0) as usize;
             ui.add(
                 egui::TextEdit::multiline(&mut edit.snippet.body)
@@ -441,17 +441,17 @@ impl NebulaApp {
                     .hint_text("<div class=\"${1:name}\">\n    $0\n</div>"),
             );
             ui.add_space(4.0);
-            ui.label(RichText::new(HELP).small().color(theme.text_faint));
+            ui.label(RichText::new(crate::i18n::tr(HELP)).small().color(theme.text_faint));
             ui.add_space(10.0);
             ui.horizontal(|ui| {
                 let valid = !edit.snippet.body.trim().is_empty();
-                if ui.add_enabled(valid, primary_button("Sichern", theme.accent)).clicked() {
+                if ui.add_enabled(valid, primary_button(t!("Sichern"), theme.accent)).clicked() {
                     save = true;
                 }
-                if ui.button("Abbrechen").clicked() {
+                if ui.button(t!("Abbrechen")).clicked() {
                     cancel = true;
                 }
-                if edit.original.is_some() && ui.button("Löschen").clicked() {
+                if edit.original.is_some() && ui.button(t!("Löschen")).clicked() {
                     delete = true;
                 }
             });
@@ -490,7 +490,7 @@ impl NebulaApp {
     fn save_snippets(&mut self) {
         self.settings.apply_languages();
         if let Err(e) = self.settings.save() {
-            self.error(format!("Einstellungen konnten nicht gespeichert werden: {e:#}"));
+            self.error(t!("Einstellungen konnten nicht gespeichert werden: {e}", e = format!("{:#}", e)));
         }
     }
 
@@ -554,7 +554,7 @@ fn row(ui: &mut egui::Ui, theme: &crate::theme::Theme, trigger: &str, desc: &str
     let painter = ui.painter().with_clip_rect(r);
     let x = r.left() + 8.0;
     let top = r.top() + 12.0;
-    let trigger = if trigger.is_empty() { "(ohne Kürzel)" } else { trigger };
+    let trigger = if trigger.is_empty() { t!("(ohne Kürzel)") } else { trigger };
     let galley = painter.layout_no_wrap(trigger.to_string(), FontId::monospace(12.5), theme.accent);
     let w = galley.size().x;
     painter.galley(pos2(x, top - galley.size().y / 2.0), galley, theme.accent);

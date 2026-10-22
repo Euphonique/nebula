@@ -1,0 +1,13 @@
+[package]
+name = "i18n-wrap"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Not part of Nebula: a one-off helper that wraps UI texts in t!().
+[workspace]
+
+[dependencies]
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"

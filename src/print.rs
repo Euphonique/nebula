@@ -88,7 +88,7 @@ fn dialog_and_print(owner: HWND, job: &PrintJob) -> Result<usize, String> {
     if ok == 0 || pd.hDC.is_null() {
         // SAFETY: no arguments.
         let err = unsafe { CommDlgExtendedError() };
-        return if err == 0 { Ok(0) } else { Err(format!("Der Druckdialog konnte nicht geöffnet werden (Fehler {err:#x}).")) };
+        return if err == 0 { Ok(0) } else { Err(t!("Der Druckdialog konnte nicht geöffnet werden (Fehler {err}).", err = format!("{:#x}", err))) };
     }
     let pages = (pd.Flags & PD_PAGENUMS != 0).then_some([(pd.nFromPage as u32, pd.nToPage as u32)]);
     let result = print_pages(pd.hDC, job, pages.as_ref().map(|p| p.as_slice()), None);
@@ -196,7 +196,7 @@ fn print_pages(hdc: HDC, job: &PrintJob, pages: Option<&[(u32, u32)]>, output: O
         };
         if StartDocW(hdc, &doc) <= 0 {
             finish(true);
-            return Err("Der Druckauftrag konnte nicht gestartet werden.".into());
+            return Err(t!("Der Druckauftrag konnte nicht gestartet werden.").into());
         }
         SetBkMode(hdc, TRANSPARENT as _);
         let text = |x: i32, y: i32, s: &[u16], color: u32| {
@@ -214,12 +214,12 @@ fn print_pages(hdc: HDC, job: &PrintJob, pages: Option<&[(u32, u32)]>, output: O
             }
             if StartPage(hdc) <= 0 {
                 finish(false);
-                return Err("Fehler beim Drucken.".into());
+                return Err(t!("Fehler beim Drucken.").into());
             }
             SelectObject(hdc, bold);
             text(left, top, &wide(&job.title), 0);
             SelectObject(hdc, font);
-            let label = wide(&format!("Seite {number} von {total}"));
+            let label = wide(&t!("Seite {number} von {total}", number = number, total = total));
             let mut s = SIZE { cx: 0, cy: 0 };
             GetTextExtentPoint32W(hdc, label.as_ptr(), label.len() as i32, &mut s);
             text(right - s.cx, bottom - line_h, &label, gray);
@@ -239,7 +239,7 @@ fn print_pages(hdc: HDC, job: &PrintJob, pages: Option<&[(u32, u32)]>, output: O
             }
             if EndPage(hdc) <= 0 {
                 finish(false);
-                return Err("Fehler beim Drucken.".into());
+                return Err(t!("Fehler beim Drucken.").into());
             }
             printed += 1;
         }

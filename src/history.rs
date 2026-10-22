@@ -35,7 +35,7 @@ impl Kind {
         match self {
             Kind::Opened => "geladen",
             Kind::Saved => "gespeichert",
-            Kind::Discarded => "verworfene Änderungen",
+            Kind::Discarded => t!("verworfene Änderungen"),
         }
     }
 }

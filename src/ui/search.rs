@@ -127,7 +127,7 @@ impl SearchPanel {
         RegexBuilder::new(&p)
             .case_insensitive(!self.case_sensitive)
             .build()
-            .map_err(|e| e.to_string().lines().last().unwrap_or("Ungültiger Ausdruck").to_string())
+            .map_err(|e| e.to_string().lines().last().unwrap_or(t!("Ungültiger Ausdruck")).to_string())
     }
 
     /// Files to search: `.gitignore` and the usual build/dependency folders
@@ -135,7 +135,7 @@ impl SearchPanel {
     fn walker(&self, root: &Path) -> Result<WalkBuilder, String> {
         let mut overrides = OverrideBuilder::new(root);
         for pat in split_patterns(&self.files) {
-            overrides.add(&pat).map_err(|e| format!("Muster „{pat}“: {e}"))?;
+            overrides.add(&pat).map_err(|e| t!("Muster „{pat}“: {e}", pat = pat, e = e))?;
         }
         let overrides = overrides.build().map_err(|e| e.to_string())?;
         let mut walk = WalkBuilder::new(root);
@@ -230,7 +230,7 @@ impl SearchPanel {
             return;
         }
         let Some(site) = sites.get(site_id).cloned() else {
-            self.error = Some("Server nicht gefunden".into());
+            self.error = Some(t!("Server nicht gefunden").into());
             return;
         };
         let query = remote_search::Query {
@@ -348,7 +348,7 @@ impl SearchPanel {
         }
         if let Some(err) = done {
             self.truncated = run.lines >= remote_search::MAX_LINES;
-            self.error = err.map(|e| if run.via_ftp { format!("Suche auf dem Server braucht SSH-Zugang (Port 22): {e}") } else { e });
+            self.error = err.map(|e| if run.via_ftp { t!("Suche auf dem Server braucht SSH-Zugang (Port 22): {e}", e = e) } else { e });
             self.remote = None;
         }
     }
@@ -377,20 +377,20 @@ impl SearchPanel {
     /// folder inside it. Returns true if the scope changed.
     fn scope_picker(&mut self, ui: &mut Ui, theme: &Theme, project: Option<&Path>, sites: &Sites, homes: &HashMap<String, String>) -> bool {
         let label = match &self.scope {
-            Scope::Local { .. } => "Projekt (lokal)".to_string(),
+            Scope::Local { .. } => t!("Projekt (lokal)").to_string(),
             Scope::Remote { site_id, .. } => sites.get(site_id).map(|s| s.display_name()).unwrap_or_default(),
         };
         let before = self.scope.clone();
         ui.horizontal(|ui| {
-            ui.add_sized(vec2(52.0, 18.0), egui::Label::new(RichText::new("Suchen in").small().color(theme.text_faint)));
+            ui.add_sized(vec2(52.0, 18.0), egui::Label::new(RichText::new(t!("Suchen in")).small().color(theme.text_faint)));
             egui::ComboBox::from_id_salt("search-scope").selected_text(label).width(ui.available_width()).show_ui(ui, |ui| {
                 let local = matches!(before, Scope::Local { .. });
-                if ui.add_enabled(project.is_some(), egui::Button::selectable(local, "Projekt (lokal)")).clicked() && !local {
+                if ui.add_enabled(project.is_some(), egui::Button::selectable(local, t!("Projekt (lokal)"))).clicked() && !local {
                     self.scope = Scope::default();
                 }
                 if !sites.sites.is_empty() {
                     ui.separator();
-                    ui.label(RichText::new("Server (über SSH)").small().color(theme.text_faint));
+                    ui.label(RichText::new(t!("Server (über SSH)")).small().color(theme.text_faint));
                 }
                 for site in &sites.sites {
                     let current = matches!(&before, Scope::Remote { site_id, .. } if *site_id == site.id);
@@ -408,12 +408,12 @@ impl SearchPanel {
         };
         // The folder inside the project or on the server; Enter searches again.
         let (text, hint) = match &mut self.scope {
-            Scope::Local { dir } => (dir, "Ordner im Projekt (leer = ganzes Projekt)"),
-            Scope::Remote { path, .. } => (path, "Ordner auf dem Server (leer = Startordner)"),
+            Scope::Local { dir } => (dir, t!("Ordner im Projekt (leer = ganzes Projekt)")),
+            Scope::Remote { path, .. } => (path, t!("Ordner auf dem Server (leer = Startordner)")),
         };
         let resp = ui
             .horizontal(|ui| {
-                ui.add_sized(vec2(52.0, 18.0), egui::Label::new(RichText::new("Ordner").small().color(theme.text_faint)));
+                ui.add_sized(vec2(52.0, 18.0), egui::Label::new(RichText::new(t!("Ordner")).small().color(theme.text_faint)));
                 ui.add(egui::TextEdit::singleline(text).hint_text(hint).desired_width(f32::INFINITY))
             })
             .inner
@@ -436,11 +436,11 @@ impl SearchPanel {
         let scope_changed = self.scope_picker(ui, theme, project, sites, homes);
         let Some(target) = self.target(project) else {
             ui.add_space(30.0);
-            ui.vertical_centered(|ui| ui.label(RichText::new("Öffne einen Ordner oder wähle einen Server, um zu suchen.").color(theme.text_faint)));
+            ui.vertical_centered(|ui| ui.label(RichText::new(t!("Öffne einen Ordner oder wähle einen Server, um zu suchen.")).color(theme.text_faint)));
             return;
         };
         let remote = matches!(target, DirRef::Remote { .. });
-        let hint = if remote { "Auf dem Server suchen" } else { "Im Projekt suchen" };
+        let hint = if remote { t!("Auf dem Server suchen") } else { t!("Im Projekt suchen") };
         let resp = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text(hint).desired_width(f32::INFINITY));
         if std::mem::take(&mut self.focus_query) {
             resp.request_focus();
@@ -448,26 +448,26 @@ impl SearchPanel {
         let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         let mut restart = enter || (scope_changed && !self.query.is_empty()) || std::mem::take(&mut self.restart_pending);
         ui.horizontal(|ui| {
-            restart |= ui.toggle_value(&mut self.case_sensitive, "Aa").on_hover_text("Groß-/Kleinschreibung").changed();
-            restart |= ui.toggle_value(&mut self.whole_word, "W").on_hover_text("Ganzes Wort").changed();
-            restart |= ui.toggle_value(&mut self.use_regex, ".*").on_hover_text("Regulärer Ausdruck").changed();
+            restart |= ui.toggle_value(&mut self.case_sensitive, t!("Aa")).on_hover_text(t!("Groß-/Kleinschreibung")).changed();
+            restart |= ui.toggle_value(&mut self.whole_word, "W").on_hover_text(t!("Ganzes Wort")).changed();
+            restart |= ui.toggle_value(&mut self.use_regex, ".*").on_hover_text(t!("Regulärer Ausdruck")).changed();
             if !remote {
-                ui.toggle_value(&mut self.show_replace, "Ersetzen");
+                ui.toggle_value(&mut self.show_replace, t!("Ersetzen"));
             }
         });
         let files = ui.add(
             egui::TextEdit::singleline(&mut self.files)
-                .hint_text("Dateien, z. B. *.php, !vendor/")
+                .hint_text(t!("Dateien, z. B. *.php, !vendor/"))
                 .desired_width(f32::INFINITY),
         );
-        let files = files.on_hover_text("Muster wie in .gitignore, durch Komma getrennt. Ohne ! = nur diese Dateien durchsuchen, mit ! = ausschließen.");
+        let files = files.on_hover_text(t!("Muster wie in .gitignore, durch Komma getrennt. Ohne ! = nur diese Dateien durchsuchen, mit ! = ausschließen."));
         restart |= files.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         restart |= ui
-            .checkbox(&mut self.include_ignored, RichText::new("Ignorierte Dateien einbeziehen").small())
-            .on_hover_text("Auch Dateien aus .gitignore und Ordner wie node_modules, vendor, dist durchsuchen")
+            .checkbox(&mut self.include_ignored, RichText::new(t!("Ignorierte Dateien einbeziehen")).small())
+            .on_hover_text(t!("Auch Dateien aus .gitignore und Ordner wie node_modules, vendor, dist durchsuchen"))
             .changed();
         if self.show_replace && !remote {
-            ui.add(egui::TextEdit::singleline(&mut self.replacement).hint_text("Ersetzen durch").desired_width(f32::INFINITY));
+            ui.add(egui::TextEdit::singleline(&mut self.replacement).hint_text(t!("Ersetzen durch")).desired_width(f32::INFINITY));
             let files: Vec<PathBuf> = self
                 .results
                 .iter()
@@ -476,7 +476,7 @@ impl SearchPanel {
                     FileRef::Remote { .. } => None,
                 })
                 .collect();
-            let label = format!("Alle ersetzen ({} in {} Dateien)", self.match_count(), files.len());
+            let label = t!("Alle ersetzen ({match_count} in {files_count} Dateien)", match_count = self.match_count(), files_count = files.len());
             if ui.add_enabled(!files.is_empty() && self.running.is_none(), egui::Button::new(label)).clicked()
                 && let Ok(regex) = self.build_regex()
             {
@@ -490,27 +490,25 @@ impl SearchPanel {
         let running = self.is_running();
         let summary = match (&self.error, running) {
             (Some(e), _) => RichText::new(e).color(theme.danger),
-            (None, true) => RichText::new(format!("Suche… {} Treffer", self.match_count())).color(theme.text_faint),
+            (None, true) => RichText::new(t!("Suche… {match_count} Treffer", match_count = self.match_count())).color(theme.text_faint),
             (None, false) if self.query.is_empty() => RichText::new(""),
-            (None, false) => RichText::new(format!(
-                "{} Treffer in {} Dateien{}",
-                self.match_count(),
-                self.results.len(),
-                if self.cancelled {
-                    " (abgebrochen)"
+            (None, false) => {
+                let (matches, files) = (self.match_count(), self.results.len());
+                RichText::new(if self.cancelled {
+                    t!("{matches} Treffer in {files} Dateien (abgebrochen)", matches = matches, files = files)
                 } else if self.truncated {
-                    " (gekürzt)"
+                    t!("{matches} Treffer in {files} Dateien (gekürzt)", matches = matches, files = files)
                 } else {
-                    ""
-                }
-            ))
-            .color(theme.text_faint),
+                    t!("{matches} Treffer in {files} Dateien", matches = matches, files = files)
+                })
+                .color(theme.text_faint)
+            }
         };
         ui.horizontal(|ui| {
             ui.add(egui::Label::new(summary.small()).wrap());
             if running {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("Abbrechen").clicked() {
+                    if ui.small_button(t!("Abbrechen")).clicked() {
                         self.cancel();
                     }
                 });

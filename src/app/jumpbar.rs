@@ -137,7 +137,7 @@ impl NebulaApp {
         let mut right = ui.new_child(egui::UiBuilder::new().max_rect(buttons).layout(egui::Layout::left_to_right(egui::Align::Center)));
         right.spacing_mut().item_spacing.x = 2.0;
         let size = vec2(34.0, 26.0);
-        let tip = format!("Geteilte Ansicht ({})", self.shortcut_label(super::palette::Command::ToggleSplit));
+        let tip = t!("Geteilte Ansicht ({shortcut_label})", shortcut_label = self.shortcut_label(super::palette::Command::ToggleSplit));
         if icons::icon_button(&mut right, &theme, size, self.split.is_some(), icons::split_view)
             .on_hover_text(tip)
             .clicked()
@@ -145,7 +145,7 @@ impl NebulaApp {
             self.toggle_split();
         }
         let minimap = self.settings.editor.minimap;
-        if icons::icon_button(&mut right, &theme, size, minimap, icons::minimap).on_hover_text("Minimap ein/aus").clicked() {
+        if icons::icon_button(&mut right, &theme, size, minimap, icons::minimap).on_hover_text(t!("Minimap ein/aus")).clicked() {
             self.settings.editor.minimap = !minimap;
         }
 
@@ -277,14 +277,14 @@ impl NebulaApp {
         };
         ui.horizontal(|ui| {
             if let Some(parent) = parent
-                && ui.small_button("‹").on_hover_text("Übergeordneter Ordner").clicked()
+                && ui.small_button("‹").on_hover_text(t!("Übergeordneter Ordner")).clicked()
             {
                 pick = Some(Pick::Enter(parent));
             }
             ui.label(RichText::new(name).small().color(theme.text_faint));
         });
         let Some(entries) = self.folder_entries(&dir) else {
-            ui.label(RichText::new("Lade…").color(theme.text_faint));
+            ui.label(RichText::new(t!("Lade…")).color(theme.text_faint));
             return pick;
         };
         if entries.is_empty() {
@@ -317,7 +317,7 @@ impl NebulaApp {
         let line = self.docs[i].char_to_line(self.docs[i].primary_selection().head);
         let current = crate::editor::symbols::current(&symbols, line);
         if symbols.is_empty() {
-            ui.label(RichText::new("Keine Symbole").color(theme.text_faint));
+            ui.label(RichText::new(t!("Keine Symbole")).color(theme.text_faint));
             return None;
         }
         let mut pick = None;

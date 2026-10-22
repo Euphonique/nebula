@@ -43,7 +43,7 @@ impl FindState {
             .multi_line(true)
             .build()
             .map(Some)
-            .map_err(|e| e.to_string().lines().last().unwrap_or("Ungültiger Ausdruck").to_string())
+            .map_err(|e| e.to_string().lines().last().unwrap_or(t!("Ungültiger Ausdruck")).to_string())
     }
 
     /// Limits the search to the primary selection of `doc`, or lifts the limit.

@@ -31,12 +31,12 @@ pub fn export(snippets: &BTreeMap<String, Vec<UserSnippet>>) -> Result<Vec<u8>> 
 /// Reads a Nebula export or a VS Code snippet file; `file_name` gives the
 /// language of VS Code's per-language files (`php.json`).
 pub fn parse(bytes: &[u8], file_name: &str) -> Result<Vec<Imported>> {
-    let text = std::str::from_utf8(bytes).context("Die Datei ist keine Textdatei (UTF-8)")?;
+    let text = std::str::from_utf8(bytes).context(t!("Die Datei ist keine Textdatei (UTF-8)"))?;
     let value: Value = serde_json::from_str(&strip_jsonc(text.trim_start_matches('\u{feff}')))
-        .context("Die Datei ist kein gültiges JSON")?;
-    let Value::Object(map) = value else { bail!("Unbekanntes Format – erwartet wird ein JSON-Objekt") };
+        .context(t!("Die Datei ist kein gültiges JSON"))?;
+    let Value::Object(map) = value else { bail!(t!("Unbekanntes Format – erwartet wird ein JSON-Objekt")) };
     if map.contains_key("nebula_snippets") {
-        let export: Export = serde_json::from_value(Value::Object(map)).context("Die Nebula-Snippet-Datei ist beschädigt")?;
+        let export: Export = serde_json::from_value(Value::Object(map)).context(t!("Die Nebula-Snippet-Datei ist beschädigt"))?;
         return Ok(export
             .snippets
             .into_iter()
@@ -73,7 +73,7 @@ pub fn parse(bytes: &[u8], file_name: &str) -> Result<Vec<Imported>> {
         }
     }
     if out.is_empty() {
-        bail!("In der Datei wurden keine Snippets gefunden");
+        bail!(t!("In der Datei wurden keine Snippets gefunden"));
     }
     Ok(out)
 }

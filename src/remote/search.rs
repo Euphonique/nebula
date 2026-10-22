@@ -160,7 +160,7 @@ async fn run(
     // grep/rg exit with 1 for "nothing found"; 2 and up are real errors.
     if lines == 0 && status.is_some_and(|s| s >= 2) {
         let msg = String::from_utf8_lossy(&stderr).trim().lines().last().unwrap_or("").to_string();
-        anyhow::bail!(if msg.is_empty() { format!("Suche auf dem Server fehlgeschlagen (Status {})", status.unwrap()) } else { msg });
+        anyhow::bail!(if msg.is_empty() { t!("Suche auf dem Server fehlgeschlagen (Status {unwrap})", unwrap = status.unwrap()) } else { msg });
     }
     Ok(())
 }
@@ -188,7 +188,7 @@ fn command(root: &str, q: &Query) -> String {
     let skip: Vec<&str> = if q.include_ignored { Vec::new() } else { q.skip_dirs.iter().map(|s| s.as_str()).collect() };
 
     // ripgrep: same regex syntax as Nebula, honours .gitignore itself.
-    let mut rg = format!("rg --no-heading --line-number --null --color never --no-messages --max-filesize 4M{common}");
+    let mut rg = t!("rg --no-heading --line-number --null --color never --no-messages --max-filesize 4M{common}", common = common);
     rg.push_str(if q.regex { "" } else { " -F" });
     rg.push_str(if q.include_ignored { " -uu" } else { " --hidden -g '!.git/'" });
     for p in &includes {
@@ -203,7 +203,7 @@ fn command(root: &str, q: &Query) -> String {
     rg.push_str(&format!(" -e {pattern} ."));
 
     // git grep: tracked and untracked files, without the ignored ones.
-    let mut git = format!("git grep -n -z -I --untracked --no-color{common}");
+    let mut git = t!("git grep -n -z -I --untracked --no-color{common}", common = common);
     git.push_str(if q.regex { " -E" } else { " -F" });
     git.push_str(&format!(" -e {pattern} --"));
     if includes.is_empty() {

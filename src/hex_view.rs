@@ -224,7 +224,7 @@ impl HexData {
 
 fn human(n: u64) -> String {
     match n {
-        n if n < 1024 => format!("{n} Bytes"),
+        n if n < 1024 => t!("{n} Bytes", n = n),
         n if n < 1024 * 1024 => format!("{:.1} KB", n as f64 / 1024.0),
         n if n < 1024 * 1024 * 1024 => format!("{:.1} MB", n as f64 / 1024.0 / 1024.0),
         n => format!("{:.2} GB", n as f64 / 1024.0 / 1024.0 / 1024.0),
@@ -337,15 +337,15 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, data: &HexData, theme: &Theme, id: eg
     ui.painter().rect_filled(header, 0.0, theme.jumpbar_bg);
     let cursor = data.state.lock().unwrap().cursor;
     ui.scope_builder(egui::UiBuilder::new().max_rect(header.shrink2(vec2(14.0, 4.0))).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-        ui.label(egui::RichText::new(format!("Binärdatei · {} · Offset {cursor:08X} ({cursor})", human(data.len()))).color(theme.text_muted));
+        ui.label(egui::RichText::new(t!("Binärdatei · {human} · Offset {cursor} ({cursor2})", human = human(data.len()), cursor = format!("{:08X}", cursor), cursor2 = cursor)).color(theme.text_muted));
         if can_open_as_text && !data.is_dirty() {
             ui.add_space(8.0);
-            if ui.small_button("Als Text öffnen").on_hover_text("Falls die Datei doch Text enthält").clicked() {
+            if ui.small_button(t!("Als Text öffnen")).on_hover_text(t!("Falls die Datei doch Text enthält")).clicked() {
                 action = Action::OpenAsText;
             }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new("Hex-Ziffern oder Text überschreiben · Tab wechselt die Spalte").small().color(theme.text_faint));
+            ui.label(egui::RichText::new(t!("Hex-Ziffern oder Text überschreiben · Tab wechselt die Spalte")).small().color(theme.text_faint));
         });
     });
 

@@ -11,7 +11,7 @@ use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
 
 const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Nebula";
 const PROG_ID: &str = "Nebula.Datei";
-const MENU_TEXT: &str = "Mit Nebula öffnen";
+
 /// Explorer context menus: files, folders, the background of a folder.
 const MENU_KEYS: [(&str, &str); 3] = [
     (r"Software\Classes\*\shell\Nebula", "%1"),
@@ -56,9 +56,9 @@ pub fn target_exe() -> PathBuf {
 /// Copies the running program into the install folder, adds the start menu
 /// entry and the entry under "Apps". Returns the installed program.
 pub fn install() -> Result<PathBuf> {
-    let current = std::env::current_exe().context("Programmpfad nicht gefunden")?;
+    let current = std::env::current_exe().context(t!("Programmpfad nicht gefunden"))?;
     let dir = install_dir();
-    std::fs::create_dir_all(&dir).with_context(|| format!("{} konnte nicht angelegt werden", dir.display()))?;
+    std::fs::create_dir_all(&dir).with_context(|| t!("{dir} konnte nicht angelegt werden", dir = dir.display()))?;
     let exe = dir.join("nebula.exe");
     if !same_file(&current, &exe) {
         // A running installed copy can't be overwritten, but renamed.
@@ -67,7 +67,7 @@ pub fn install() -> Result<PathBuf> {
             let _ = std::fs::remove_file(&old);
             let _ = std::fs::rename(&exe, &old);
         }
-        std::fs::copy(&current, &exe).with_context(|| format!("{} konnte nicht kopiert werden", exe.display()))?;
+        std::fs::copy(&current, &exe).with_context(|| t!("{exe} konnte nicht kopiert werden", exe = exe.display()))?;
         // Symbols for readable crash reports, if they are next to the program.
         let pdb = current.with_extension("pdb");
         if pdb.is_file() {
@@ -78,8 +78,8 @@ pub fn install() -> Result<PathBuf> {
     if let Some(parent) = link.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if !crate::win32::create_shortcut(&link, &exe, "Nebula – Code-Editor") {
-        anyhow::bail!("Der Startmenü-Eintrag konnte nicht angelegt werden");
+    if !crate::win32::create_shortcut(&link, &exe, t!("Nebula – Code-Editor")) {
+        anyhow::bail!(t!("Der Startmenü-Eintrag konnte nicht angelegt werden"));
     }
     let (key, _) = hkcu().create_subkey(UNINSTALL_KEY)?;
     let size_kb = std::fs::metadata(&exe).map(|m| (m.len() / 1024) as u32).unwrap_or(0);
@@ -88,7 +88,7 @@ pub fn install() -> Result<PathBuf> {
     key.set_value("Publisher", &"Nebula")?;
     key.set_value("DisplayIcon", &format!("{},0", exe.display()))?;
     key.set_value("InstallLocation", &dir.display().to_string())?;
-    key.set_value("UninstallString", &format!("\"{}\" --uninstall", exe.display()))?;
+    key.set_value("UninstallString", &t!("\"{exe}\" --uninstall", exe = exe.display()))?;
     key.set_value("EstimatedSize", &size_kb)?;
     key.set_value("NoModify", &1u32)?;
     key.set_value("NoRepair", &1u32)?;
@@ -132,7 +132,7 @@ pub fn uninstall() -> Result<()> {
             .arg(&dir)
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
-            .context("Der Programmordner konnte nicht zum Löschen vorgemerkt werden")?;
+            .context(t!("Der Programmordner konnte nicht zum Löschen vorgemerkt werden"))?;
     }
     Ok(())
 }
@@ -147,7 +147,7 @@ pub fn set_context_menu(on: bool) -> Result<()> {
     for (key, arg) in MENU_KEYS {
         if on {
             let (k, _) = hkcu().create_subkey(key)?;
-            k.set_value("", &MENU_TEXT)?;
+            k.set_value("", &t!("Mit Nebula öffnen"))?;
             k.set_value("Icon", &format!("\"{}\",0", exe.display()))?;
             let (cmd, _) = k.create_subkey("command")?;
             cmd.set_value("", &format!("\"{}\" \"{arg}\"", exe.display()))?;
@@ -171,7 +171,7 @@ pub fn set_file_types(on: bool) -> Result<()> {
     let app = r"Software\Classes\Applications\nebula.exe";
     if on {
         let (k, _) = hkcu().create_subkey(&classes)?;
-        k.set_value("", &"Textdatei (Nebula)")?;
+        k.set_value("", &t!("Textdatei (Nebula)"))?;
         let (icon, _) = k.create_subkey("DefaultIcon")?;
         icon.set_value("", &format!("\"{}\",0", exe.display()))?;
         let (cmd, _) = k.create_subkey(r"shell\open\command")?;

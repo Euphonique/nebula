@@ -609,7 +609,7 @@ impl Host {
         let ctx = match Context::full(&self.rt) {
             Ok(c) => c,
             Err(e) => {
-                self.fail(i, format!("Kontext konnte nicht erstellt werden: {e}"));
+                self.fail(i, t!("Kontext konnte nicht erstellt werden: {e}", e = e));
                 return;
             }
         };
@@ -772,14 +772,14 @@ fn install<'js>(ctx: Ctx<'js>, shared: Rc<RefCell<Shared>>, ext: usize, info: &V
             }
             match serde_json::from_value::<FromHost>(v) {
                 Ok(m) => s.emit(ext, m),
-                Err(e) => s.emit(ext, FromHost::Log { level: "warning".into(), text: format!("Unbekannte Nachricht: {e}") }),
+                Err(e) => s.emit(ext, FromHost::Log { level: "warning".into(), text: t!("Unbekannte Nachricht: {e}", e = e) }),
             }
         })?,
     )?;
     native.set(
         "compile",
         Function::new(ctx.clone(), move |ctx: Ctx<'js>, src: String, filename: String| -> rquickjs::Result<JsValue<'js>> {
-            let wrapped = format!("(function (exports, require, module, __filename, __dirname) {{{}\n}})", src.trim_start_matches("#!"));
+            let wrapped = t!("(function (exports, require, module, __filename, __dirname) {{{trim_start_matches}\n}})", trim_start_matches = src.trim_start_matches("#!"));
             let mut opts = EvalOptions::default();
             opts.strict = false;
             opts.filename = Some(filename);
@@ -798,7 +798,7 @@ fn install<'js>(ctx: Ctx<'js>, shared: Rc<RefCell<Shared>>, ext: usize, info: &V
 }
 
 fn arg_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
-    args[key].as_str().ok_or_else(|| format!("Argument {key} fehlt"))
+    args[key].as_str().ok_or_else(|| t!("Argument {key} fehlt", key = key))
 }
 
 fn arg_u64(args: &Value, key: &str) -> u64 {
@@ -858,7 +858,7 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
         "active" => Ok(json!(sh.active)),
         "workspace" => Ok(json!(sh.workspace)),
         "doc.info" => {
-            let d = sh.docs.get(&doc_id).ok_or("Dokument ist geschlossen")?;
+            let d = sh.docs.get(&doc_id).ok_or(t!("Dokument ist geschlossen"))?;
             let i = &d.info;
             Ok(json!({
                 "uri": i.uri, "path": i.path, "syntax": i.syntax, "remote": i.remote, "dirty": i.dirty,
@@ -867,20 +867,20 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
             }))
         }
         "doc.text" => {
-            let d = sh.docs.get(&doc_id).ok_or("Dokument ist geschlossen")?;
+            let d = sh.docs.get(&doc_id).ok_or(t!("Dokument ist geschlossen"))?;
             let len = d.text.len_utf16_cu();
             let (s, e) = (arg_u64(args, "start") as usize, args["end"].as_u64().map_or(len, |v| v as usize));
             if s > e || e > len {
-                return Err(format!("Bereich {s}–{e} liegt außerhalb des Dokuments ({len})"));
+                return Err(t!("Bereich {s}–{e} liegt außerhalb des Dokuments ({len})", s = s, e = e, len = len));
             }
             Ok(json!(d.text.slice(d.from16(s)..d.from16(e)).to_string()))
         }
         "doc.lineRange" => {
-            let d = sh.docs.get(&doc_id).ok_or("Dokument ist geschlossen")?;
+            let d = sh.docs.get(&doc_id).ok_or(t!("Dokument ist geschlossen"))?;
             let len = d.text.len_utf16_cu();
             let (s, e) = (arg_u64(args, "start") as usize, arg_u64(args, "end") as usize);
             if s > e || e > len {
-                return Err("Bereich liegt außerhalb des Dokuments".into());
+                return Err(t!("Bereich liegt außerhalb des Dokuments").into());
             }
             let first = d.text.char_to_line(d.from16(s));
             let mut last = d.text.char_to_line(d.from16(e));
@@ -892,20 +892,20 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
             Ok(json!([d.to16(d.text.line_to_char(first)), d.to16(end_char)]))
         }
         "doc.position" => {
-            let d = sh.docs.get(&doc_id).ok_or("Dokument ist geschlossen")?;
+            let d = sh.docs.get(&doc_id).ok_or(t!("Dokument ist geschlossen"))?;
             let c = d.from16(arg_u64(args, "offset") as usize);
             let line = d.text.char_to_line(c);
             Ok(json!([line, d.to16(c) - d.to16(d.text.line_to_char(line))]))
         }
         "doc.offset" => {
-            let d = sh.docs.get(&doc_id).ok_or("Dokument ist geschlossen")?;
+            let d = sh.docs.get(&doc_id).ok_or(t!("Dokument ist geschlossen"))?;
             let line = (arg_u64(args, "line") as usize).min(d.text.len_lines().saturating_sub(1));
             let start = d.to16(d.text.line_to_char(line));
             let line_end = if line + 1 < d.text.len_lines() { d.to16(d.text.line_to_char(line + 1)) } else { d.text.len_utf16_cu() };
             Ok(json!((start + arg_u64(args, "column") as usize).min(line_end)))
         }
         "editor.select" => {
-            let d = sh.docs.get_mut(&doc_id).ok_or("Dokument ist geschlossen")?;
+            let d = sh.docs.get_mut(&doc_id).ok_or(t!("Dokument ist geschlossen"))?;
             let ranges: Vec<[usize; 2]> = serde_json::from_value(args["ranges"].clone()).map_err(|e| e.to_string())?;
             d.sels = ranges.iter().map(|r| (d.from16(r[0]), d.from16(r[1]))).collect();
             sh.emit(ext, FromHost::Select { doc: doc_id, ranges });
@@ -981,7 +981,7 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
         "fs.remove" => {
             let p = native_path(arg_str(args, "path")?);
             if p.is_dir() {
-                return Err(format!("{} ist ein Ordner", p.display()));
+                return Err(t!("{p} ist ein Ordner", p = p.display()));
             }
             let _ = std::fs::remove_file(&p);
             Ok(Value::Null)
@@ -997,7 +997,7 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
             let src = native_path(arg_str(args, "src")?);
             let dest = native_path(arg_str(args, "dest")?);
             if dest.exists() {
-                return Err(format!("{} existiert bereits", dest.display()));
+                return Err(t!("{dest} existiert bereits", dest = dest.display()));
             }
             if op == "fs.move" {
                 std::fs::rename(&src, &dest).map_err(|e| e.to_string())?;
@@ -1040,7 +1040,7 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
             Ok(Value::Null)
         }
         "env" => Ok(json!(std::env::vars().collect::<HashMap<_, _>>())),
-        "json.lenient" => super::manifest::parse_lenient(arg_str(args, "text")?).ok_or_else(|| "Ungültiges JSON".to_string()),
+        "json.lenient" => super::manifest::parse_lenient(arg_str(args, "text")?).ok_or_else(|| t!("Ungültiges JSON").to_string()),
 
         // ---- processes ----------------------------------------------------------------
         "proc.spawn" => {
@@ -1083,8 +1083,8 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
         "proc.write" => {
             use std::io::Write;
             let id = arg_u64(args, "id");
-            let (_, p) = sh.procs.get_mut(&id).ok_or("Prozess läuft nicht")?;
-            let stdin = p.stdin.as_mut().ok_or("Standardeingabe ist geschlossen")?;
+            let (_, p) = sh.procs.get_mut(&id).ok_or(t!("Prozess läuft nicht"))?;
+            let stdin = p.stdin.as_mut().ok_or(t!("Standardeingabe ist geschlossen"))?;
             let data = match args["base64"].as_str() {
                 Some(b) => b64_decode(b),
                 None => args["text"].as_str().unwrap_or("").as_bytes().to_vec(),
@@ -1094,8 +1094,8 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
         }
         "proc.send" => {
             let id = arg_u64(args, "id");
-            let (_, p) = sh.procs.get_mut(&id).ok_or("Prozess läuft nicht")?;
-            let stdin = p.stdin.as_mut().ok_or("Standardeingabe ist geschlossen")?;
+            let (_, p) = sh.procs.get_mut(&id).ok_or(t!("Prozess läuft nicht"))?;
+            let stdin = p.stdin.as_mut().ok_or(t!("Standardeingabe ist geschlossen"))?;
             process::write_jsonrpc(stdin, arg_str(args, "body")?).map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
@@ -1153,7 +1153,7 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
             crate::win32::beep();
             Ok(Value::Null)
         }
-        _ => Err(format!("Unbekannte Operation: {op}")),
+        _ => Err(t!("Unbekannte Operation: {op}", op = op)),
     }
 }
 

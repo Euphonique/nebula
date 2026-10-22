@@ -65,7 +65,7 @@ impl NebulaApp {
 
     pub(super) fn open_publish_setup(&mut self) {
         let Some(root) = self.sidebar.root.clone() else {
-            self.info("Öffne zuerst einen lokalen Projektordner.");
+            self.info(t!("Öffne zuerst einen lokalen Projektordner."));
             return;
         };
         let target = self.settings.publish.get(&root_key(&root)).cloned().unwrap_or_else(|| PublishTarget {
@@ -84,14 +84,14 @@ impl NebulaApp {
         };
         let files = self.changed_files();
         if files.is_empty() {
-            self.info("Alles ist veröffentlicht – keine Änderungen.");
+            self.info(t!("Alles ist veröffentlicht – keine Änderungen."));
             return;
         }
         let n = files.len();
         for (path, rel, m) in files {
             self.publish_file(&root, &target, &path, &rel, m);
         }
-        self.info(format!("Veröffentliche {n} Datei(en)…"));
+        self.info(t!("Veröffentliche {n} Datei(en)…", n = n));
     }
 
     fn publish_file(&mut self, root: &Path, target: &PublishTarget, path: &Path, rel: &str, m: u64) {
@@ -138,7 +138,7 @@ impl NebulaApp {
                 Some(url) => url,
                 None => {
                     let Some(url) = self.temp_copy(i) else { return };
-                    self.info("Für diesen Server ist keine Web-URL hinterlegt (Server bearbeiten → Web-URL). Geöffnet wird eine lokale Kopie, Bilder und CSS fehlen daher eventuell.");
+                    self.info(t!("Für diesen Server ist keine Web-URL hinterlegt (Server bearbeiten → Web-URL). Geöffnet wird eine lokale Kopie, Bilder und CSS fehlen daher eventuell."));
                     url
                 }
             },
@@ -150,9 +150,9 @@ impl NebulaApp {
             }
         };
         if !crate::win32::open_url(&url) {
-            self.error(format!("{url} konnte nicht geöffnet werden."));
+            self.error(t!("{url} konnte nicht geöffnet werden.", url = url));
         } else if dirty && matches!(self.docs[i].source, DocSource::Local(_) | DocSource::Remote { .. }) {
-            self.info("Der Browser zeigt die gespeicherte Fassung – ungesicherte Änderungen fehlen noch.");
+            self.info(t!("Der Browser zeigt die gespeicherte Fassung – ungesicherte Änderungen fehlen noch."));
         }
     }
 
@@ -174,7 +174,7 @@ impl NebulaApp {
         match std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, bytes)) {
             Ok(()) => Some(file_url(&path)),
             Err(e) => {
-                self.error(format!("Temporäre Kopie konnte nicht angelegt werden: {e}"));
+                self.error(t!("Temporäre Kopie konnte nicht angelegt werden: {e}", e = e));
                 None
             }
         }

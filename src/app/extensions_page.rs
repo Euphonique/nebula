@@ -75,7 +75,7 @@ impl NebulaApp {
         self.poll_library(&ctx);
         let mut st = std::mem::take(&mut self.settings_ui.ext);
         ui.horizontal(|ui| {
-            for (tab, label) in [(Tab::Installed, "Installiert"), (Tab::Library, "Bibliothek"), (Tab::Console, "Konsole")] {
+            for (tab, label) in [(Tab::Installed, t!("Installiert")), (Tab::Library, t!("Bibliothek")), (Tab::Console, t!("Konsole"))] {
                 if ui.add(egui::Button::selectable(st.tab == tab, RichText::new(label).size(13.5))).clicked() {
                     st.tab = tab;
                 }
@@ -102,7 +102,7 @@ impl NebulaApp {
                             st.catalog = Some(Arc::new(all));
                             st.error = None;
                         }
-                        Err(e) => st.error = Some(format!("Die Bibliothek ist nicht erreichbar: {e}")),
+                        Err(e) => st.error = Some(t!("Die Bibliothek ist nicht erreichbar: {e}", e = e)),
                     }
                 }
                 LibMsg::Details(id, res) => {
@@ -125,10 +125,10 @@ impl NebulaApp {
                             let name = ext.name.clone();
                             self.settings.disabled_extensions.retain(|d| d != &ext.identifier);
                             self.ext.reload(&self.settings.disabled_extensions.clone());
-                            let themes = if ext.themes.is_empty() { "" } else { " Ihre Themes sind unter Design auswählbar." };
-                            self.info(format!("„{name}“ wurde installiert.{themes}"));
+                            let themes = if ext.themes.is_empty() { "" } else { t!(" Ihre Themes sind unter Design auswählbar.") };
+                            self.info(t!("„{name}“ wurde installiert.{themes}", name = name, themes = themes));
                         }
-                        Err(e) => self.error(format!("Installation fehlgeschlagen: {e}")),
+                        Err(e) => self.error(t!("Installation fehlgeschlagen: {e}", e = e)),
                     }
                 }
             }
@@ -168,33 +168,33 @@ impl NebulaApp {
         let ctx = ui.ctx().clone();
         let theme = self.theme.clone();
         ui.horizontal(|ui| {
-            if ui.button("Aus Ordner installieren…").clicked()
-                && let Some(dir) = rfd::FileDialog::new().set_title("Ordner einer Erweiterung (.novaextension)").pick_folder()
+            if ui.button(t!("Aus Ordner installieren…")).clicked()
+                && let Some(dir) = rfd::FileDialog::new().set_title(t!("Ordner einer Erweiterung (.novaextension)")).pick_folder()
             {
                 match library::install_folder(&dir) {
                     Ok(ext) => {
                         self.ext.reload(&self.settings.disabled_extensions.clone());
-                        self.info(format!("„{}“ wurde installiert.", ext.name));
+                        self.info(t!("„{name}“ wurde installiert.", name = ext.name));
                     }
-                    Err(e) => self.error(format!("Installation fehlgeschlagen: {e}")),
+                    Err(e) => self.error(t!("Installation fehlgeschlagen: {e}", e = e)),
                 }
             }
-            if ui.button("Aus ZIP installieren…").clicked()
-                && let Some(file) = rfd::FileDialog::new().add_filter("Erweiterung", &["zip"]).pick_file()
+            if ui.button(t!("Aus ZIP installieren…")).clicked()
+                && let Some(file) = rfd::FileDialog::new().add_filter(t!("Erweiterung"), &["zip"]).pick_file()
             {
                 match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| library::install_zip(&b, "")) {
                     Ok(ext) => {
                         self.ext.reload(&self.settings.disabled_extensions.clone());
-                        self.info(format!("„{}“ wurde installiert.", ext.name));
+                        self.info(t!("„{name}“ wurde installiert.", name = ext.name));
                     }
-                    Err(e) => self.error(format!("Installation fehlgeschlagen: {e}")),
+                    Err(e) => self.error(t!("Installation fehlgeschlagen: {e}", e = e)),
                 }
             }
-            if ui.button("Neu laden").on_hover_text("Erweiterungen neu einlesen und starten").clicked() {
+            if ui.button(t!("Neu laden")).on_hover_text(t!("Erweiterungen neu einlesen und starten")).clicked() {
                 self.ext.status.clear();
                 self.ext.reload(&self.settings.disabled_extensions.clone());
             }
-            if ui.button("Ordner öffnen").clicked() {
+            if ui.button(t!("Ordner öffnen")).clicked() {
                 let dir = crate::ext::manifest::extensions_dir();
                 let _ = std::fs::create_dir_all(&dir);
                 let _ = std::process::Command::new("explorer").arg(dir).spawn();
@@ -203,9 +203,9 @@ impl NebulaApp {
         ui.add_space(6.0);
         if self.ext.installed.is_empty() {
             ui.add_space(30.0);
-            ui.label(RichText::new("Noch keine Erweiterungen installiert.").size(15.0));
-            ui.label(RichText::new("Unter „Bibliothek“ findest du alle Erweiterungen aus Novas Extension Library.").color(theme.text_muted));
-            if ui.button("Bibliothek öffnen").clicked() {
+            ui.label(RichText::new(t!("Noch keine Erweiterungen installiert.")).size(15.0));
+            ui.label(RichText::new(t!("Unter „Bibliothek“ findest du alle Erweiterungen aus Novas Extension Library.")).color(theme.text_muted));
+            if ui.button(t!("Bibliothek öffnen")).clicked() {
                 st.tab = Tab::Library;
             }
             return;
@@ -229,11 +229,11 @@ impl NebulaApp {
                         let disabled = self.settings.disabled_extensions.contains(&e.identifier);
                         let status = self.ext.status.get(&e.identifier).cloned();
                         let (dot, tip) = match (&status, disabled) {
-                            (_, true) => (theme.text_faint, "Deaktiviert"),
-                            (Some(ExtStatus::Active), _) => (theme.success, "Läuft"),
-                            (Some(ExtStatus::Failed(_)), _) => (theme.danger, "Fehler beim Start"),
-                            (None, _) if e.has_scripts() => (theme.text_muted, "Wartet (startet bei passender Datei)"),
-                            (None, _) => (theme.accent, "Aktiv (ohne Skript)"),
+                            (_, true) => (theme.text_faint, t!("Deaktiviert")),
+                            (Some(ExtStatus::Active), _) => (theme.success, t!("Läuft")),
+                            (Some(ExtStatus::Failed(_)), _) => (theme.danger, t!("Fehler beim Start")),
+                            (None, _) if e.has_scripts() => (theme.text_muted, t!("Wartet (startet bei passender Datei)")),
+                            (None, _) => (theme.accent, t!("Aktiv (ohne Skript)")),
                         };
                         let sel = selected.as_deref() == Some(&e.identifier);
                         let resp = ui.add(egui::Button::selectable(sel, RichText::new(&e.name).color(if disabled { theme.text_faint } else { theme.foreground })).min_size(vec2(182.0, 26.0)));
@@ -264,7 +264,7 @@ impl NebulaApp {
             }
             ui.vertical(|ui| {
                 ui.label(RichText::new(&ext.name).size(18.0).strong());
-                ui.label(RichText::new(format!("{} · Version {}", ext.organization, ext.version)).color(theme.text_muted));
+                ui.label(RichText::new(t!("{organization} · Version {version}", organization = ext.organization, version = ext.version)).color(theme.text_muted));
             });
         });
         if !ext.description.is_empty() {
@@ -275,7 +275,7 @@ impl NebulaApp {
         }
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            if ui.button(if disabled { "Aktivieren" } else { "Deaktivieren" }).clicked() {
+            if ui.button(if disabled { t!("Aktivieren") } else { t!("Deaktivieren") }).clicked() {
                 if disabled {
                     self.settings.disabled_extensions.retain(|d| d != &ext.identifier);
                 } else {
@@ -284,27 +284,27 @@ impl NebulaApp {
                 let _ = self.settings.save();
                 self.ext.reload(&self.settings.disabled_extensions.clone());
             }
-            if ui.button("Deinstallieren").clicked() {
+            if ui.button(t!("Deinstallieren")).clicked() {
                 self.settings.disabled_extensions.push(ext.identifier.clone());
                 self.ext.reload(&self.settings.disabled_extensions.clone());
                 match library::uninstall(ext) {
-                    Ok(()) => self.info(format!("„{}“ wurde entfernt.", ext.name)),
-                    Err(e) => self.error(format!("Entfernen fehlgeschlagen: {e}")),
+                    Ok(()) => self.info(t!("„{name}“ wurde entfernt.", name = ext.name)),
+                    Err(e) => self.error(t!("Entfernen fehlgeschlagen: {e}", e = e)),
                 }
                 self.settings.disabled_extensions.retain(|d| d != &ext.identifier);
                 self.ext.reload(&self.settings.disabled_extensions.clone());
             }
-            if ui.button("Im Explorer zeigen").clicked() {
+            if ui.button(t!("Im Explorer zeigen")).clicked() {
                 let _ = std::process::Command::new("explorer").arg(&ext.path).spawn();
             }
             if let Some(url) = ext.repository.as_ref().or(ext.homepage.as_ref()) {
-                ui.hyperlink_to("Website", url);
+                ui.hyperlink_to(t!("Website"), url);
             }
         });
 
         // Preferences.
         if !ext.config.is_empty() {
-            section(ui, "Einstellungen");
+            section(ui, t!("Einstellungen"));
             for item in &ext.config {
                 self.config_item(ui, st, ext, item, false);
             }
@@ -312,7 +312,7 @@ impl NebulaApp {
         if !ext.config_workspace.is_empty() {
             section(ui, "Projekt-Einstellungen");
             if self.sidebar.root.is_none() {
-                ui.label(RichText::new("Öffne einen Projektordner, um diese Einstellungen festzulegen.").color(theme.text_muted));
+                ui.label(RichText::new(t!("Öffne einen Projektordner, um diese Einstellungen festzulegen.")).color(theme.text_muted));
             } else {
                 for item in &ext.config_workspace {
                     self.config_item(ui, st, ext, item, true);
@@ -323,10 +323,10 @@ impl NebulaApp {
         // Contributions.
         let cmds: Vec<_> = self.ext.commands.iter().filter(|c| c.ext == ext.identifier).cloned().collect();
         if !cmds.is_empty() {
-            section(ui, "Befehle");
+            section(ui, t!("Befehle"));
             for c in cmds {
                 ui.horizontal(|ui| {
-                    if ui.small_button("Ausführen").clicked() {
+                    if ui.small_button(t!("Ausführen")).clicked() {
                         self.run_ext_command(&c);
                     }
                     ui.label(&c.title);
@@ -338,23 +338,23 @@ impl NebulaApp {
         }
         let mut parts = Vec::new();
         if !ext.themes.is_empty() {
-            parts.push(format!("{} Theme(s)", ext.themes.len()));
+            parts.push(t!("{themes_count} Theme(s)", themes_count = ext.themes.len()));
         }
         if !ext.clips.is_empty() {
-            parts.push(format!("{} Clips", ext.clips.len()));
+            parts.push(t!("{clips_count} Clips", clips_count = ext.clips.len()));
         }
         if !ext.sidebars.is_empty() {
-            parts.push(format!("{} Seitenleiste(n)", ext.sidebars.len()));
+            parts.push(t!("{sidebars_count} Seitenleiste(n)", sidebars_count = ext.sidebars.len()));
         }
         if !parts.is_empty() {
-            ui.label(RichText::new(format!("Enthält: {}", parts.join(", "))).color(theme.text_muted));
+            ui.label(RichText::new(t!("Enthält: {parts}", parts = parts.join(", "))).color(theme.text_muted));
         }
         if !ext.themes.is_empty() {
-            ui.label(RichText::new("Die Themes stehen unter Einstellungen → Design und Themes zur Auswahl.").small().color(theme.text_faint));
+            ui.label(RichText::new(t!("Die Themes stehen unter Einstellungen → Design und Themes zur Auswahl.")).small().color(theme.text_faint));
         }
 
         if let Some(readme) = ext.readme() {
-            section(ui, "Beschreibung");
+            section(ui, t!("Beschreibung"));
             markdown(ui, &readme, &theme);
         }
     }
@@ -429,7 +429,7 @@ impl NebulaApp {
                     Value::String(s) => s.clone(),
                     _ => String::new(),
                 });
-                let resp = ui.add(egui::TextEdit::multiline(buf).desired_rows(if is_list { 3 } else { 4 }).desired_width(f32::INFINITY).hint_text(if is_list { "Ein Eintrag pro Zeile" } else { item.placeholder.as_str() }));
+                let resp = ui.add(egui::TextEdit::multiline(buf).desired_rows(if is_list { 3 } else { 4 }).desired_width(f32::INFINITY).hint_text(if is_list { t!("Ein Eintrag pro Zeile") } else { item.placeholder.as_str() }));
                 if resp.changed() {
                     new = Some(if is_list {
                         Value::Array(buf.lines().map(str::trim).filter(|l| !l.is_empty()).map(|l| Value::String(l.to_string())).collect())
@@ -472,23 +472,23 @@ impl NebulaApp {
         let theme = self.theme.clone();
         let mut reset = false;
         ui.horizontal(|ui| {
-            let resp = ui.add(egui::TextEdit::singleline(&mut st.query).hint_text("Erweiterungen suchen…").desired_width(300.0));
+            let resp = ui.add(egui::TextEdit::singleline(&mut st.query).hint_text(t!("Erweiterungen suchen…")).desired_width(300.0));
             if std::mem::take(&mut st.focus_search) {
                 resp.request_focus();
             }
             if resp.changed() {
                 reset = true;
             }
-            let cat_label = library::CATEGORIES.iter().find(|c| c.0 == st.category).map_or("Alle", |c| c.1);
+            let cat_label = library::CATEGORIES.iter().find(|c| c.0 == st.category).map_or(t!("Alle"), |c| crate::i18n::tr(c.1));
             egui::ComboBox::from_id_salt("ext-cat").selected_text(cat_label).show_ui(ui, |ui| {
                 for (id, label) in library::CATEGORIES {
-                    if ui.selectable_label(st.category == *id, *label).clicked() {
+                    if ui.selectable_label(st.category == *id, crate::i18n::tr(label)).clicked() {
                         st.category = id.to_string();
                         reset = true;
                     }
                 }
             });
-            if ui.button("Aktualisieren").clicked() && !st.loading {
+            if ui.button(t!("Aktualisieren")).clicked() && !st.loading {
                 st.loading = true;
                 let tx = st.channel();
                 spawn(&ctx, || LibMsg::Catalog(library::catalog()), tx);
@@ -514,7 +514,7 @@ impl NebulaApp {
         ui.add_space(4.0);
 
         if let Some(details) = st.details.clone() {
-            if ui.button("← Zurück zur Liste").clicked() {
+            if ui.button(t!("← Zurück zur Liste")).clicked() {
                 st.details = None;
                 return;
             }
@@ -522,10 +522,10 @@ impl NebulaApp {
                 self.library_row(ui, st, &details, &ctx, true);
                 ui.add_space(6.0);
                 if !details.entitlements.is_empty() {
-                    ui.label(RichText::new(format!("Berechtigungen: {}", details.entitlements.join(", "))).small().color(theme.text_muted));
+                    ui.label(RichText::new(t!("Berechtigungen: {entitlements}", entitlements = details.entitlements.join(", "))).small().color(theme.text_muted));
                 }
                 if let Some(repo) = &details.repository {
-                    ui.hyperlink_to("Quellcode", repo);
+                    ui.hyperlink_to(t!("Quellcode"), repo);
                 }
                 match &details.readme {
                     Some(r) => markdown(ui, r, &theme),
@@ -539,7 +539,7 @@ impl NebulaApp {
 
         let Some(catalog) = st.catalog.clone() else { return };
         let matches = library::filter(&catalog, &st.query, &st.category);
-        ui.label(RichText::new(format!("{} Erweiterungen", matches.len())).small().color(theme.text_faint));
+        ui.label(RichText::new(t!("{matches_count} Erweiterungen", matches_count = matches.len())).small().color(theme.text_faint));
         let more = matches.len() > st.shown;
         let results: Vec<LibraryEntry> = matches.into_iter().take(st.shown).cloned().collect();
         egui::ScrollArea::vertical().id_salt("lib-list").max_height(420.0).auto_shrink([false, false]).show(ui, |ui| {
@@ -554,7 +554,7 @@ impl NebulaApp {
                 }
                 ui.separator();
             }
-            if more && ui.button("Mehr anzeigen").clicked() {
+            if more && ui.button(t!("Mehr anzeigen")).clicked() {
                 st.shown += 40;
             }
         });
@@ -590,18 +590,18 @@ impl NebulaApp {
                     let cats: Vec<&str> = entry
                         .categories
                         .iter()
-                        .map(|c| library::CATEGORIES.iter().find(|x| x.0 == c).map_or(c.as_str(), |x| x.1))
+                        .map(|c| library::CATEGORIES.iter().find(|x| x.0 == c).map_or(c.as_str(), |x| crate::i18n::tr(x.1)))
                         .collect();
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let installed = self.ext.installed.iter().find(|e| e.identifier == entry.identifier);
                         if st.installing.contains(&entry.identifier) {
                             ui.spinner();
-                            ui.label("Wird installiert…");
+                            ui.label(t!("Wird installiert…"));
                         } else {
                             let label = match installed {
-                                Some(e) if e.version != entry.version && !entry.version.is_empty() => Some("Aktualisieren"),
+                                Some(e) if e.version != entry.version && !entry.version.is_empty() => Some(t!("Aktualisieren")),
                                 Some(_) => None,
-                                None => Some("Installieren"),
+                                None => Some(t!("Installieren")),
                             };
                             match label {
                                 Some(l) => {
@@ -613,15 +613,15 @@ impl NebulaApp {
                                     }
                                 }
                                 None => {
-                                    ui.label(RichText::new("✓ Installiert").color(theme.success));
+                                    ui.label(RichText::new(t!("✓ Installiert")).color(theme.success));
                                 }
                             }
                         }
-                        if !detailed && ui.button("Details").clicked() {
+                        if !detailed && ui.button(t!("Details")).clicked() {
                             open = true;
                         }
                         // Added last in the right-to-left row, so it gets the space left over.
-                        ui.add(egui::Label::new(RichText::new(format!("{} · {} Downloads", cats.join(", "), entry.downloads)).small().color(theme.text_faint)).truncate());
+                        ui.add(egui::Label::new(RichText::new(t!("{cats} · {downloads} Downloads", cats = cats.join(", "), downloads = entry.downloads)).small().color(theme.text_faint)).truncate());
                     });
                 });
             });
@@ -634,8 +634,8 @@ impl NebulaApp {
     fn console_tab(&mut self, ui: &mut Ui, st: &mut ExtPageState) {
         let theme = self.theme.clone();
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut st.console_filter).hint_text("Filtern").desired_width(240.0));
-            if ui.button("Leeren").clicked() {
+            ui.add(egui::TextEdit::singleline(&mut st.console_filter).hint_text(t!("Filtern")).desired_width(240.0));
+            if ui.button(t!("Leeren")).clicked() {
                 self.ext.log.clear();
             }
         });
@@ -660,7 +660,7 @@ impl NebulaApp {
                 });
             }
             if self.ext.log.is_empty() {
-                ui.label(RichText::new("Keine Ausgaben.").color(theme.text_muted));
+                ui.label(RichText::new(t!("Keine Ausgaben.")).color(theme.text_muted));
             }
         });
     }

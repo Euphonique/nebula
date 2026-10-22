@@ -80,11 +80,11 @@ impl Selector {
 /// German name of a session setting the agent sends in English.
 fn setting_name(id: &str, category: &str, name: &str) -> String {
     match (category, id) {
-        ("model", _) => "Modell",
-        ("thought_level", _) => "Aufwand",
-        ("mode", _) => "Modus",
-        (_, "fast") => "Schnellmodus",
-        (_, "collaboration_mode") => "Arbeitsweise",
+        ("model", _) => t!("Modell"),
+        ("thought_level", _) => t!("Aufwand"),
+        ("mode", _) => t!("Modus"),
+        (_, "fast") => t!("Schnellmodus"),
+        (_, "collaboration_mode") => t!("Arbeitsweise"),
         _ => return name.to_string(),
     }
     .into()
@@ -95,28 +95,28 @@ fn setting_name(id: &str, category: &str, name: &str) -> String {
 fn choice_name(value: &str, name: &str, description: Option<&str>) -> (String, Option<String>) {
     let (n, d): (&str, Option<&str>) = match value {
         // Claude Code: modes.
-        "default" if name == "Manual" => ("Manuell", Some("Vor jeder Änderung nachfragen")),
-        "acceptEdits" => ("Änderungen annehmen", Some("Dateiänderungen automatisch annehmen")),
-        "plan" => ("Planen", Some("Erst einen Plan erstellen, dann ändern")),
-        "auto" => ("Automatisch", Some("Claude entscheidet selbst, wann es nachfragt")),
-        "bypassPermissions" => ("Ohne Rückfragen", Some("Alles ohne Nachfrage erlauben – mit Vorsicht verwenden")),
+        "default" if name == "Manual" => (t!("Manuell"), Some(t!("Vor jeder Änderung nachfragen"))),
+        "acceptEdits" => (t!("Änderungen annehmen"), Some(t!("Dateiänderungen automatisch annehmen"))),
+        "plan" => (t!("Planen"), Some(t!("Erst einen Plan erstellen, dann ändern"))),
+        "auto" => (t!("Automatisch"), Some(t!("Claude entscheidet selbst, wann es nachfragt"))),
+        "bypassPermissions" => (t!("Ohne Rückfragen"), Some(t!("Alles ohne Nachfrage erlauben – mit Vorsicht verwenden"))),
         // Codex: modes.
-        "read-only" => ("Nur lesen", Some("Fragt vor Änderungen an Dateien und vor Internetzugriff")),
-        "workspace-write" => ("Projektzugriff", Some("Darf im Projekt ändern; fragt außerhalb und vor Netzwerkzugriff")),
-        "agent" if name == "Auto review" => ("Automatische Prüfung", Some("Fragt nur bei möglicherweise unsicheren Aktionen")),
-        "agent-full-access" => ("Vollzugriff", Some("Uneingeschränkter Zugriff auf Internet und alle Dateien")),
+        "read-only" => (t!("Nur lesen"), Some(t!("Fragt vor Änderungen an Dateien und vor Internetzugriff"))),
+        "workspace-write" => (t!("Projektzugriff"), Some(t!("Darf im Projekt ändern; fragt außerhalb und vor Netzwerkzugriff"))),
+        "agent" if name == "Auto review" => (t!("Automatische Prüfung"), Some(t!("Fragt nur bei möglicherweise unsicheren Aktionen"))),
+        "agent-full-access" => (t!("Vollzugriff"), Some(t!("Uneingeschränkter Zugriff auf Internet und alle Dateien"))),
         // Effort.
-        "low" => ("Niedrig", None),
-        "medium" => ("Mittel", None),
-        "high" => ("Hoch", None),
-        "xhigh" => ("Sehr hoch", None),
-        "max" => ("Maximal", None),
-        "minimal" => ("Minimal", None),
+        "low" => (t!("Niedrig"), None),
+        "medium" => (t!("Mittel"), None),
+        "high" => (t!("Hoch"), None),
+        "xhigh" => (t!("Sehr hoch"), None),
+        "max" => (t!("Maximal"), None),
+        "minimal" => (t!("Minimal"), None),
         // Switches and the recommended default.
-        "on" => ("An", None),
-        "off" => ("Aus", None),
-        "default" if name.starts_with("Default (recommended)") => ("Standard (empfohlen)", description),
-        "default" if name == "Default" => ("Standard", description),
+        "on" => (t!("An"), None),
+        "off" => (t!("Aus"), None),
+        "default" if name.starts_with("Default (recommended)") => (t!("Standard (empfohlen)"), description),
+        "default" if name == "Default" => (t!("Standard"), description),
         _ => return (name.to_string(), description.map(str::to_string)),
     };
     (n.to_string(), d.or(description).map(str::to_string))
@@ -169,10 +169,10 @@ impl NebulaApp {
         let agents = self.settings.agents.iter().map(|a| (a.name.clone(), a.name.clone(), None)).collect();
         let mut out = vec![Selector {
             kind: SelKind::Agent,
-            name: "Agent".into(),
+            name: t!("Agent").into(),
             category: String::new(),
             label: self.settings.agent.clone(),
-            tip: Some("Agent".into()),
+            tip: Some(t!("Agent").into()),
             current: self.settings.agent.clone(),
             choices: agents,
         }];
@@ -226,10 +226,10 @@ impl NebulaApp {
             let name = choices.iter().find(|(v, _, _)| *v == current).map_or(current.clone(), |(_, n, _)| n.clone());
             out.push(Selector {
                 kind: SelKind::Mode,
-                name: "Modus".into(),
+                name: t!("Modus").into(),
                 category: "mode".into(),
-                label: format!("Modus: {name}"),
-                tip: Some("Modus".into()),
+                label: t!("Modus: {name}", name = name),
+                tip: Some(t!("Modus").into()),
                 current,
                 choices,
             });
@@ -290,9 +290,9 @@ impl NebulaApp {
             return;
         }
         let dl = self.agent.node_dl.take().unwrap();
-        match dl.handle.join().unwrap_or_else(|_| Err("Download abgebrochen.".into())) {
+        match dl.handle.join().unwrap_or_else(|_| Err(t!("Download abgebrochen.").into())) {
             Ok(version) => {
-                self.info(format!("Node.js {version} ist bereit."));
+                self.info(t!("Node.js {version} ist bereit.", version = version));
                 if self.agent.session.as_ref().is_some_and(|s| s.phase == Phase::NeedsNode) {
                     self.agent.session = None;
                 }
@@ -308,9 +308,9 @@ impl NebulaApp {
         match &self.agent.node_dl {
             Some(dl) => {
                 let text = match dl.progress.fraction() {
-                    Some(f) if f >= 1.0 => "Node.js wird entpackt …".to_string(),
-                    Some(f) => format!("Node.js wird geladen … {:.0} %", f * 100.0),
-                    None => "Node.js wird geladen …".into(),
+                    Some(f) if f >= 1.0 => t!("Node.js wird entpackt …").to_string(),
+                    Some(f) => t!("Node.js wird geladen … {value} %", value = format!("{:.0}", f * 100.0)),
+                    None => t!("Node.js wird geladen …").into(),
                 };
                 ui.add(egui::ProgressBar::new(dl.progress.fraction().unwrap_or(0.0)).text(text).desired_width(320.0));
             }
@@ -372,7 +372,7 @@ impl NebulaApp {
             .or(self.settings.agents.first())
             .cloned();
         let Some(cfg) = cfg else {
-            self.error("Kein Agent eingerichtet (Einstellungen › KI-Agenten).");
+            self.error(t!("Kein Agent eingerichtet (Einstellungen › KI-Agenten)."));
             return;
         };
         let ctx = ctx.clone();
@@ -421,7 +421,7 @@ impl NebulaApp {
         }
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         if super::is_binary(&bytes) {
-            return Err(format!("{} ist keine Textdatei.", path.display()));
+            return Err(t!("{path} ist keine Textdatei.", path = path.display()));
         }
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
@@ -431,7 +431,7 @@ impl NebulaApp {
         if let Some(i) = self.local_doc(path) {
             self.docs[i].replace_text(content);
             if !self.save_doc(i, false) {
-                return Err(format!("{} konnte nicht gespeichert werden.", path.display()));
+                return Err(t!("{path} konnte nicht gespeichert werden.", path = path.display()));
             }
             return Ok(());
         }
@@ -509,11 +509,11 @@ impl NebulaApp {
                 (Some(i), _) => self.doc_attachment(i),
                 (None, FileRef::Local(p)) => match std::fs::read(p) {
                     Ok(bytes) if super::is_binary(&bytes) => {
-                        self.error(format!("{} ist keine Textdatei.", p.display()));
+                        self.error(t!("{p} ist keine Textdatei.", p = p.display()));
                         continue;
                     }
                     Ok(bytes) if bytes.len() > MAX_ATTACH => {
-                        self.error(format!("{} ist zu groß zum Anhängen.", p.display()));
+                        self.error(t!("{p} ist zu groß zum Anhängen.", p = p.display()));
                         continue;
                     }
                     Ok(bytes) => Some(Attachment::local(p, String::from_utf8_lossy(&bytes).into_owned())),
@@ -528,7 +528,7 @@ impl NebulaApp {
                             self.agent.pending_attach.insert(tag, file.clone());
                         }
                         None => {
-                            self.error("Server nicht gefunden.");
+                            self.error(t!("Server nicht gefunden."));
                             continue;
                         }
                     }
@@ -551,7 +551,7 @@ impl NebulaApp {
         match data {
             Ok(bytes) if super::is_binary(bytes) || bytes.len() > MAX_ATTACH => {
                 self.agent.attachments.retain(|a| a.file != file);
-                self.error(format!("{path} lässt sich nicht anhängen (keine Textdatei oder zu groß)."));
+                self.error(t!("{path} lässt sich nicht anhängen (keine Textdatei oder zu groß).", path = path));
             }
             Ok(bytes) => {
                 let a = Attachment::remote(&server, path, String::from_utf8_lossy(bytes).into_owned());
@@ -578,7 +578,7 @@ impl NebulaApp {
 
         // Header button: new conversation.
         let r = Rect::from_center_size(pos2(header.right() - 13.0, header.center().y), vec2(26.0, 24.0));
-        let resp = ui.interact(r, egui::Id::unique("agent-new"), Sense::click()).on_hover_text("Neue Unterhaltung");
+        let resp = ui.interact(r, egui::Id::unique("agent-new"), Sense::click()).on_hover_text(t!("Neue Unterhaltung"));
         if resp.hovered() {
             ui.painter().rect_filled(r, 6.0, theme.hover);
         }
@@ -656,15 +656,15 @@ impl NebulaApp {
                         // Paperclip: the active file and a file picker.
                         let attach = ui
                             .add(egui::Button::new(RichText::new("📎").size(13.0)).frame_when_inactive(false))
-                            .on_hover_text("Dateien anhängen (auch per Rechtsklick in der Seitenleiste)");
+                            .on_hover_text(t!("Dateien anhängen (auch per Rechtsklick in der Seitenleiste)"));
                         egui::Popup::menu(&attach).show(|ui| {
                             ui.set_min_width(220.0);
                             if let Some(n) = &file_name
-                                && ui.checkbox(&mut self.agent.attach_file, format!("Aktuelle Datei: {n}")).clicked()
+                                && ui.checkbox(&mut self.agent.attach_file, t!("Aktuelle Datei: {n}", n = n)).clicked()
                             {
                                 ui.close();
                             }
-                            if ui.button("Dateien auswählen…").clicked() {
+                            if ui.button(t!("Dateien auswählen…")).clicked() {
                                 ui.close();
                                 pick_files = true;
                             }
@@ -692,7 +692,7 @@ impl NebulaApp {
                         let more: Vec<&Selector> =
                             selectors.iter().filter(|s| slot(s) == 4 || (slot(s) < 3 && !shown[slot(s)])).collect();
                         if !more.is_empty() {
-                            let resp = ui.add(egui::Button::new(RichText::new("⋯").size(13.0)).frame_when_inactive(false)).on_hover_text("Weitere Einstellungen");
+                            let resp = ui.add(egui::Button::new(RichText::new("⋯").size(13.0)).frame_when_inactive(false)).on_hover_text(t!("Weitere Einstellungen"));
                             egui::Popup::menu(&resp).show(|ui| {
                                 for sel in &more {
                                     ui.menu_button(format!("{}: {}", sel.name, sel.current_name()), |ui| {
@@ -703,9 +703,9 @@ impl NebulaApp {
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let (text, tip, enabled) = if working {
-                                ("■", "Stoppen", true)
+                                ("■", t!("Stoppen"), true)
                             } else {
-                                ("↑", "Senden (Enter)", !self.agent.input.trim().is_empty())
+                                ("↑", t!("Senden (Enter)"), !self.agent.input.trim().is_empty())
                             };
                             let button = egui::Button::new(RichText::new(text).size(14.0).strong().color(Color32::WHITE))
                                 .fill(if working { theme.danger.gamma_multiply(0.85) } else { theme.accent })
@@ -726,11 +726,11 @@ impl NebulaApp {
                     let edit = egui::TextEdit::multiline(&mut self.agent.input)
                         .id(egui::Id::unique("agent-input"))
                         .frame(egui::Frame::NONE)
-                        .hint_text(if working { "Der Agent arbeitet …" } else { "Frag den Agenten oder gib ihm eine Aufgabe …" })
+                        .hint_text(if working { t!("Der Agent arbeitet …") } else { t!("Frag den Agenten oder gib ihm eine Aufgabe …") })
                         .desired_rows(2)
                         .desired_width(f32::INFINITY)
                         .return_key(egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::Enter));
-                    let resp = ui.add(edit).on_hover_text("Enter: senden · Umschalt+Enter: neue Zeile");
+                    let resp = ui.add(edit).on_hover_text(t!("Enter: senden · Umschalt+Enter: neue Zeile"));
                     if self.agent.focus_input {
                         resp.request_focus();
                         self.agent.focus_input = false;
@@ -751,14 +751,14 @@ impl NebulaApp {
                         .attachments
                         .iter()
                         .map(|a| match &a.loaded {
-                            Some(l) => (Some(a.file.clone()), format!("📄 {}  ✕", a.label), format!("{}\nKlicken zum Entfernen", l.label)),
-                            None => (Some(a.file.clone()), format!("⏳ {}", a.label), "Wird vom Server gelesen …".to_string()),
+                            Some(l) => (Some(a.file.clone()), format!("📄 {}  ✕", a.label), t!("{label}\nKlicken zum Entfernen", label = l.label)),
+                            None => (Some(a.file.clone()), format!("⏳ {}", a.label), t!("Wird vom Server gelesen …").to_string()),
                         })
                         .collect();
                     if self.agent.attach_file
                         && let Some(n) = &file_name
                     {
-                        items.insert(0, (None, format!("📄 {n} (aktuell)  ✕"), "Die aktuelle Datei wird mitgeschickt\nKlicken zum Entfernen".into()));
+                        items.insert(0, (None, t!("📄 {n} (aktuell)  ✕", n = n), t!("Die aktuelle Datei wird mitgeschickt\nKlicken zum Entfernen").into()));
                     }
                     let mut remove: Option<Option<FileRef>> = None;
                     // Rows by width (a chip never gets wider than the card).
@@ -805,7 +805,7 @@ impl NebulaApp {
             self.apply_agent_pick(pick);
         }
         if pick_files {
-            let mut dialog = rfd::FileDialog::new().set_title("Dateien an den KI-Agenten anhängen");
+            let mut dialog = rfd::FileDialog::new().set_title(t!("Dateien an den KI-Agenten anhängen"));
             if let Some(dir) = self.sidebar.root.clone() {
                 dialog = dialog.set_directory(dir);
             }
@@ -821,18 +821,14 @@ impl NebulaApp {
         if self.agent.session.as_ref().is_some_and(|s| s.phase == Phase::NeedsNode) {
             let ui = &mut list_ui;
             ui.add_space(24.0);
-            ui.label(RichText::new("Node.js wird benötigt").size(15.0).strong());
+            ui.label(RichText::new(t!("Node.js wird benötigt")).size(15.0).strong());
             ui.add_space(4.0);
             ui.label(
-                RichText::new(format!(
-                    "Die KI-Agenten laufen mit Node.js. Nebula lädt es einmalig von nodejs.org (ca. 30 MB, Prüfsumme wird kontrolliert) \
-                     nach {} – ohne Installation und ohne Adminrechte.",
-                    crate::acp::node::runtime_dir().display()
-                ))
+                RichText::new(t!("Die KI-Agenten laufen mit Node.js. Nebula lädt es einmalig von nodejs.org (ca. 30 MB, Prüfsumme wird kontrolliert) nach {runtime_dir} – ohne Installation und ohne Adminrechte.", runtime_dir = crate::acp::node::runtime_dir().display()))
                 .color(theme.text_muted),
             );
             ui.add_space(8.0);
-            self.node_download_ui(ui, "Node.js herunterladen");
+            self.node_download_ui(ui, t!("Node.js herunterladen"));
             return;
         }
         let mut open_location: Option<(PathBuf, Option<u32>)> = None;
@@ -860,7 +856,7 @@ impl NebulaApp {
                     answer = permission_card(ui, &theme, p);
                 }
                 if let Phase::NeedsAuth(methods) = &s.phase {
-                    ui.label(RichText::new("Der Agent möchte, dass du dich anmeldest:").color(theme.foreground));
+                    ui.label(RichText::new(t!("Der Agent möchte, dass du dich anmeldest:")).color(theme.foreground));
                     for m in methods {
                         let resp = ui.button(&m.name);
                         let resp = match &m.description {
@@ -903,7 +899,7 @@ impl NebulaApp {
             Some(login) => {
                 let Some(s) = &self.agent.session else { return };
                 match crate::acp::run_login_console(&s.agent, login, &s.cwd) {
-                    Ok(()) => self.info("Melde dich im geöffneten Fenster an und starte danach eine neue Unterhaltung."),
+                    Ok(()) => self.info(t!("Melde dich im geöffneten Fenster an und starte danach eine neue Unterhaltung.")),
                     Err(e) => self.error(e),
                 }
             }
@@ -932,30 +928,30 @@ fn limits_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, l: &crate::acp::usa
     };
     let mut job = egui::text::LayoutJob::default();
     let mut tip = String::new();
-    let names = if compact { ["5 h", "Wo."] } else { ["5 Std.", "Woche"] };
-    for (name, long, w) in [(names[0], "5-Stunden-Limit", l.five_hour()), (names[1], "Wochenlimit", l.weekly())] {
+    let names = if compact { [t!("5 h"), t!("Wo.")] } else { [t!("5 Std."), t!("Woche")] };
+    for (name, long, w) in [(names[0], "5-Stunden-Limit", l.five_hour()), (names[1], t!("Wochenlimit"), l.weekly())] {
         let Some(w) = w else { continue };
         let free = (100.0 - w.used).max(0.0);
         if !job.sections.is_empty() {
             job.append("  ·  ", 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), theme.text_faint));
         }
         job.append(&format!("{name} "), 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), theme.text_faint));
-        job.append(&if compact { format!("{free:.0} %") } else { format!("{free:.0} % frei") }, 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), color(free)));
-        tip.push_str(&format!("{long}: {:.0} % verbraucht", w.used));
+        job.append(&if compact { format!("{free:.0} %") } else { t!("{free} % frei", free = format!("{:.0}", free)) }, 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), color(free)));
+        tip.push_str(&t!("{long}: {used} % verbraucht", long = long, used = format!("{:.0}", w.used)));
         if let Some(r) = &w.reset {
-            tip.push_str(&format!(", wieder voll in {} ({:02}.{:02}. {:02}:{:02} Uhr)", usage::until(r.at, now), r.day, r.month, r.hour, r.minute));
+            tip.push_str(&t!(", wieder voll in {until} ({day}.{month}. {hour}:{minute} Uhr)", until = usage::until(r.at, now), day = format!("{:02}", r.day), month = format!("{:02}", r.month), hour = format!("{:02}", r.hour), minute = format!("{:02}", r.minute)));
         }
         tip.push('\n');
     }
     if let Some(plan) = &l.plan {
-        tip.push_str(&format!("Abo: Claude {plan}\n"));
+        tip.push_str(&t!("Abo: Claude {plan}\n", plan = plan));
     }
     if let Some(info) = info {
         tip.push_str(info);
         tip.push('\n');
     }
-    let age = if now - l.fetched < 60 { "gerade eben".to_string() } else { format!("vor {}", usage::until(now, l.fetched)) };
-    tip.push_str(&format!("Stand: {age} – klicken zum Aktualisieren"));
+    let age = if now - l.fetched < 60 { t!("gerade eben").to_string() } else { t!("vor {until}", until = usage::until(now, l.fetched)) };
+    tip.push_str(&t!("Stand: {age} – klicken zum Aktualisieren", age = age));
     ui.add(egui::Label::new(job).sense(Sense::click())).on_hover_text(tip)
 }
 
@@ -969,8 +965,8 @@ fn permission_card(ui: &mut egui::Ui, theme: &crate::theme::Theme, p: &crate::ac
         .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("Der Agent möchte:").size(11.5).color(theme.text_faint));
-            ui.label(RichText::new(if p.tool.title.is_empty() { "ein Werkzeug ausführen" } else { &p.tool.title }).strong());
+            ui.label(RichText::new(t!("Der Agent möchte:")).size(11.5).color(theme.text_faint));
+            ui.label(RichText::new(if p.tool.title.is_empty() { t!("ein Werkzeug ausführen") } else { &p.tool.title }).strong());
             tool_content(ui, theme, &p.tool, &mut None);
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
@@ -1001,7 +997,7 @@ fn intro(ui: &mut egui::Ui, theme: &crate::theme::Theme, agent: &str) {
         ui.label(RichText::new(agent).size(16.0).strong());
         ui.add_space(4.0);
         ui.label(
-            RichText::new("Der Agent arbeitet im geöffneten Projekt. Vor Änderungen an Dateien und vor Befehlen fragt er nach.")
+            RichText::new(t!("Der Agent arbeitet im geöffneten Projekt. Vor Änderungen an Dateien und vor Befehlen fragt er nach."))
                 .color(theme.text_muted),
         );
     });
@@ -1012,19 +1008,19 @@ fn status(ui: &mut egui::Ui, theme: &crate::theme::Theme, s: &AgentSession) {
         Phase::Starting => {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(RichText::new(format!("{} wird gestartet … (beim ersten Mal wird er installiert)", s.agent.name)).color(theme.text_muted));
+                ui.label(RichText::new(t!("{name} wird gestartet … (beim ersten Mal wird er installiert)", name = s.agent.name)).color(theme.text_muted));
             });
         }
         Phase::Working if s.permissions.is_empty() => {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(RichText::new("Arbeitet …").color(theme.text_muted));
+                ui.label(RichText::new(t!("Arbeitet …")).color(theme.text_muted));
             });
         }
         Phase::Failed(e) => {
             ui.label(RichText::new(e).color(theme.danger));
             if !s.log.is_empty() {
-                egui::CollapsingHeader::new("Protokoll").id_salt("agent-log-out").show(ui, |ui| {
+                egui::CollapsingHeader::new(t!("Protokoll")).id_salt("agent-log-out").show(ui, |ui| {
                     let text: Vec<&str> = s.log.iter().map(String::as_str).collect();
                     ui.label(RichText::new(text.join("\n")).monospace().size(11.0).color(theme.text_muted));
                 });
@@ -1048,7 +1044,7 @@ fn entry_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, n: usize, entry: &En
         }
         Entry::Agent(text) => markdown::show(ui, theme, text),
         Entry::Thought(text) => {
-            egui::CollapsingHeader::new(RichText::new("Gedanken").size(12.0).color(theme.text_faint))
+            egui::CollapsingHeader::new(RichText::new(t!("Gedanken")).size(12.0).color(theme.text_faint))
                 .id_salt(("thought", n))
                 .show(ui, |ui| {
                     ui.label(RichText::new(text).size(12.5).color(theme.text_muted));
@@ -1058,7 +1054,7 @@ fn entry_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, n: usize, entry: &En
         Entry::Plan(items) => {
             egui::Frame::new().stroke(Stroke::new(1.0, theme.hover.gamma_multiply(1.6))).corner_radius(8.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.label(RichText::new("Plan").size(11.5).color(theme.text_faint));
+                ui.label(RichText::new(t!("Plan")).size(11.5).color(theme.text_faint));
                 for item in items {
                     let (mark, color) = if item.done {
                         ("☑", theme.text_faint)
@@ -1086,16 +1082,16 @@ fn tool_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, n: usize, t: &ToolEnt
         _ => theme.text_faint,
     };
     let kind = match t.kind {
-        ToolKind::Read => "Lesen",
-        ToolKind::Edit => "Bearbeiten",
-        ToolKind::Delete => "Löschen",
-        ToolKind::Move => "Verschieben",
-        ToolKind::Search => "Suchen",
-        ToolKind::Execute => "Befehl",
-        ToolKind::Think => "Denken",
-        ToolKind::Fetch => "Abrufen",
-        ToolKind::SwitchMode => "Modus",
-        _ => "Werkzeug",
+        ToolKind::Read => t!("Lesen"),
+        ToolKind::Edit => t!("Bearbeiten"),
+        ToolKind::Delete => t!("Löschen"),
+        ToolKind::Move => t!("Verschieben"),
+        ToolKind::Search => t!("Suchen"),
+        ToolKind::Execute => t!("Befehl"),
+        ToolKind::Think => t!("Denken"),
+        ToolKind::Fetch => t!("Abrufen"),
+        ToolKind::SwitchMode => t!("Modus"),
+        _ => t!("Werkzeug"),
     };
     let has_content = !t.content.is_empty();
     // Edits show their diff right away, other tools on demand.
@@ -1153,7 +1149,7 @@ fn tool_content(ui: &mut egui::Ui, theme: &crate::theme::Theme, t: &ToolEntry, o
                     ui.set_width(ui.available_width());
                     ui.add(egui::Label::new(RichText::new(shown).monospace().size(11.5).color(theme.text_muted)).selectable(true));
                     if more > 0 {
-                        ui.label(RichText::new(format!("… {more} weitere Zeilen")).size(11.0).color(theme.text_faint));
+                        ui.label(RichText::new(t!("… {more} weitere Zeilen", more = more)).size(11.0).color(theme.text_faint));
                     }
                 });
             }

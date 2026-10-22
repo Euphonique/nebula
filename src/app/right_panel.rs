@@ -73,10 +73,10 @@ impl NebulaApp {
         );
         tabs.spacing_mut().item_spacing.x = 2.0;
         let tip = |name: &str, key: String| if key.is_empty() { name.to_string() } else { format!("{name} ({key})") };
-        let preview_tip = tip("Vorschau", self.shortcut_label(super::palette::Command::TogglePreview));
+        let preview_tip = tip(t!("Vorschau"), self.shortcut_label(super::palette::Command::TogglePreview));
         let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 4] = [
-            (RightTab::Outline, "Gliederung".into(), icons::outline),
-            (RightTab::Snippets, "Snippets".into(), icons::snippets),
+            (RightTab::Outline, t!("Gliederung").into(), icons::outline),
+            (RightTab::Snippets, t!("Snippets").into(), icons::snippets),
             (RightTab::Agent, tip("KI-Agent", self.shortcut_label(super::palette::Command::ToggleAgent)), icons::sparkle),
             (RightTab::Preview, preview_tip, icons::eye),
         ];
@@ -112,7 +112,7 @@ impl NebulaApp {
         let theme = self.theme.clone();
         let Some(i) = self.active else {
             ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(8.0, 26.0))), |ui| {
-                ui.vertical_centered(|ui| ui.label(RichText::new("Keine Datei geöffnet").color(theme.text_faint)));
+                ui.vertical_centered(|ui| ui.label(RichText::new(t!("Keine Datei geöffnet")).color(theme.text_faint)));
             });
             return;
         };
@@ -123,12 +123,12 @@ impl NebulaApp {
 
         let mut jump = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(10.0, 4.0))), |ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.right_state.filter).hint_text("Symbole filtern…").desired_width(f32::INFINITY));
+            ui.add(egui::TextEdit::singleline(&mut self.right_state.filter).hint_text(t!("Symbole filtern…")).desired_width(f32::INFINITY));
             ui.add_space(4.0);
             if list.is_empty() {
                 ui.add_space(20.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("Keine Symbole in dieser Datei").color(theme.text_faint));
+                    ui.label(RichText::new(t!("Keine Symbole in dieser Datei")).color(theme.text_faint));
                 });
                 return;
             }

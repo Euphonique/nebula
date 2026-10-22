@@ -25,27 +25,27 @@ impl FtpBackend {
     pub fn connect(site: &Site, password: &str) -> Result<Self> {
         let addr = (site.host.as_str(), site.port)
             .to_socket_addrs()
-            .with_context(|| format!("Host {} nicht gefunden", site.host))?
+            .with_context(|| t!("Host {host} nicht gefunden", host = site.host))?
             .next()
-            .ok_or_else(|| anyhow!("Host {} nicht gefunden", site.host))?;
+            .ok_or_else(|| anyhow!(t!("Host {host} nicht gefunden", host = site.host)))?;
         let mut stream = NativeTlsFtpStream::connect_timeout(addr, TIMEOUT)
-            .with_context(|| format!("Verbindung zu {}:{} fehlgeschlagen", site.host, site.port))?;
+            .with_context(|| t!("Verbindung zu {host}:{port} fehlgeschlagen", host = site.host, port = site.port))?;
 
         if site.protocol == Protocol::Ftps {
             let connector = TlsConnector::builder()
                 .danger_accept_invalid_certs(site.accept_invalid_certs)
                 .danger_accept_invalid_hostnames(site.accept_invalid_certs)
                 .build()
-                .context("TLS konnte nicht initialisiert werden")?;
+                .context(t!("TLS konnte nicht initialisiert werden"))?;
             stream = stream
                 .into_secure(NativeTlsConnector::from(connector), &site.host)
-                .context("TLS-Aushandlung fehlgeschlagen")?;
+                .context(t!("TLS-Aushandlung fehlgeschlagen"))?;
         }
 
         let user = if site.user.is_empty() { "anonymous" } else { site.user.as_str() };
         stream
             .login(user, password)
-            .context("Anmeldung fehlgeschlagen (Benutzername oder Passwort falsch?)")?;
+            .context(t!("Anmeldung fehlgeschlagen (Benutzername oder Passwort falsch?)"))?;
         stream.transfer_type(FileType::Binary)?;
         if site.passive {
             stream.set_mode(Mode::Passive);
@@ -140,7 +140,7 @@ impl Backend for FtpBackend {
     fn chmod(&mut self, path: &str, mode: u32) -> Result<()> {
         self.stream
             .site(format!("CHMOD {:03o} {path}", mode & 0o777))
-            .context("Der Server unterstützt SITE CHMOD nicht")?;
+            .context(t!("Der Server unterstützt SITE CHMOD nicht"))?;
         Ok(())
     }
 

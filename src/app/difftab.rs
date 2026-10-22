@@ -36,7 +36,7 @@ impl NebulaApp {
     /// Opens the differences as a new read-only tab.
     fn open_diff_tab(&mut self, title: String, old: (&str, &str), new: (&str, &str)) {
         if old.1 == new.1 {
-            self.info(format!("{title}: keine Unterschiede"));
+            self.info(t!("{title}: keine Unterschiede", title = title));
             return;
         }
         let text = crate::diff::patch(old.1, new.1, old.0, new.0, CONTEXT);
@@ -81,7 +81,7 @@ impl NebulaApp {
     /// Working state of tab `i` against the version in the last Git commit.
     pub(super) fn compare_with_head(&mut self, i: usize) {
         let DocSource::Local(path) = self.docs[i].source.clone() else {
-            self.info("Nur lokale Dateien in einem Git-Projekt lassen sich mit dem letzten Commit vergleichen.");
+            self.info(t!("Nur lokale Dateien in einem Git-Projekt lassen sich mit dem letzten Commit vergleichen."));
             return;
         };
         self.compare_path_with_head(&path);
@@ -90,13 +90,13 @@ impl NebulaApp {
     /// A local file (its open tab if any, else the disk) against the last commit.
     pub(super) fn compare_path_with_head(&mut self, path: &Path) {
         let Some(top) = self.sidebar.git.top.clone() else {
-            self.info("Das Projekt ist kein Git-Repository.");
+            self.info(t!("Das Projekt ist kein Git-Repository."));
             return;
         };
         let file = FileRef::Local(path.to_path_buf());
         let name = name_of(&file);
         let Some(bytes) = crate::ui::git::head_file(&top, path) else {
-            self.info(format!("„{name}“ ist im letzten Commit nicht enthalten."));
+            self.info(t!("„{name}“ ist im letzten Commit nicht enthalten.", name = name));
             return;
         };
         let head = decode(&bytes);
@@ -113,7 +113,7 @@ impl NebulaApp {
             },
         };
         let label = self.diff_label(&file);
-        self.open_diff_tab(format!("{name} (Änderungen)"), (&format!("a/{label} (letzter Commit)"), &head), (&format!("b/{label} (Arbeitsstand)"), &mine));
+        self.open_diff_tab(t!("{name} (Änderungen)", name = name), (&t!("a/{label} (letzter Commit)", label = label), &head), (&t!("b/{label} (Arbeitsstand)", label = label), &mine));
     }
 
     /// Tab `i` against a local file picked in a dialog.
@@ -167,7 +167,7 @@ impl NebulaApp {
                 },
                 FileRef::Remote { site_id, path } => {
                     let Some(site) = self.sites.get(site_id).cloned() else {
-                        self.error("Der Server dieser Datei existiert nicht mehr.");
+                        self.error(t!("Der Server dieser Datei existiert nicht mehr."));
                         return;
                     };
                     self.ensure_tree(&site);
@@ -206,7 +206,7 @@ impl NebulaApp {
             }
             Err(e) => {
                 let job = self.diff_jobs.0.remove(n);
-                self.error(format!("Vergleich „{}“ nicht möglich: {e}", job.title));
+                self.error(t!("Vergleich „{title}“ nicht möglich: {e}", title = job.title, e = e));
             }
         }
         true
@@ -218,9 +218,9 @@ fn decode(bytes: &[u8]) -> String {
 }
 
 fn read_local(path: &Path) -> Result<String, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("{} konnte nicht gelesen werden: {e}", path.display()))?;
+    let bytes = std::fs::read(path).map_err(|e| t!("{path} konnte nicht gelesen werden: {e}", path = path.display(), e = e))?;
     if bytes[..bytes.len().min(8192)].contains(&0) {
-        return Err(format!("{} ist keine Textdatei.", path.display()));
+        return Err(t!("{path} ist keine Textdatei.", path = path.display()));
     }
     Ok(decode(&bytes))
 }

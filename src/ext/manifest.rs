@@ -200,10 +200,10 @@ fn load_strings(dir: &Path) -> HashMap<String, String> {
 impl Extension {
     pub fn load(dir: &Path) -> anyhow::Result<Extension> {
         let text = std::fs::read_to_string(dir.join("extension.json"))?;
-        let value = parse_lenient(&text).ok_or_else(|| anyhow::anyhow!("extension.json ist kein gültiges JSON"))?;
+        let value = parse_lenient(&text).ok_or_else(|| anyhow::anyhow!(t!("extension.json ist kein gültiges JSON")))?;
         let raw: RawManifest = serde_json::from_value(value)?;
         if raw.identifier.is_empty() {
-            anyhow::bail!("extension.json enthält keinen identifier");
+            anyhow::bail!(t!("extension.json enthält keinen identifier"));
         }
         let strings = load_strings(dir);
         let loc = |s: &str| strings.get(s).cloned().unwrap_or_else(|| s.to_string());
@@ -417,7 +417,7 @@ fn collect_clips(v: &Value, out: &mut Vec<Clip>) {
         }
         if let Some(content) = item.get("content").and_then(|c| c.as_str()) {
             out.push(Clip {
-                name: item.get("name").and_then(|n| n.as_str()).unwrap_or("Clip").to_string(),
+                name: item.get("name").and_then(|n| n.as_str()).unwrap_or(t!("Clip")).to_string(),
                 content: content.to_string(),
                 trigger: item.get("trigger").and_then(|n| n.as_str()).map(str::to_string),
                 syntax: item.get("syntax").and_then(|n| n.as_str()).map(str::to_string),

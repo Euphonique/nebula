@@ -137,11 +137,11 @@ pub fn until(at: i64, now: i64) -> String {
     let mins = ((at - now).max(0) + 59) / 60;
     let (d, h, m) = (mins / 1440, mins / 60 % 24, mins % 60);
     if d > 0 {
-        format!("{d} Tg. {h} Std.")
+        t!("{d} Tg. {h} Std.", d = d, h = h)
     } else if h > 0 {
-        format!("{h} Std. {m} Min.")
+        t!("{h} Std. {m} Min.", h = h, m = m)
     } else {
-        format!("{m} Min.")
+        t!("{m} Min.", m = m)
     }
 }
 

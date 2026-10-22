@@ -46,9 +46,9 @@ impl NebulaApp {
         let mut export = false;
         modal(ctx, egui::Id::unique("settings-export")).show(ctx, |ui| {
             ui.set_width(440.0);
-            ui.heading("Einstellungen exportieren");
+            ui.heading(t!("Einstellungen exportieren"));
             ui.add_space(4.0);
-            ui.label(RichText::new("Für einen anderen Rechner oder als Sicherung. Passwörter und API-Schlüssel kommen nicht mit.").small().color(theme.gutter_fg));
+            ui.label(RichText::new(t!("Für einen anderen Rechner oder als Sicherung. Passwörter und API-Schlüssel kommen nicht mit.")).small().color(theme.gutter_fg));
             ui.add_space(8.0);
             for (section, on) in &mut form.sections {
                 ui.checkbox(on, section.label());
@@ -56,10 +56,10 @@ impl NebulaApp {
             ui.add_space(12.0);
             ui.horizontal(|ui| {
                 let any = form.sections.iter().any(|s| s.1);
-                if ui.add_enabled(any, primary_button("Exportieren…", theme.accent)).clicked() {
+                if ui.add_enabled(any, primary_button(t!("Exportieren…"), theme.accent)).clicked() {
                     export = true;
                 }
-                if ui.button("Abbrechen").clicked() {
+                if ui.button(t!("Abbrechen")).clicked() {
                     keep = false;
                 }
             });
@@ -68,7 +68,7 @@ impl NebulaApp {
             keep = false;
             let chosen: Vec<Section> = form.sections.iter().filter(|s| s.1).map(|s| s.0).collect();
             let Some(path) = rfd::FileDialog::new()
-                .set_title("Einstellungen exportieren")
+                .set_title(t!("Einstellungen exportieren"))
                 .set_file_name("nebula-einstellungen.json")
                 .add_filter("Nebula-Einstellungen", &["json"])
                 .save_file()
@@ -78,8 +78,8 @@ impl NebulaApp {
             let (user_themes, extensions, extension_config) = self.export_sources();
             let src = Sources { settings: &self.settings, sites: &self.sites.sites, user_themes, extensions, extension_config };
             match Bundle::build(&src, &chosen).to_json().and_then(|b| Ok(std::fs::write(&path, b)?)) {
-                Ok(()) => self.info(format!("Einstellungen exportiert: {}", path.display())),
-                Err(e) => self.error(format!("Export fehlgeschlagen: {e:#}")),
+                Ok(()) => self.info(t!("Einstellungen exportiert: {path}", path = path.display())),
+                Err(e) => self.error(t!("Export fehlgeschlagen: {e}", e = format!("{:#}", e))),
             }
         }
         keep
@@ -87,7 +87,7 @@ impl NebulaApp {
 
     pub(super) fn open_settings_import(&mut self) {
         let Some(path) = rfd::FileDialog::new()
-            .set_title("Einstellungen importieren")
+            .set_title(t!("Einstellungen importieren"))
             .add_filter("Nebula-Einstellungen", &["json"])
             .pick_file()
         else {
@@ -96,13 +96,13 @@ impl NebulaApp {
         let bundle = match std::fs::read(&path).map_err(anyhow::Error::from).and_then(|b| Bundle::parse(&b)) {
             Ok(b) => b,
             Err(e) => {
-                self.error(format!("Import fehlgeschlagen: {e:#}"));
+                self.error(t!("Import fehlgeschlagen: {e}", e = format!("{:#}", e)));
                 return;
             }
         };
         let sections: Vec<(Section, bool)> = Section::ALL.iter().filter(|s| bundle.has(**s)).map(|&s| (s, true)).collect();
         if sections.is_empty() {
-            self.info("Die Datei enthält keine Einstellungen.");
+            self.info(t!("Die Datei enthält keine Einstellungen."));
             return;
         }
         let source = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -116,9 +116,9 @@ impl NebulaApp {
         let mut import = false;
         modal(ctx, egui::Id::unique("settings-import")).show(ctx, |ui| {
             ui.set_width(480.0);
-            ui.heading(format!("Einstellungen importieren – {}", form.source));
+            ui.heading(t!("Einstellungen importieren – {source}", source = form.source));
             if !form.bundle.version.is_empty() {
-                ui.label(RichText::new(format!("Exportiert mit Nebula {}", form.bundle.version)).small().color(theme.gutter_fg));
+                ui.label(RichText::new(t!("Exportiert mit Nebula {version}", version = form.bundle.version)).small().color(theme.gutter_fg));
             }
             ui.add_space(8.0);
             for (section, on) in &mut form.sections {
@@ -131,8 +131,8 @@ impl NebulaApp {
             ui.add_space(6.0);
             ui.label(
                 RichText::new(
-                    "Editor, Darstellung und Tastenkürzel werden ersetzt. Server, Snippets, Themes und Agenten kommen dazu (vorhandene bleiben). \
-                     Fehlende Erweiterungen werden aus der Bibliothek installiert.",
+                    t!("Editor, Darstellung und Tastenkürzel werden ersetzt. Server, Snippets, Themes und Agenten kommen dazu (vorhandene bleiben). \
+                     Fehlende Erweiterungen werden aus der Bibliothek installiert."),
                 )
                 .small()
                 .color(theme.gutter_fg),
@@ -140,10 +140,10 @@ impl NebulaApp {
             ui.add_space(12.0);
             ui.horizontal(|ui| {
                 let any = form.sections.iter().any(|s| s.1);
-                if ui.add_enabled(any, primary_button("Importieren", theme.accent)).clicked() {
+                if ui.add_enabled(any, primary_button(t!("Importieren"), theme.accent)).clicked() {
                     import = true;
                 }
-                if ui.button("Abbrechen").clicked() {
+                if ui.button(t!("Abbrechen")).clicked() {
                     keep = false;
                 }
             });
@@ -181,7 +181,7 @@ impl NebulaApp {
                     }
                     crate::theme::themes_changed();
                     if failed > 0 {
-                        notes.push(format!("{failed} Themes konnten nicht gespeichert werden."));
+                        notes.push(t!("{failed} Themes konnten nicht gespeichert werden.", failed = failed));
                     }
                 }
                 Section::Languages => {
@@ -209,10 +209,10 @@ impl NebulaApp {
                         }
                     }
                     if let Err(e) = self.sites.save() {
-                        self.error(format!("Server konnten nicht gespeichert werden: {e:#}"));
+                        self.error(t!("Server konnten nicht gespeichert werden: {e}", e = format!("{:#}", e)));
                     }
                     if added > 0 {
-                        notes.push(format!("{added} Server übernommen – Passwörter bitte neu eingeben."));
+                        notes.push(t!("{added} Server übernommen – Passwörter bitte neu eingeben.", added = added));
                     }
                 }
                 Section::Agents => {
@@ -240,8 +240,8 @@ impl NebulaApp {
                             x.installed.iter().filter(|e| !self.ext.installed.iter().any(|i| i.identifier == e.identifier)).cloned().collect();
                         if !missing.is_empty() {
                             notes.push(match missing.len() {
-                                1 => "1 Erweiterung wird aus der Bibliothek installiert…".to_string(),
-                                n => format!("{n} Erweiterungen werden aus der Bibliothek installiert…"),
+                                1 => t!("1 Erweiterung wird aus der Bibliothek installiert…").to_string(),
+                                n => t!("{n} Erweiterungen werden aus der Bibliothek installiert…", n = n),
                             });
                             self.reinstall_extensions(ctx, missing);
                         }
@@ -252,9 +252,9 @@ impl NebulaApp {
         self.settings.apply_languages();
         self.apply_theme(ctx);
         if let Err(e) = self.settings.save() {
-            self.error(format!("Einstellungen konnten nicht gespeichert werden: {e:#}"));
+            self.error(t!("Einstellungen konnten nicht gespeichert werden: {e}", e = format!("{:#}", e)));
         }
-        let mut text = "Einstellungen importiert.".to_string();
+        let mut text = t!("Einstellungen importiert.").to_string();
         for n in notes {
             text.push(' ');
             text.push_str(&n);
@@ -297,13 +297,13 @@ impl NebulaApp {
             for (name, r) in results {
                 match r {
                     Ok(_) => ok.push(name),
-                    Err(e) => self.error(format!("Erweiterung „{name}“ nicht installiert: {e:#} (nicht in der Bibliothek? Dann bitte von Hand installieren.)")),
+                    Err(e) => self.error(t!("Erweiterung „{name}“ nicht installiert: {e} (nicht in der Bibliothek? Dann bitte von Hand installieren.)", name = name, e = format!("{:#}", e))),
                 }
             }
             if !ok.is_empty() {
                 self.ext.reload(&self.settings.disabled_extensions.clone());
                 crate::theme::themes_changed();
-                self.info(format!("Installiert: {}", ok.join(", ")));
+                self.info(t!("Installiert: {ok}", ok = ok.join(", ")));
             }
         }
         if done {

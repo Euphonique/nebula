@@ -114,21 +114,21 @@ impl NebulaApp {
                 let (text, color) = match &status {
                     node::Status::Private(v) => {
                         let size = sizes.map(|(n, _)| format!(", {}", mb(n))).unwrap_or_default();
-                        (format!("{v} – von Nebula verwaltet{size}"), theme.success)
+                        (t!("{v} – von Nebula verwaltet{size}", v = v, size = size), theme.success)
                     }
-                    node::Status::System(dir) => (format!("installiert ({})", dir.display()), theme.success),
-                    node::Status::Missing => ("fehlt – wird für die Agenten benötigt".into(), theme.modified),
+                    node::Status::System(dir) => (t!("installiert ({dir})", dir = dir.display()), theme.success),
+                    node::Status::Missing => (t!("fehlt – wird für die Agenten benötigt").into(), theme.modified),
                 };
                 ui.label(RichText::new(text).color(color));
             });
             if let Some((_, agents)) = sizes {
-                ui.label(RichText::new(format!("Agenten: {}", mb(agents))).size(12.0).color(theme.text_muted));
+                ui.label(RichText::new(t!("Agenten: {mb}", mb = mb(agents))).size(12.0).color(theme.text_muted));
             }
             ui.horizontal(|ui| {
                 match &status {
-                    node::Status::Missing => self.node_download_ui(ui, "Node.js herunterladen (ca. 30 MB)"),
+                    node::Status::Missing => self.node_download_ui(ui, t!("Node.js herunterladen (ca. 30 MB)")),
                     node::Status::Private(_) => {
-                        self.node_download_ui(ui, "Auf neueste LTS-Version aktualisieren");
+                        self.node_download_ui(ui, t!("Auf neueste LTS-Version aktualisieren"));
                         // Checking agents would keep the old Node busy.
                         if self.agent_node_downloading() {
                             state.probes.clear();
@@ -139,8 +139,8 @@ impl NebulaApp {
                 }
                 if sizes.is_some_and(|(_, a)| a > 0)
                     && ui
-                        .button("Agenten-Speicher leeren")
-                        .on_hover_text("Löscht die geladenen Agenten; sie werden beim nächsten Start neu geladen. Anmeldungen bleiben erhalten.")
+                        .button(t!("Agenten-Speicher leeren"))
+                        .on_hover_text(t!("Löscht die geladenen Agenten; sie werden beim nächsten Start neu geladen. Anmeldungen bleiben erhalten."))
                         .clicked()
                 {
                     // Running agents keep files open: stop them first.
@@ -149,7 +149,7 @@ impl NebulaApp {
                     let _ = std::fs::remove_dir_all(node::agents_dir());
                     state.sizes = None;
                 }
-                if ui.button("Ordner öffnen").on_hover_text(crate::settings::data_dir().display().to_string()).clicked() {
+                if ui.button(t!("Ordner öffnen")).on_hover_text(crate::settings::data_dir().display().to_string()).clicked() {
                     let dir = crate::settings::data_dir();
                     let _ = std::fs::create_dir_all(&dir);
                     let _ = std::process::Command::new("explorer").arg(&dir).spawn();
@@ -170,8 +170,8 @@ impl NebulaApp {
         ui.add_space(2.0);
         ui.label(
             RichText::new(
-                "Agenten arbeiten im rechten Panel (✦) im geöffneten Projekt. Angemeldet wird beim jeweiligen Anbieter – \
-                 im Browser mit deinem Konto oder per API-Schlüssel. Die Agenten werden beim ersten Start geladen.",
+                t!("Agenten arbeiten im rechten Panel (✦) im geöffneten Projekt. Angemeldet wird beim jeweiligen Anbieter – \
+                 im Browser mit deinem Konto oder per API-Schlüssel. Die Agenten werden beim ersten Start geladen."),
             )
             .color(theme.text_muted),
         );
@@ -211,7 +211,7 @@ impl NebulaApp {
                             state.edit = None;
                             let _ = self.settings.save();
                         }
-                        Err(e) => edit.error = Some(format!("API-Schlüssel nicht gespeichert: {e}")),
+                        Err(e) => edit.error = Some(t!("API-Schlüssel nicht gespeichert: {e}", e = e)),
                     }
                 } else {
                     state.edit = None;
@@ -232,7 +232,7 @@ impl NebulaApp {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         let default = self.settings.agent == agent.name;
-                        if ui.radio(default, "").on_hover_text("Für neue Unterhaltungen im Panel verwenden").clicked() {
+                        if ui.radio(default, "").on_hover_text(t!("Für neue Unterhaltungen im Panel verwenden")).clicked() {
                             self.settings.agent = agent.name.clone();
                         }
                         ui.label(RichText::new(&agent.name).size(14.5).strong());
@@ -241,7 +241,7 @@ impl NebulaApp {
                     });
                     ui.label(RichText::new(agent.command_line()).monospace().size(11.0).color(theme.text_faint));
                     if agent.api_key().is_some() {
-                        ui.label(RichText::new(format!("API-Schlüssel gespeichert ({})", agent.api_key_env)).size(11.5).color(theme.text_muted));
+                        ui.label(RichText::new(t!("API-Schlüssel gespeichert ({api_key_env})", api_key_env = agent.api_key_env)).size(11.5).color(theme.text_muted));
                     }
                     if let Some(hint) = state.console_hint.get(&agent.name) {
                         ui.label(RichText::new(hint).size(11.5).color(theme.accent));
@@ -250,7 +250,7 @@ impl NebulaApp {
                     ui.horizontal(|ui| {
                         let probe = state.probes.get(&agent.name);
                         let busy = probe.is_some_and(|p| p.phase == Phase::Starting);
-                        if ui.add_enabled(!busy, egui::Button::new("Status prüfen")).clicked() {
+                        if ui.add_enabled(!busy, egui::Button::new(t!("Status prüfen"))).clicked() {
                             let ctx = ctx.clone();
                             state.console_hint.remove(&agent.name);
                             state.probes.insert(agent.name.clone(), AgentSession::start(agent.clone(), cwd.clone(), move || ctx.request_repaint()));
@@ -260,7 +260,7 @@ impl NebulaApp {
                             && !p.auth_methods.is_empty()
                         {
                             let methods = p.auth_methods.clone();
-                            ui.menu_button("Anmelden ▾", |ui| {
+                            ui.menu_button(t!("Anmelden ▾"), |ui| {
                                 for m in &methods {
                                     let resp = ui.button(&m.name);
                                     let resp = match &m.description {
@@ -272,7 +272,7 @@ impl NebulaApp {
                                         if m.api_key {
                                             // Keys are entered in the form and given to the agent as variable.
                                             let mut e = Edit::of(Some(i), agent);
-                                            e.error = Some(format!("Trage den Schlüssel für „{}“ ein und prüfe danach den Status.", m.name));
+                                            e.error = Some(t!("Trage den Schlüssel für „{name}“ ein und prüfe danach den Status.", name = m.name));
                                             edit_key = Some(e);
                                             continue;
                                         }
@@ -281,7 +281,7 @@ impl NebulaApp {
                                                 Ok(()) => {
                                                     state.console_hint.insert(
                                                         agent.name.clone(),
-                                                        "Melde dich im geöffneten Fenster an (es öffnet den Browser) und klicke danach auf „Status prüfen“.".into(),
+                                                        t!("Melde dich im geöffneten Fenster an (es öffnet den Browser) und klicke danach auf „Status prüfen“.").into(),
                                                     );
                                                 }
                                                 Err(e) => {
@@ -293,15 +293,15 @@ impl NebulaApp {
                                     }
                                 }
                             });
-                            if p.can_logout && p.phase == Phase::Ready && ui.button("Abmelden").clicked() {
+                            if p.can_logout && p.phase == Phase::Ready && ui.button(t!("Abmelden")).clicked() {
                                 p.logout();
                             }
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Entfernen").clicked() {
+                            if ui.button(t!("Entfernen")).clicked() {
                                 remove = Some(i);
                             }
-                            if ui.button("Bearbeiten").clicked() {
+                            if ui.button(t!("Bearbeiten")).clicked() {
                                 edit = Some(i);
                             }
                         });
@@ -326,7 +326,7 @@ impl NebulaApp {
 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.menu_button("Agent hinzufügen ▾", |ui| {
+            ui.menu_button(t!("Agent hinzufügen ▾"), |ui| {
                 for (name, args, key) in PRESETS {
                     let present = self.settings.agents.iter().any(|a| a.name == *name);
                     if ui.add_enabled(!present, egui::Button::new(*name)).clicked() {
@@ -335,7 +335,7 @@ impl NebulaApp {
                     }
                 }
                 ui.separator();
-                if ui.button("Eigener Agent…").clicked() {
+                if ui.button(t!("Eigener Agent…")).clicked() {
                     ui.close();
                     state.edit = Some(Edit::of(None, &AgentConfig::default()));
                 }
@@ -346,20 +346,20 @@ impl NebulaApp {
 
 fn status_label(ui: &mut Ui, theme: &crate::theme::Theme, probe: Option<&AgentSession>) {
     let Some(p) = probe else {
-        ui.label(RichText::new("nicht geprüft").size(12.0).color(theme.text_faint));
+        ui.label(RichText::new(t!("nicht geprüft")).size(12.0).color(theme.text_faint));
         return;
     };
     let (text, color): (String, Color32) = match &p.phase {
-        Phase::Starting if p.is_authenticating() => ("Anmeldung im Browser läuft …".into(), theme.accent),
-        Phase::Starting => ("wird geprüft …".into(), theme.text_muted),
+        Phase::Starting if p.is_authenticating() => (t!("Anmeldung im Browser läuft …").into(), theme.accent),
+        Phase::Starting => (t!("wird geprüft …").into(), theme.text_muted),
         Phase::Ready | Phase::Working => {
             let info = p.agent_info.as_deref().map(|i| format!(" · {i}")).unwrap_or_default();
-            (format!("● bereit{info}"), theme.success)
+            (t!("● bereit{info}", info = info), theme.success)
         }
-        Phase::NeedsAuth(_) => ("● Anmeldung nötig".into(), theme.modified),
-        Phase::Failed(e) => (format!("● {}", e.lines().next().unwrap_or("Fehler")), theme.danger),
+        Phase::NeedsAuth(_) => (t!("● Anmeldung nötig").into(), theme.modified),
+        Phase::Failed(e) => (format!("● {}", e.lines().next().unwrap_or(t!("Fehler"))), theme.danger),
         Phase::Exited => ("beendet".into(), theme.text_faint),
-        Phase::NeedsNode => ("● Node.js wird benötigt".into(), theme.modified),
+        Phase::NeedsNode => (t!("● Node.js wird benötigt").into(), theme.modified),
     };
     if p.phase == Phase::Starting {
         ui.spinner();
@@ -373,31 +373,31 @@ fn status_label(ui: &mut Ui, theme: &crate::theme::Theme, probe: Option<&AgentSe
 /// The form for adding or changing an agent; `Some(true)`: save, `Some(false)`: cancel.
 fn edit_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit, agents: &[AgentConfig]) -> Option<bool> {
     let mut result = None;
-    ui.label(RichText::new(if e.index.is_some() { "Agent bearbeiten" } else { "Eigener Agent" }).strong());
+    ui.label(RichText::new(if e.index.is_some() { t!("Agent bearbeiten") } else { t!("Eigener Agent") }).strong());
     ui.add_space(6.0);
     egui::Grid::new("agent-edit").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-        ui.label("Name");
+        ui.label(t!("Name"));
         ui.add(egui::TextEdit::singleline(&mut e.name).desired_width(380.0));
         ui.end_row();
-        ui.label("Befehl");
+        ui.label(t!("Befehl"));
         ui.add(egui::TextEdit::singleline(&mut e.command).hint_text("npx").desired_width(380.0));
         ui.end_row();
-        ui.label("Argumente");
+        ui.label(t!("Argumente"));
         ui.add(egui::TextEdit::singleline(&mut e.args).hint_text("-y paket@latest --acp").desired_width(380.0));
         ui.end_row();
-        ui.label("Umgebung");
+        ui.label(t!("Umgebung"));
         ui.add(egui::TextEdit::multiline(&mut e.env).hint_text("NAME=Wert (eine pro Zeile)").desired_rows(2).desired_width(380.0));
         ui.end_row();
-        ui.label("API-Schlüssel");
+        ui.label(t!("API-Schlüssel"));
         ui.vertical(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut e.key_env).hint_text("Variable, z. B. OPENAI_API_KEY").desired_width(380.0));
+            ui.add(egui::TextEdit::singleline(&mut e.key_env).hint_text(t!("Variable, z. B. OPENAI_API_KEY")).desired_width(380.0));
             ui.add(
                 egui::TextEdit::singleline(&mut e.key)
                     .password(true)
-                    .hint_text(if e.has_key { "gespeichert – leer lassen zum Behalten" } else { "optional; sonst Anmeldung mit Konto" })
+                    .hint_text(if e.has_key { t!("gespeichert – leer lassen zum Behalten") } else { "optional; sonst Anmeldung mit Konto" })
                     .desired_width(380.0),
             );
-            ui.label(RichText::new("Wird in der Windows-Anmeldeinformationsverwaltung gespeichert.").size(11.0).color(theme.text_faint));
+            ui.label(RichText::new(t!("Wird in der Windows-Anmeldeinformationsverwaltung gespeichert.")).size(11.0).color(theme.text_faint));
         });
         ui.end_row();
     });
@@ -406,15 +406,15 @@ fn edit_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit, agents: &[A
     }
     ui.add_space(8.0);
     ui.horizontal(|ui| {
-        if ui.add(primary_button("Speichern", theme.accent)).clicked() {
+        if ui.add(primary_button(t!("Speichern"), theme.accent)).clicked() {
             let name = e.name.trim();
             let taken = agents.iter().enumerate().any(|(i, a)| a.name == name && Some(i) != e.index);
             e.error = if name.is_empty() {
-                Some("Bitte einen Namen eingeben.".into())
+                Some(t!("Bitte einen Namen eingeben.").into())
             } else if taken {
-                Some("Diesen Namen gibt es schon.".into())
+                Some(t!("Diesen Namen gibt es schon.").into())
             } else if e.command.trim().is_empty() {
-                Some("Bitte einen Befehl eingeben.".into())
+                Some(t!("Bitte einen Befehl eingeben.").into())
             } else {
                 None
             };
@@ -422,7 +422,7 @@ fn edit_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit, agents: &[A
                 result = Some(true);
             }
         }
-        if ui.button("Abbrechen").clicked() {
+        if ui.button(t!("Abbrechen")).clicked() {
             result = Some(false);
         }
     });

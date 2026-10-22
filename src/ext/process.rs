@@ -108,7 +108,7 @@ pub fn resolve(command: &str, args: &[String], env: &mut HashMap<String, String>
             }
         }
         if args.is_empty() {
-            return Err("/usr/bin/env ohne Programm".into());
+            return Err(t!("/usr/bin/env ohne Programm").into());
         }
         command = args.remove(0);
     }
@@ -122,7 +122,7 @@ pub fn resolve(command: &str, args: &[String], env: &mut HashMap<String, String>
         if args.first().map(String::as_str) == Some("-c") && args.len() > 1 {
             return Ok((PathBuf::from("cmd.exe"), vec!["/D".into(), "/C".into(), args[1].clone()]));
         }
-        return Err("Für Shell-Skripte wird Git Bash benötigt.".into());
+        return Err(t!("Für Shell-Skripte wird Git Bash benötigt.").into());
     }
     // Homebrew and system locations: look the tool up in PATH instead.
     for prefix in ["/usr/local/bin/", "/opt/homebrew/bin/", "/usr/bin/", "/bin/", "/opt/local/bin/"] {
@@ -149,12 +149,12 @@ pub fn resolve(command: &str, args: &[String], env: &mut HashMap<String, String>
     }
     let lower = command.to_lowercase();
     if lower.ends_with(".js") || lower.ends_with(".mjs") || lower.ends_with(".cjs") {
-        let node = which("node", env).ok_or("Node.js wurde nicht gefunden.")?;
+        let node = which("node", env).ok_or(t!("Node.js wurde nicht gefunden."))?;
         let mut a = vec![command.clone()];
         a.extend(args);
         return Ok((node, a));
     }
-    let exe = which(&command, env).ok_or_else(|| format!("Programm nicht gefunden: {command}"))?;
+    let exe = which(&command, env).ok_or_else(|| t!("Programm nicht gefunden: {command}", command = command))?;
     // `node <npm shim>`: run the shim's JavaScript target instead.
     let mut args = args;
     if is_node(&exe)
@@ -171,13 +171,13 @@ pub fn resolve(command: &str, args: &[String], env: &mut HashMap<String, String>
         }
         if first.starts_with("#!") {
             if let Some(target) = unshim(&exe) {
-                let node = which("node", env).ok_or("Node.js wurde nicht gefunden.")?;
+                let node = which("node", env).ok_or(t!("Node.js wurde nicht gefunden."))?;
                 let mut a = vec![target.to_string_lossy().into_owned()];
                 a.extend(args);
                 return Ok((node, a));
             }
             if first.contains("node") {
-                let node = which("node", env).ok_or("Node.js wurde nicht gefunden.")?;
+                let node = which("node", env).ok_or(t!("Node.js wurde nicht gefunden."))?;
                 let mut a = vec![exe.to_string_lossy().into_owned()];
                 a.extend(args);
                 return Ok((node, a));
@@ -188,7 +188,7 @@ pub fn resolve(command: &str, args: &[String], env: &mut HashMap<String, String>
                 a.extend(args);
                 return Ok((b, a));
             }
-            return Err("Für Shell-Skripte wird Git Bash benötigt (git-scm.com).".into());
+            return Err(t!("Für Shell-Skripte wird Git Bash benötigt (git-scm.com).").into());
         }
     }
     Ok((exe, args))

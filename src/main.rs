@@ -61,9 +61,12 @@ fn main() -> eframe::Result {
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
     // "Deinstallieren" under Windows' "Apps".
     if args.iter().any(|a| a == "--uninstall") {
+        // The message in the user's language.
+        i18n::load();
+        i18n::set_language(&settings::AppSettings::load().ui_language);
         let text = match integration::uninstall() {
-            Ok(()) => "Nebula wurde entfernt.\n\nDeine Einstellungen bleiben im Ordner %APPDATA%\\nebula erhalten.".to_string(),
-            Err(e) => format!("Nebula konnte nicht vollständig entfernt werden:\n{e:#}"),
+            Ok(()) => t!("Nebula wurde entfernt.\n\nDeine Einstellungen bleiben im Ordner %APPDATA%\\nebula erhalten.").to_string(),
+            Err(e) => t!("Nebula konnte nicht vollständig entfernt werden:\n{e}", e = format!("{:#}", e)),
         };
         win32::message_box("Nebula", &text);
         return Ok(());

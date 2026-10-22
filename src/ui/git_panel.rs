@@ -31,7 +31,7 @@ impl GitPanel {
         let ctx = ui.ctx().clone();
         if git.top.is_none() {
             ui.add_space(30.0);
-            ui.vertical_centered(|ui| ui.label(RichText::new("Der Projektordner ist kein Git-Repository.").color(theme.text_faint)));
+            ui.vertical_centered(|ui| ui.label(RichText::new(t!("Der Projektordner ist kein Git-Repository.")).color(theme.text_faint)));
             return;
         }
         let busy = git.op.is_some();
@@ -41,42 +41,42 @@ impl GitPanel {
         let mut steps: Option<(&str, Vec<Vec<String>>)> = None;
         ui.horizontal(|ui| {
             let branch = git.branch.clone().unwrap_or_else(|| "–".into());
-            let resp = ui.add_enabled(!busy, egui::Button::new(format!("⎇ {branch} ▾")).frame(false)).on_hover_text("Branch wechseln");
+            let resp = ui.add_enabled(!busy, egui::Button::new(format!("⎇ {branch} ▾")).frame(false)).on_hover_text(t!("Branch wechseln"));
             egui::Popup::menu(&resp).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
                 ui.set_min_width(220.0);
-                ui.label(RichText::new("Branch wechseln").small().color(theme.text_faint));
+                ui.label(RichText::new(t!("Branch wechseln")).small().color(theme.text_faint));
                 for b in &git.branches {
                     if ui.add(egui::Button::selectable(Some(b) == git.branch.as_ref(), b)).clicked() && Some(b) != git.branch.as_ref() {
-                        steps = Some(("Branch wechseln", vec![args(&["switch", b])]));
+                        steps = Some((t!("Branch wechseln"), vec![args(&["switch", b])]));
                         ui.close();
                     }
                 }
                 ui.separator();
-                let field = ui.add(egui::TextEdit::singleline(&mut self.new_branch).hint_text("Neuer Branch").desired_width(f32::INFINITY));
+                let field = ui.add(egui::TextEdit::singleline(&mut self.new_branch).hint_text(t!("Neuer Branch")).desired_width(f32::INFINITY));
                 let name = self.new_branch.trim().to_string();
                 let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-                if (ui.add_enabled(!name.is_empty(), egui::Button::new("Anlegen und wechseln")).clicked() || (enter && !name.is_empty()))
+                if (ui.add_enabled(!name.is_empty(), egui::Button::new(t!("Anlegen und wechseln"))).clicked() || (enter && !name.is_empty()))
                     && !name.contains(char::is_whitespace)
                 {
-                    steps = Some(("Branch anlegen", vec![args(&["switch", "-c", &name])]));
+                    steps = Some((t!("Branch anlegen"), vec![args(&["switch", "-c", &name])]));
                     self.new_branch.clear();
                     ui.close();
                 }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (behind, ahead) = git.sync.unwrap_or((0, 0));
-                let push = if ahead > 0 { format!("Push ↑{ahead}") } else { "Push".into() };
-                let tip = if git.sync.is_none() { "Branch hochladen (legt ihn auf „origin“ an)" } else { "Commits hochladen" };
+                let push = if ahead > 0 { t!("Push ↑{ahead}", ahead = ahead) } else { t!("Push").into() };
+                let tip = if git.sync.is_none() { t!("Branch hochladen (legt ihn auf „origin“ an)") } else { t!("Commits hochladen") };
                 if ui.add_enabled(!busy, egui::Button::new(push).small()).on_hover_text(tip).clicked() {
                     let cmd = if git.sync.is_none() { args(&["push", "-u", "origin", "HEAD"]) } else { args(&["push"]) };
-                    steps = Some(("Push", vec![cmd]));
+                    steps = Some((t!("Push"), vec![cmd]));
                 }
-                let pull = if behind > 0 { format!("Pull ↓{behind}") } else { "Pull".into() };
-                if ui.add_enabled(!busy && git.sync.is_some(), egui::Button::new(pull).small()).on_hover_text("Änderungen vom Server holen und einspielen").clicked() {
-                    steps = Some(("Pull", vec![args(&["pull"])]));
+                let pull = if behind > 0 { t!("Pull ↓{behind}", behind = behind) } else { t!("Pull").into() };
+                if ui.add_enabled(!busy && git.sync.is_some(), egui::Button::new(pull).small()).on_hover_text(t!("Änderungen vom Server holen und einspielen")).clicked() {
+                    steps = Some((t!("Pull"), vec![args(&["pull"])]));
                 }
-                if ui.add_enabled(!busy && git.sync.is_some(), egui::Button::new("↻").small()).on_hover_text("Abrufen (fetch): prüfen, ob es Neues gibt").clicked() {
-                    steps = Some(("Abrufen", vec![args(&["fetch"])]));
+                if ui.add_enabled(!busy && git.sync.is_some(), egui::Button::new("↻").small()).on_hover_text(t!("Abrufen (fetch): prüfen, ob es Neues gibt")).clicked() {
+                    steps = Some((t!("Abrufen"), vec![args(&["fetch"])]));
                 }
             });
         });
@@ -87,17 +87,17 @@ impl GitPanel {
         let total = git.changes.len();
         let msg = ui.add(
             egui::TextEdit::multiline(&mut self.message)
-                .hint_text("Commit-Nachricht (Strg+Enter)")
+                .hint_text(t!("Commit-Nachricht (Strg+Enter)"))
                 .desired_rows(3)
                 .desired_width(f32::INFINITY),
         );
         let message = self.message.trim().to_string();
         let label = match (staged, total) {
-            (0, 0) => "Keine Änderungen".to_string(),
-            (0, 1) => "Die Änderung committen".to_string(),
-            (0, n) => format!("Alle {n} Änderungen committen"),
-            (1, _) => "Commit (1 Datei)".to_string(),
-            (n, _) => format!("Commit ({n} Dateien)"),
+            (0, 0) => t!("Keine Änderungen").to_string(),
+            (0, 1) => t!("Die Änderung committen").to_string(),
+            (0, n) => t!("Alle {n} Änderungen committen", n = n),
+            (1, _) => t!("Commit (1 Datei)").to_string(),
+            (n, _) => t!("Commit ({n} Dateien)", n = n),
         };
         let can_commit = !busy && total > 0 && !message.is_empty();
         let shortcut = msg.has_focus() && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
@@ -105,7 +105,7 @@ impl GitPanel {
         if (button.clicked() || shortcut) && can_commit {
             let commit = args(&["commit", "-m", &message]);
             // Nothing staged: commit everything, like most editors do.
-            steps = Some(("Commit", if staged == 0 { vec![args(&["add", "-A"]), commit] } else { vec![commit] }));
+            steps = Some((t!("Commit"), if staged == 0 { vec![args(&["add", "-A"]), commit] } else { vec![commit] }));
         }
         if let Some(op) = &git.op {
             ui.horizontal(|ui| {
@@ -120,28 +120,28 @@ impl GitPanel {
             let staged_list: Vec<Change> = git.changes.iter().filter(|c| c.staged()).cloned().collect();
             let unstaged_list: Vec<Change> = git.changes.iter().filter(|c| c.unstaged()).cloned().collect();
             if !staged_list.is_empty() {
-                if section(ui, theme, "VORGEMERKT", staged_list.len(), "−", "Alle zurücknehmen", busy) {
-                    steps = Some(("Zurücknehmen", vec![args(&["restore", "--staged", "--", "."])]));
+                if section(ui, theme, "VORGEMERKT", staged_list.len(), "−", t!("Alle zurücknehmen"), busy) {
+                    steps = Some((t!("Zurücknehmen"), vec![args(&["restore", "--staged", "--", "."])]));
                 }
                 for c in &staged_list {
-                    match row(ui, theme, c, "−", "Zurücknehmen", busy) {
-                        RowClick::Button => steps = Some(("Zurücknehmen", vec![args(&["restore", "--staged", "--", &c.rel])])),
+                    match row(ui, theme, c, "−", t!("Zurücknehmen"), busy) {
+                        RowClick::Button => steps = Some((t!("Zurücknehmen"), vec![args(&["restore", "--staged", "--", &c.rel])])),
                         RowClick::Row => actions.push(open_or_compare(c)),
                         RowClick::None => {}
                     }
                 }
                 ui.add_space(6.0);
             }
-            if section(ui, theme, "ÄNDERUNGEN", unstaged_list.len(), "+", "Alle vormerken", busy || unstaged_list.is_empty()) {
-                steps = Some(("Vormerken", vec![args(&["add", "-A"])]));
+            if section(ui, theme, "ÄNDERUNGEN", unstaged_list.len(), "+", t!("Alle vormerken"), busy || unstaged_list.is_empty()) {
+                steps = Some((t!("Vormerken"), vec![args(&["add", "-A"])]));
             }
             if unstaged_list.is_empty() && staged_list.is_empty() {
                 ui.add_space(8.0);
-                ui.label(RichText::new("Keine Änderungen seit dem letzten Commit.").small().color(theme.text_faint));
+                ui.label(RichText::new(t!("Keine Änderungen seit dem letzten Commit.")).small().color(theme.text_faint));
             }
             for c in &unstaged_list {
-                match row(ui, theme, c, "+", "Vormerken", busy) {
-                    RowClick::Button => steps = Some(("Vormerken", vec![args(&["add", "-A", "--", &c.rel])])),
+                match row(ui, theme, c, "+", t!("Vormerken"), busy) {
+                    RowClick::Button => steps = Some((t!("Vormerken"), vec![args(&["add", "-A", "--", &c.rel])])),
                     RowClick::Row => actions.push(open_or_compare(c)),
                     RowClick::None => {}
                 }

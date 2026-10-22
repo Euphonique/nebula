@@ -18,19 +18,19 @@ pub struct Imported {
 
 /// Reads an export of Nebula or a FileZilla site manager, detected by content.
 pub fn parse(bytes: &[u8]) -> Result<Vec<Imported>> {
-    let text = std::str::from_utf8(bytes).context("Die Datei ist keine Textdatei (UTF-8)")?;
+    let text = std::str::from_utf8(bytes).context(t!("Die Datei ist keine Textdatei (UTF-8)"))?;
     let text = text.trim_start_matches('\u{feff}').trim_start();
     if text.starts_with('<') {
         parse_filezilla(text)
     } else if text.starts_with('{') {
         parse_nebula(text)
     } else {
-        bail!("Unbekanntes Format – erwartet wird eine Nebula-Export-Datei (.json) oder FileZillas sitemanager.xml")
+        bail!(t!("Unbekanntes Format – erwartet wird eine Nebula-Export-Datei (.json) oder FileZillas sitemanager.xml"))
     }
 }
 
 pub fn parse_nebula(json: &str) -> Result<Vec<Imported>> {
-    let sites: Sites = serde_json::from_str(json).context("Die JSON-Datei ist keine Nebula-Serverliste")?;
+    let sites: Sites = serde_json::from_str(json).context(t!("Die JSON-Datei ist keine Nebula-Serverliste"))?;
     Ok(sites
         .sites
         .into_iter()
@@ -63,7 +63,7 @@ pub fn is_duplicate(existing: &[Site], site: &Site) -> bool {
 }
 
 pub fn parse_filezilla(xml: &str) -> Result<Vec<Imported>> {
-    let doc = roxmltree::Document::parse(xml).context("Die XML-Datei konnte nicht gelesen werden")?;
+    let doc = roxmltree::Document::parse(xml).context(t!("Die XML-Datei konnte nicht gelesen werden"))?;
     let root = doc.root_element();
     let servers = root
         .children()
@@ -106,11 +106,11 @@ fn filezilla_server(node: roxmltree::Node, group: &str) -> Option<Imported> {
         "1" => Protocol::Sftp,
         "4" => Protocol::Ftps,
         "3" => {
-            notes.push("Implizites FTPS wird nicht unterstützt – als FTPS mit explizitem TLS übernommen.");
+            notes.push(t!("Implizites FTPS wird nicht unterstützt – als FTPS mit explizitem TLS übernommen."));
             Protocol::Ftps
         }
         "0" => {
-            notes.push("FileZilla nutzt hier TLS, wenn verfügbar – falls der Server es kann, auf FTPS umstellen.");
+            notes.push(t!("FileZilla nutzt hier TLS, wenn verfügbar – falls der Server es kann, auf FTPS umstellen."));
             Protocol::Ftp
         }
         "6" | "" => Protocol::Ftp,
@@ -140,14 +140,14 @@ fn filezilla_server(node: roxmltree::Node, group: &str) -> Option<Imported> {
                 .ok()
                 .and_then(|b| String::from_utf8(b).ok()),
             Some("crypt") => {
-                notes.push("Passwort ist mit FileZillas Master-Passwort verschlüsselt und wird nicht übernommen.");
+                notes.push(t!("Passwort ist mit FileZillas Master-Passwort verschlüsselt und wird nicht übernommen."));
                 None
             }
             _ => Some(raw.to_string()),
         }
     });
     if password.is_none() && matches!(logon.as_str(), "2" | "3") {
-        notes.push("FileZilla fragt hier jedes Mal nach dem Passwort – bitte in Nebula hinterlegen.");
+        notes.push(t!("FileZilla fragt hier jedes Mal nach dem Passwort – bitte in Nebula hinterlegen."));
     }
     let key_file = (protocol == Protocol::Sftp)
         .then(|| text("Keyfile"))

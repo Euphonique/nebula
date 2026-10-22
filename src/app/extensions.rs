@@ -439,7 +439,7 @@ impl NebulaApp {
                 self.ext.status.insert(ext, ExtStatus::Active);
             }
             FromHost::Failed(e) => {
-                self.error(format!("Erweiterung „{ext_name}“ konnte nicht gestartet werden."));
+                self.error(t!("Erweiterung „{ext_name}“ konnte nicht gestartet werden.", ext_name = ext_name));
                 self.ext.status.insert(ext, ExtStatus::Failed(e));
             }
             FromHost::Log { level, text } => self.ext.log(&ext, &level, text),
@@ -558,7 +558,7 @@ impl NebulaApp {
                         Some(l) => {
                             self.goto_location(&l.uri, l.line, l.column);
                         }
-                        None => self.info("Keine Definition gefunden."),
+                        None => self.info(t!("Keine Definition gefunden.")),
                     }
                 }
             }
@@ -770,7 +770,7 @@ impl NebulaApp {
             PathBuf::from(uri.replace('/', "\\"))
         };
         if !path.is_file() {
-            self.error(format!("{} kann nicht geöffnet werden.", path.display()));
+            self.error(t!("{path} kann nicht geöffnet werden.", path = path.display()));
             return None;
         }
         self.open_local(&path);
@@ -842,7 +842,7 @@ impl NebulaApp {
                         if ui.add(super::primary_button(ok, accent)).clicked() {
                             done = Some((ext.clone(), *cb, json!(value.clone())));
                         }
-                        if ui.button("Abbrechen").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+                        if ui.button(t!("Abbrechen")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                             done = Some((ext.clone(), *cb, Value::Null));
                         }
                     });
@@ -1074,8 +1074,8 @@ impl NebulaApp {
                 if !alive {
                     let status = self.ext.status.get(&ext);
                     let text = match status {
-                        Some(ExtStatus::Failed(_)) => "Die Erweiterung konnte nicht gestartet werden.",
-                        _ if sec.placeholder.is_empty() => "Wird geladen, sobald die Erweiterung läuft…",
+                        Some(ExtStatus::Failed(_)) => t!("Die Erweiterung konnte nicht gestartet werden."),
+                        _ if sec.placeholder.is_empty() => t!("Wird geladen, sobald die Erweiterung läuft…"),
                         _ => sec.placeholder.as_str(),
                     };
                     ui.label(RichText::new(text).small().color(theme.text_muted));

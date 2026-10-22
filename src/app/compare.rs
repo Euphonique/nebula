@@ -25,7 +25,7 @@ impl NebulaApp {
             DocSource::Local(path) => {
                 let state = match std::fs::read(&path) {
                     Ok(bytes) => self.compare_with(i, &bytes),
-                    Err(e) => Compare::Failed(format!("Die Datei konnte nicht gelesen werden: {e}")),
+                    Err(e) => Compare::Failed(t!("Die Datei konnte nicht gelesen werden: {e}", e = e)),
                 };
                 self.compare = Some((doc_id, state));
             }
@@ -73,7 +73,7 @@ impl NebulaApp {
             Compare::Loading(_) => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label("Server-Version wird geladen…");
+                    ui.label(t!("Server-Version wird geladen…"));
                 });
                 return;
             }
@@ -83,14 +83,14 @@ impl NebulaApp {
             }
             Compare::Ready(rows) => rows.clone(),
         };
-        diff_view(ui, &self.theme, &rows, &format!("Version {place}"), "deine Version", 380.0);
+        diff_view(ui, &self.theme, &rows, &t!("Version {place}", place = place), t!("deine Version"), 380.0);
     }
 }
 
 /// Unified diff rows with a legend: `old` lines in red (−), `new` in green (+).
 pub(super) fn diff_view(ui: &mut egui::Ui, theme: &crate::theme::Theme, rows: &[DiffLine], old: &str, new: &str, max_height: f32) {
     if rows.is_empty() {
-        ui.label("Keine Unterschiede im Inhalt.");
+        ui.label(t!("Keine Unterschiede im Inhalt."));
         return;
     }
     let red = Color32::from_rgba_unmultiplied(230, 80, 80, 40);
@@ -112,7 +112,7 @@ pub(super) fn diff_view(ui: &mut egui::Ui, theme: &crate::theme::Theme, rows: &[
                     DiffLine::Removed(n, t) => (n + 1, "−", t.as_str(), red, theme.danger),
                     DiffLine::Added(n, t) => (n + 1, "+", t.as_str(), green, theme.success),
                     DiffLine::Skip(n) => {
-                        ui.label(RichText::new(format!("    ⋯ {n} unveränderte Zeilen")).font(font.clone()).color(theme.text_faint));
+                        ui.label(RichText::new(t!("    ⋯ {n} unveränderte Zeilen", n = n)).font(font.clone()).color(theme.text_faint));
                         continue;
                     }
                 };

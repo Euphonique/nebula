@@ -90,7 +90,7 @@ fn git_op(root: &Path, args: &[&str]) -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    let out = cmd.output().map_err(|e| format!("git konnte nicht gestartet werden: {e}"))?;
+    let out = cmd.output().map_err(|e| t!("git konnte nicht gestartet werden: {e}", e = e))?;
     let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if out.status.success() {
         return Ok(stdout);

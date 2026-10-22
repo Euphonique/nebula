@@ -131,19 +131,19 @@ pub enum Recurse {
 impl Request {
     fn describe(&self) -> String {
         match self {
-            Request::List(p) => format!("Auflisten von {p}"),
-            Request::Read(p) => format!("Laden von {p}"),
-            Request::Write { path, .. } => format!("Hochladen von {path}"),
-            Request::CreateFile(p) => format!("Anlegen von {p}"),
-            Request::Mkdir(p) => format!("Anlegen von {p}"),
-            Request::Delete { path, .. } => format!("Löschen von {path}"),
-            Request::Rename { from, .. } => format!("Umbenennen von {from}"),
-            Request::Upload { local, .. } => format!("Hochladen von {}", local.display()),
-            Request::Download { remote, .. } => format!("Herunterladen von {remote}"),
-            Request::Copy { from, .. } => format!("Kopieren von {from}"),
-            Request::Chmod { path, .. } => format!("Ändern der Berechtigungen von {path}"),
-            Request::Scan { root, .. } => format!("Einlesen von {root}"),
-            Request::Sync(ops) => format!("Synchronisieren ({} Schritte)", ops.len()),
+            Request::List(p) => t!("Auflisten von {p}", p = p),
+            Request::Read(p) => t!("Laden von {p}", p = p),
+            Request::Write { path, .. } => t!("Hochladen von {path}", path = path),
+            Request::CreateFile(p) => t!("Anlegen von {p}", p = p),
+            Request::Mkdir(p) => t!("Anlegen von {p}", p = p),
+            Request::Delete { path, .. } => t!("Löschen von {path}", path = path),
+            Request::Rename { from, .. } => t!("Umbenennen von {from}", from = from),
+            Request::Upload { local, .. } => t!("Hochladen von {local}", local = local.display()),
+            Request::Download { remote, .. } => t!("Herunterladen von {remote}", remote = remote),
+            Request::Copy { from, .. } => t!("Kopieren von {from}", from = from),
+            Request::Chmod { path, .. } => t!("Ändern der Berechtigungen von {path}", path = path),
+            Request::Scan { root, .. } => t!("Einlesen von {root}", root = root),
+            Request::Sync(ops) => t!("Synchronisieren ({ops_count} Schritte)", ops_count = ops.len()),
         }
     }
 }
@@ -214,7 +214,7 @@ impl Progress<'_> {
     /// Called before each file; errors out if the transfer was cancelled.
     fn file(&mut self) -> Result<()> {
         if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
-            anyhow::bail!("Abgebrochen");
+            anyhow::bail!(t!("Abgebrochen"));
         }
         Ok(())
     }
@@ -352,8 +352,8 @@ impl RemoteManager {
                         t.state = S::Running { done: *done, total };
                     }
                     Reply::Transferred { message, .. } => t.state = S::Done(message.clone()),
-                    Reply::Written { bytes, .. } => t.state = S::Done(format!("{bytes} Bytes gespeichert")),
-                    Reply::Conflict { .. } => t.state = S::Failed("Auf dem Server geändert – nicht überschrieben".into()),
+                    Reply::Written { bytes, .. } => t.state = S::Done(t!("{bytes} Bytes gespeichert", bytes = bytes)),
+                    Reply::Conflict { .. } => t.state = S::Failed(t!("Auf dem Server geändert – nicht überschrieben").into()),
                     Reply::Failed { message, .. } => t.state = S::Failed(message.clone()),
                     _ => {}
                 }
@@ -429,7 +429,7 @@ impl Worker {
             for cmd in rx.try_iter() {
                 if let Command::Run { tag, request, .. } = cmd {
                     self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                    self.emit(tag, Reply::Failed { request, message: "Keine Verbindung".into() });
+                    self.emit(tag, Reply::Failed { request, message: t!("Keine Verbindung").into() });
                 }
             }
             return;
@@ -456,7 +456,7 @@ impl Worker {
             // Cancelled while waiting in the queue.
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                self.emit(tag, Reply::Failed { request, message: "Abgebrochen".into() });
+                self.emit(tag, Reply::Failed { request, message: t!("Abgebrochen").into() });
                 continue;
             }
             let (events, ctx, site_id) = (self.events.clone(), self.ctx.clone(), self.site.id.clone());
@@ -482,11 +482,11 @@ impl Worker {
             match result {
                 Ok(reply) => self.emit(tag, reply),
                 Err(_) if cancel.load(std::sync::atomic::Ordering::Relaxed) => {
-                    let message = format!("{} abgebrochen ({} Datei(en) fertig)", request.describe(), progress.done);
+                    let message = t!("{describe} abgebrochen ({done} Datei(en) fertig)", describe = request.describe(), done = progress.done);
                     self.emit(tag, Reply::Failed { request, message });
                 }
                 Err(e) => {
-                    let message = format!("{} fehlgeschlagen: {e:#}", request.describe());
+                    let message = t!("{describe} fehlgeschlagen: {e}", describe = request.describe(), e = format!("{:#}", e));
                     self.emit(tag, Reply::Failed { request, message });
                 }
             }
@@ -528,7 +528,7 @@ impl Worker {
             Request::Upload { local, remote } => {
                 let n = upload_recursive(b.as_mut(), local, remote, progress)?;
                 Reply::Transferred {
-                    message: format!("{n} Datei(en) hochgeladen"),
+                    message: t!("{n} Datei(en) hochgeladen", n = n),
                     remote_dir: Some(parent(remote)),
                     local_dir: None,
                 }
@@ -536,7 +536,7 @@ impl Worker {
             Request::Download { remote, local, is_dir } => {
                 let n = download_recursive(b.as_mut(), remote, local, *is_dir, progress)?;
                 Reply::Transferred {
-                    message: format!("{n} Datei(en) heruntergeladen"),
+                    message: t!("{n} Datei(en) heruntergeladen", n = n),
                     remote_dir: None,
                     local_dir: local.parent().map(|p| p.to_path_buf()),
                 }
@@ -544,18 +544,18 @@ impl Worker {
             Request::Copy { from, to, is_dir } => {
                 let n = copy_recursive(b.as_mut(), from, to, *is_dir, progress)?;
                 Reply::Transferred {
-                    message: format!("{n} Datei(en) kopiert"),
+                    message: t!("{n} Datei(en) kopiert", n = n),
                     remote_dir: Some(parent(to)),
                     local_dir: None,
                 }
             }
             Request::CreateFile(path) => {
                 b.write(path, &[])?;
-                Reply::Changed { dir: parent(path), message: format!("{path} angelegt") }
+                Reply::Changed { dir: parent(path), message: t!("{path} angelegt", path = path) }
             }
             Request::Mkdir(path) => {
                 b.mkdir(path)?;
-                Reply::Changed { dir: parent(path), message: format!("{path} angelegt") }
+                Reply::Changed { dir: parent(path), message: t!("{path} angelegt", path = path) }
             }
             Request::Delete { path, is_dir } => {
                 if *is_dir {
@@ -563,7 +563,7 @@ impl Worker {
                 } else {
                     b.remove_file(path)?;
                 }
-                Reply::Changed { dir: parent(path), message: format!("{path} gelöscht") }
+                Reply::Changed { dir: parent(path), message: t!("{path} gelöscht", path = path) }
             }
             Request::Rename { from, to } => {
                 b.rename(from, to)?;
@@ -579,8 +579,8 @@ impl Worker {
                 if let (true, Some(scope)) = (*is_dir, recurse) {
                     n += chmod_recursive(b.as_mut(), path, *mode, *scope)?;
                 }
-                let what = if n == 1 { path.clone() } else { format!("{n} Objekte") };
-                Reply::Changed { dir: parent(path), message: format!("Berechtigungen von {what} auf {} gesetzt", mode_string(*mode)) }
+                let what = if n == 1 { path.clone() } else { t!("{n} Objekte", n = n) };
+                Reply::Changed { dir: parent(path), message: t!("Berechtigungen von {what} auf {mode_string} gesetzt", what = what, mode_string = mode_string(*mode)) }
             }
             Request::Scan { root, exclude } => {
                 let mut files = Vec::new();

@@ -109,7 +109,7 @@ impl NebulaApp {
         let theme = self.theme.clone();
         super::modal(ctx, egui::Id::unique("goto-symbol")).show(ctx, |ui| {
             ui.set_width(520.0);
-            let resp = ui.add(egui::TextEdit::singleline(&mut state.query).hint_text("Symbol suchen…").desired_width(f32::INFINITY));
+            let resp = ui.add(egui::TextEdit::singleline(&mut state.query).hint_text(t!("Symbol suchen…")).desired_width(f32::INFINITY));
             if std::mem::take(&mut state.focus) || resp.changed() {
                 resp.request_focus();
             }
@@ -126,7 +126,7 @@ impl NebulaApp {
             });
             ui.add_space(4.0);
             if results.is_empty() {
-                ui.label(RichText::new(if list.is_empty() { "Keine Symbole in dieser Datei" } else { "Kein passendes Symbol" }).color(theme.text_faint));
+                ui.label(RichText::new(if list.is_empty() { t!("Keine Symbole in dieser Datei") } else { t!("Kein passendes Symbol") }).color(theme.text_faint));
             }
             egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
                 for (row, (n, _)) in results.iter().enumerate() {

@@ -121,7 +121,7 @@ impl SftpBackend {
         channel.request_subsystem(true, "sftp").await?;
         let sftp = SftpSession::new(channel.into_stream())
             .await
-            .context("SFTP-Subsystem nicht verfügbar")?;
+            .context(t!("SFTP-Subsystem nicht verfügbar"))?;
         sftp.set_timeout(30);
         Ok(Self {
             _session: session,
@@ -143,8 +143,8 @@ pub(super) async fn open_session(site: &Site, password: &str, prompt: Arc<Prompt
         tokio::net::TcpStream::connect((site.host.as_str(), site.port)),
     )
     .await
-    .map_err(|_| anyhow!("Zeitüberschreitung beim Verbinden mit {}:{}", site.host, site.port))?
-    .with_context(|| format!("Verbindung zu {}:{} fehlgeschlagen", site.host, site.port))?;
+    .map_err(|_| anyhow!(t!("Zeitüberschreitung beim Verbinden mit {host}:{port}", host = site.host, port = site.port)))?
+    .with_context(|| t!("Verbindung zu {host}:{port} fehlgeschlagen", host = site.host, port = site.port))?;
     socket.set_nodelay(true).ok();
 
     let handler = Handler {
@@ -154,7 +154,7 @@ pub(super) async fn open_session(site: &Site, password: &str, prompt: Arc<Prompt
     };
     let mut session = client::connect_stream(config, socket, handler)
         .await
-        .map_err(|e| anyhow!("SSH-Verbindung fehlgeschlagen: {e}"))?;
+        .map_err(|e| anyhow!(t!("SSH-Verbindung fehlgeschlagen: {e}", e = e)))?;
     authenticate(&mut session, site, password).await?;
     Ok(session)
 }
@@ -182,7 +182,7 @@ async fn authenticate(session: &mut client::Handle<Handler>, site: &Site, passwo
             Ok(k) => k,
             Err(e) => {
                 if site.key_file.is_some() {
-                    key_error = Some(format!("Schlüssel {} nicht lesbar: {e}", path.display()));
+                    key_error = Some(t!("Schlüssel {path} nicht lesbar: {e}", path = path.display(), e = e));
                 }
                 continue;
             }
@@ -217,8 +217,8 @@ async fn authenticate(session: &mut client::Handle<Handler>, site: &Site, passwo
     }
 
     match key_error {
-        Some(e) => bail!("Anmeldung fehlgeschlagen. {e}"),
-        None => bail!("Anmeldung fehlgeschlagen (Benutzername, Passwort oder Schlüssel falsch?)"),
+        Some(e) => bail!(t!("Anmeldung fehlgeschlagen. {e}", e = e)),
+        None => bail!(t!("Anmeldung fehlgeschlagen (Benutzername, Passwort oder Schlüssel falsch?)")),
     }
 }
 

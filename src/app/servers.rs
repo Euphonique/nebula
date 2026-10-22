@@ -24,7 +24,7 @@ struct ImportEntry {
 impl NebulaApp {
     fn save_sites(&mut self) {
         if let Err(e) = self.sites.save() {
-            self.error(format!("Server konnten nicht gespeichert werden: {e:#}"));
+            self.error(t!("Server konnten nicht gespeichert werden: {e}", e = format!("{:#}", e)));
         }
     }
 
@@ -40,7 +40,7 @@ impl NebulaApp {
     pub(super) fn duplicate_site(&mut self, id: &str) {
         let Some(original) = self.sites.get(id).cloned() else { return };
         let password = original.password().unwrap_or_default();
-        let site = Site { id: new_id(), name: format!("{} (Kopie)", original.display_name()), ..original };
+        let site = Site { id: new_id(), name: t!("{display_name} (Kopie)", display_name = original.display_name()), ..original };
         self.dialog = Some(Dialog::EditSite(Box::new(SiteForm { site, password, password_loaded: true, is_new: true })));
     }
 
@@ -84,9 +84,9 @@ impl NebulaApp {
             Some(p) => p,
             None => {
                 let mut dialog = rfd::FileDialog::new()
-                    .set_title("Server importieren")
-                    .add_filter("Serverliste", &["json", "xml"])
-                    .add_filter("Alle Dateien", &["*"]);
+                    .set_title(t!("Server importieren"))
+                    .add_filter(t!("Serverliste"), &["json", "xml"])
+                    .add_filter(t!("Alle Dateien"), &["*"]);
                 if let Some(dir) = server_import::filezilla_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
                     dialog = dialog.set_directory(dir);
                 }
@@ -102,12 +102,12 @@ impl NebulaApp {
         let list = match list {
             Ok(l) => l,
             Err(e) => {
-                self.error(format!("Import fehlgeschlagen: {e:#}"));
+                self.error(t!("Import fehlgeschlagen: {e}", e = format!("{:#}", e)));
                 return;
             }
         };
         if list.is_empty() {
-            self.info("In der Datei wurden keine Server gefunden.");
+            self.info(t!("In der Datei wurden keine Server gefunden."));
             return;
         }
         let source = if path.file_name().is_some_and(|n| n.eq_ignore_ascii_case("sitemanager.xml")) {
@@ -127,11 +127,11 @@ impl NebulaApp {
 
     pub(super) fn export_sites(&mut self) {
         if self.sites.sites.is_empty() {
-            self.info("Es gibt noch keine Server zum Exportieren.");
+            self.info(t!("Es gibt noch keine Server zum Exportieren."));
             return;
         }
         let Some(path) = rfd::FileDialog::new()
-            .set_title("Server exportieren")
+            .set_title(t!("Server exportieren"))
             .set_file_name("nebula-server.json")
             .add_filter("Nebula-Serverliste", &["json"])
             .save_file()
@@ -139,8 +139,8 @@ impl NebulaApp {
             return;
         };
         match server_import::export(&self.sites).and_then(|b| Ok(std::fs::write(&path, b)?)) {
-            Ok(()) => self.info(format!("{} Server exportiert (ohne Passwörter).", self.sites.sites.len())),
-            Err(e) => self.error(format!("Export fehlgeschlagen: {e:#}")),
+            Ok(()) => self.info(t!("{sites_count} Server exportiert (ohne Passwörter).", sites_count = self.sites.sites.len())),
+            Err(e) => self.error(t!("Export fehlgeschlagen: {e}", e = format!("{:#}", e))),
         }
     }
 
@@ -152,22 +152,22 @@ impl NebulaApp {
         let has_passwords = form.entries.iter().any(|e| e.item.password.is_some());
         modal(ctx, egui::Id::unique("import-sites")).show(ctx, |ui| {
             ui.set_width(520.0);
-            ui.heading(format!("Server importieren – {}", form.source));
+            ui.heading(t!("Server importieren – {source}", source = form.source));
             ui.add_space(6.0);
             let dupes = form.entries.iter().filter(|e| e.duplicate).count();
             if dupes > 0 {
                 let text = if dupes == 1 {
-                    "Einen der Server gibt es schon, er ist abgewählt.".to_string()
+                    t!("Einen der Server gibt es schon, er ist abgewählt.").to_string()
                 } else {
-                    format!("{dupes} der Server gibt es schon, sie sind abgewählt.")
+                    t!("{dupes} der Server gibt es schon, sie sind abgewählt.", dupes = dupes)
                 };
                 ui.label(RichText::new(text).small().color(theme.gutter_fg));
             }
             ui.horizontal(|ui| {
-                if ui.small_button("Alle").clicked() {
+                if ui.small_button(t!("Alle")).clicked() {
                     form.entries.iter_mut().for_each(|e| e.selected = true);
                 }
-                if ui.small_button("Keine").clicked() {
+                if ui.small_button(t!("Keine")).clicked() {
                     form.entries.iter_mut().for_each(|e| e.selected = false);
                 }
             });
@@ -199,17 +199,17 @@ impl NebulaApp {
             });
             ui.add_space(8.0);
             if has_passwords {
-                ui.checkbox(&mut form.with_passwords, "Gespeicherte Passwörter übernehmen")
-                    .on_hover_text("Sie landen in der Windows-Anmeldeinformationsverwaltung");
+                ui.checkbox(&mut form.with_passwords, t!("Gespeicherte Passwörter übernehmen"))
+                    .on_hover_text(t!("Sie landen in der Windows-Anmeldeinformationsverwaltung"));
             }
             ui.add_space(8.0);
             let count = form.entries.iter().filter(|e| e.selected).count();
             ui.horizontal(|ui| {
-                let label = if count == 1 { "1 Server importieren".to_string() } else { format!("{count} Server importieren") };
+                let label = if count == 1 { t!("1 Server importieren").to_string() } else { t!("{count} Server importieren", count = count) };
                 if ui.add_enabled(count > 0, primary_button(&label, theme.accent)).clicked() {
                     import = true;
                 }
-                if ui.button("Abbrechen").clicked() {
+                if ui.button(t!("Abbrechen")).clicked() {
                     keep = false;
                 }
             });
@@ -230,7 +230,7 @@ impl NebulaApp {
             self.save_sites();
             self.show_sidebar = true;
             self.sidebar.tab = crate::ui::sidebar::SidebarTab::Servers;
-            self.info(if count == 1 { "1 Server importiert.".to_string() } else { format!("{count} Server importiert.") });
+            self.info(if count == 1 { t!("1 Server importiert.").to_string() } else { t!("{count} Server importiert.", count = count) });
             keep = false;
         }
         keep

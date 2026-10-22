@@ -65,9 +65,9 @@ impl NebulaApp {
             ui.set_width(880.0);
             ui.set_height(560.0);
             ui.horizontal(|ui| {
-                ui.heading("Einstellungen");
+                ui.heading(t!("Einstellungen"));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(primary_button("Fertig", self.theme.accent)).clicked() {
+                    if ui.add(primary_button(t!("Fertig"), self.theme.accent)).clicked() {
                         close = true;
                     }
                 });
@@ -77,7 +77,7 @@ impl NebulaApp {
                 // Navigation.
                 ui.vertical(|ui| {
                     ui.set_width(150.0);
-                    for (page, label) in [(Page::Editor, "Editor"), (Page::Design, "Design"), (Page::Languages, "Sprachen"), (Page::Keys, "Tastenkürzel"), (Page::Agents, "KI-Agenten"), (Page::Extensions, "Erweiterungen"), (Page::System, "Windows")] {
+                    for (page, label) in [(Page::Editor, t!("Editor")), (Page::Design, t!("Design")), (Page::Languages, t!("Sprachen")), (Page::Keys, t!("Tastenkürzel")), (Page::Agents, "KI-Agenten"), (Page::Extensions, t!("Erweiterungen")), (Page::System, t!("Windows"))] {
                         let sel = state.page == page;
                         if ui
                             .add_sized([140.0, 30.0], egui::Button::selectable(sel, RichText::new(label).size(14.0)))
@@ -129,10 +129,10 @@ impl NebulaApp {
     fn editor_page(&mut self, ui: &mut Ui, state: &mut SettingsUi) {
         self.language_section(ui);
         let e = &mut self.settings.editor;
-        section(ui, "Darstellung");
+        section(ui, t!("Darstellung"));
         egui::Grid::new("editor-grid").num_columns(2).spacing([16.0, 10.0]).show(ui, |ui| {
-            ui.label("Schriftart");
-            let current = if e.font_family.is_empty() { "Standard (Cascadia Mono)".to_string() } else { e.font_family.clone() };
+            ui.label(t!("Schriftart"));
+            let current = if e.font_family.is_empty() { t!("Standard (Cascadia Mono)").to_string() } else { e.font_family.clone() };
             let button = ui.add(
                 egui::Button::new(format!("{current}  {}", if state.font_picker_open { "▴" } else { "▾" }))
                     .min_size(egui::vec2(280.0, 28.0)),
@@ -152,7 +152,7 @@ impl NebulaApp {
                             ui.set_width(280.0);
                             let filter = ui.add(
                                 egui::TextEdit::singleline(&mut state.font_filter)
-                                    .hint_text("Schrift suchen…")
+                                    .hint_text(t!("Schrift suchen…"))
                                     .desired_width(f32::INFINITY),
                             );
                             if !filter.has_focus() && state.font_filter.is_empty() {
@@ -162,7 +162,7 @@ impl NebulaApp {
                             let mut chosen = None;
                             egui::ScrollArea::vertical().id_salt("font-list").max_height(320.0).show(ui, |ui| {
                                 ui.set_width(ui.available_width());
-                                if q.is_empty() && ui.selectable_label(e.font_family.is_empty(), "Standard (Cascadia Mono)").clicked() {
+                                if q.is_empty() && ui.selectable_label(e.font_family.is_empty(), t!("Standard (Cascadia Mono)")).clicked() {
                                     chosen = Some(String::new());
                                 }
                                 for family in crate::fonts::installed().keys().filter(|f| f.to_lowercase().contains(&q)) {
@@ -185,49 +185,49 @@ impl NebulaApp {
                 }
             }
             ui.end_row();
-            ui.label("Schriftgröße");
+            ui.label(t!("Schriftgröße"));
             ui.add(egui::Slider::new(&mut e.font_size, 8.0..=32.0).step_by(0.5));
             ui.end_row();
-            ui.label("Zeilenhöhe");
+            ui.label(t!("Zeilenhöhe"));
             ui.add(egui::Slider::new(&mut e.line_height, 1.0..=2.5).step_by(0.05).fixed_decimals(2));
             ui.end_row();
             ui.label("");
-            ui.checkbox(&mut e.highlight_current_line, "Aktuelle Zeile hervorheben");
+            ui.checkbox(&mut e.highlight_current_line, t!("Aktuelle Zeile hervorheben"));
             ui.end_row();
             ui.label("");
-            ui.checkbox(&mut e.show_indent_guides, "Einrückungshilfslinien");
+            ui.checkbox(&mut e.show_indent_guides, t!("Einrückungshilfslinien"));
             ui.end_row();
             ui.label("");
-            ui.checkbox(&mut e.show_invisibles, "Unsichtbare Zeichen anzeigen");
+            ui.checkbox(&mut e.show_invisibles, t!("Unsichtbare Zeichen anzeigen"));
             ui.end_row();
             ui.label("");
-            ui.checkbox(&mut e.word_wrap, "Automatischer Zeilenumbruch");
+            ui.checkbox(&mut e.word_wrap, t!("Automatischer Zeilenumbruch"));
             ui.end_row();
             ui.label("");
-            ui.checkbox(&mut e.minimap, "Minimap am rechten Rand");
+            ui.checkbox(&mut e.minimap, t!("Minimap am rechten Rand"));
             ui.end_row();
         });
-        section(ui, "Einrückung (Standard)");
+        section(ui, t!("Einrückung (Standard)"));
         egui::Grid::new("indent-grid").num_columns(2).spacing([16.0, 10.0]).show(ui, |ui| {
-            ui.label("Tabulatorbreite");
+            ui.label(t!("Tabulatorbreite"));
             ui.add(egui::DragValue::new(&mut e.tab_size).range(1..=8));
             ui.end_row();
             ui.label("");
-            ui.checkbox(&mut e.use_spaces, "Leerzeichen statt Tabs");
+            ui.checkbox(&mut e.use_spaces, t!("Leerzeichen statt Tabs"));
             ui.end_row();
         });
-        ui.label(RichText::new("Pro Sprache lässt sich das unter „Sprachen“ abweichend einstellen.").small().color(self.theme.text_faint));
-        section(ui, "Beim Speichern");
-        ui.checkbox(&mut e.trim_trailing_whitespace, "Leerzeichen am Zeilenende entfernen (nicht in Markdown)");
-        ui.checkbox(&mut e.insert_final_newline, "Zeilenumbruch am Dateiende sicherstellen");
-        ui.label(RichText::new("Eine .editorconfig im Projekt hat Vorrang vor diesen Einstellungen (Einrückung, Leerzeichen, Dateiende).").small().color(self.theme.text_faint));
-        section(ui, "Automatisch speichern");
+        ui.label(RichText::new(t!("Pro Sprache lässt sich das unter „Sprachen“ abweichend einstellen.")).small().color(self.theme.text_faint));
+        section(ui, t!("Beim Speichern"));
+        ui.checkbox(&mut e.trim_trailing_whitespace, t!("Leerzeichen am Zeilenende entfernen (nicht in Markdown)"));
+        ui.checkbox(&mut e.insert_final_newline, t!("Zeilenumbruch am Dateiende sicherstellen"));
+        ui.label(RichText::new(t!("Eine .editorconfig im Projekt hat Vorrang vor diesen Einstellungen (Einrückung, Leerzeichen, Dateiende).")).small().color(self.theme.text_faint));
+        section(ui, t!("Automatisch speichern"));
         {
             use crate::settings::AutoSave;
             let label = |a: AutoSave| match a {
-                AutoSave::Off => "Aus",
-                AutoSave::Delay => "Nach einer Tipppause",
-                AutoSave::FocusChange => "Beim Wechsel von Tab oder Fenster",
+                AutoSave::Off => t!("Aus"),
+                AutoSave::Delay => t!("Nach einer Tipppause"),
+                AutoSave::FocusChange => t!("Beim Wechsel von Tab oder Fenster"),
             };
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt("autosave").selected_text(label(e.autosave)).width(240.0).show_ui(ui, |ui| {
@@ -236,31 +236,31 @@ impl NebulaApp {
                     }
                 });
                 if e.autosave == AutoSave::Delay {
-                    ui.add(egui::DragValue::new(&mut e.autosave_delay).range(0.5..=60.0).speed(0.1).suffix(" s"));
+                    ui.add(egui::DragValue::new(&mut e.autosave_delay).range(0.5..=60.0).speed(0.1).suffix(t!(" s")));
                 }
             });
-            ui.add_enabled(e.autosave != AutoSave::Off, egui::Checkbox::new(&mut e.autosave_remote, "Auch Serverdateien (jedes Speichern lädt hoch)"));
+            ui.add_enabled(e.autosave != AutoSave::Off, egui::Checkbox::new(&mut e.autosave_remote, t!("Auch Serverdateien (jedes Speichern lädt hoch)")));
             ui.label(
-                RichText::new("Automatisches Speichern entfernt keine Leerzeichen am Zeilenende und lässt Formatierer aus; das passiert beim Speichern mit Strg+S.")
+                RichText::new(t!("Automatisches Speichern entfernt keine Leerzeichen am Zeilenende und lässt Formatierer aus; das passiert beim Speichern mit Strg+S."))
                     .small()
                     .color(self.theme.text_faint),
             );
         }
-        section(ui, "Lokaler Verlauf");
+        section(ui, t!("Lokaler Verlauf"));
         ui.horizontal(|ui| {
-            ui.checkbox(&mut e.local_history, "Frühere Fassungen von Dateien aufbewahren");
-            ui.add_enabled(e.local_history, egui::DragValue::new(&mut e.history_max).range(1..=500).suffix(" je Datei"));
+            ui.checkbox(&mut e.local_history, t!("Frühere Fassungen von Dateien aufbewahren"));
+            ui.add_enabled(e.local_history, egui::DragValue::new(&mut e.history_max).range(1..=500).suffix(t!(" je Datei")));
         });
         ui.label(
-            RichText::new("Beim Öffnen und bei jedem Speichern, auch für Serverdateien. Ansehen und wiederherstellen über das Tab-Menü „Lokaler Verlauf…“.")
+            RichText::new(t!("Beim Öffnen und bei jedem Speichern, auch für Serverdateien. Ansehen und wiederherstellen über das Tab-Menü „Lokaler Verlauf…“."))
                 .small()
                 .color(self.theme.text_faint),
         );
-        section(ui, "Eingabehilfen");
-        ui.checkbox(&mut e.auto_pair, "Klammern und Anführungszeichen automatisch schließen");
-        ui.checkbox(&mut e.auto_close_tags, "HTML-Tags automatisch schließen");
-        ui.checkbox(&mut e.emmet, "Emmet-Kürzel mit Tab expandieren (z. B. ul>li*3)");
-        section(ui, "Terminal");
+        section(ui, t!("Eingabehilfen"));
+        ui.checkbox(&mut e.auto_pair, t!("Klammern und Anführungszeichen automatisch schließen"));
+        ui.checkbox(&mut e.auto_close_tags, t!("HTML-Tags automatisch schließen"));
+        ui.checkbox(&mut e.emmet, t!("Emmet-Kürzel mit Tab expandieren (z. B. ul>li*3)"));
+        section(ui, t!("Terminal"));
         let shells = crate::remote::terminal::local_shells();
         let current = shells
             .iter()
@@ -269,7 +269,7 @@ impl NebulaApp {
             .name
             .clone();
         ui.horizontal(|ui| {
-            ui.label("Lokale Shell");
+            ui.label(t!("Lokale Shell"));
             egui::ComboBox::from_id_salt("terminal-shell").selected_text(&current).width(220.0).show_ui(ui, |ui| {
                 for s in &shells {
                     if ui.selectable_label(s.name == current, &s.name).on_hover_text(&s.program).clicked() {
@@ -278,7 +278,7 @@ impl NebulaApp {
                 }
             });
         });
-        ui.label(RichText::new("Strg+Ö öffnet bei lokalen Dateien diese Shell im Projektordner, bei Serverdateien ein SSH-Terminal.").small().color(self.theme.text_faint));
+        ui.label(RichText::new(t!("Strg+Ö öffnet bei lokalen Dateien diese Shell im Projektordner, bei Serverdateien ein SSH-Terminal.")).small().color(self.theme.text_faint));
     }
 
     pub(super) fn apply_theme(&mut self, ctx: &egui::Context) {
@@ -320,7 +320,7 @@ impl NebulaApp {
         if state.themes_gen != theme::themes_generation() {
             state.reload_themes();
         }
-        section(ui, "Erscheinungsbild");
+        section(ui, t!("Erscheinungsbild"));
         ui.horizontal(|ui| {
             for a in [Appearance::Light, Appearance::Dark, Appearance::System] {
                 if ui.selectable_label(self.settings.appearance == a, a.label()).clicked() && self.settings.appearance != a {
@@ -331,7 +331,7 @@ impl NebulaApp {
         ui.add_space(6.0);
         let dark = self.settings.is_dark();
         egui::Grid::new("theme-slots").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
-            for (slot_dark, label) in [(false, "Theme für helles Design"), (true, "Theme für dunkles Design")] {
+            for (slot_dark, label) in [(false, t!("Theme für helles Design")), (true, t!("Theme für dunkles Design"))] {
                 ui.label(label);
                 let slot = self.settings.theme_slot_mut(slot_dark);
                 egui::ComboBox::from_id_salt(("theme-select", slot_dark))
@@ -342,7 +342,7 @@ impl NebulaApp {
                         let themes = state.themes.iter().filter(|t| t.dark == slot_dark).chain(state.themes.iter().filter(|t| t.dark != slot_dark));
                         for t in themes {
                             let label = match &t.extension {
-                                _ if t.is_builtin() => format!("{} (mitgeliefert)", t.name),
+                                _ if t.is_builtin() => t!("{name} (mitgeliefert)", name = t.name),
                                 Some(ext) => format!("{} ({ext})", t.name),
                                 None => t.name.clone(),
                             };
@@ -355,13 +355,13 @@ impl NebulaApp {
             }
         });
         let current = self.settings.active_theme().to_string();
-        section(ui, &format!("Aktives Theme: {current}"));
+        section(ui, &t!("Aktives Theme: {current}", current = current));
         ui.horizontal(|ui| {
-            if ui.button("Duplizieren").on_hover_text("Eigene, bearbeitbare Kopie anlegen").clicked() {
-                let mut name = format!("{current} Kopie");
+            if ui.button(t!("Duplizieren")).on_hover_text(t!("Eigene, bearbeitbare Kopie anlegen")).clicked() {
+                let mut name = t!("{current} Kopie", current = current);
                 let mut n = 2;
                 while state.themes.iter().any(|t| t.name == name) {
-                    name = format!("{current} Kopie {n}");
+                    name = t!("{current} Kopie {n}", current = current, n = n);
                     n += 1;
                 }
                 let file = self.theme_without_mica().to_file(&name);
@@ -370,13 +370,13 @@ impl NebulaApp {
                         *self.settings.theme_slot_mut(dark) = name;
                         state.themes = theme::load_themes();
                     }
-                    Err(e) => self.error(format!("Theme konnte nicht gespeichert werden: {e:#}")),
+                    Err(e) => self.error(t!("Theme konnte nicht gespeichert werden: {e}", e = format!("{:#}", e))),
                 }
             }
-            if ui.button("Importieren…").on_hover_text("Nebula-Theme (.json) oder Nova-Theme (.css)").clicked() {
+            if ui.button(t!("Importieren…")).on_hover_text(t!("Nebula-Theme (.json) oder Nova-Theme (.css)")).clicked() {
                 self.import_theme_dialog(state);
             }
-            if ui.button("Exportieren…").clicked() {
+            if ui.button(t!("Exportieren…")).clicked() {
                 self.export_theme_dialog(&current);
             }
         });
@@ -389,7 +389,7 @@ impl NebulaApp {
         let overrides_extension = selected.is_some_and(|t| t.overrides_extension);
         ui.add_space(4.0);
         let mut mica = self.settings.mica;
-        if ui.checkbox(&mut mica, "Mica-Hintergrund in der Seitenleiste (Windows 11)").changed() {
+        if ui.checkbox(&mut mica, t!("Mica-Hintergrund in der Seitenleiste (Windows 11)")).changed() {
             self.settings.mica = mica;
             self.apply_theme(&ctx);
         }
@@ -397,18 +397,18 @@ impl NebulaApp {
         if builtin {
             ui.add_space(10.0);
             ui.label(
-                RichText::new("Mitgelieferte Themes sind schreibgeschützt. „Duplizieren“ legt eine bearbeitbare Kopie an.")
+                RichText::new(t!("Mitgelieferte Themes sind schreibgeschützt. „Duplizieren“ legt eine bearbeitbare Kopie an."))
                     .color(self.theme.text_faint),
             );
         } else if let Some(ext) = &from_extension {
             ui.add_space(10.0);
             ui.label(
-                RichText::new(format!("Stammt aus der Erweiterung „{ext}“. Änderungen werden als eigene Fassung gespeichert."))
+                RichText::new(t!("Stammt aus der Erweiterung „{ext}“. Änderungen werden als eigene Fassung gespeichert.", ext = ext))
                     .color(self.theme.text_faint),
             );
         } else if overrides_extension {
             ui.horizontal(|ui| {
-                if ui.button("Auf Original der Erweiterung zurücksetzen").clicked() {
+                if ui.button(t!("Auf Original der Erweiterung zurücksetzen")).clicked() {
                     theme::delete_theme(&current);
                     state.themes = theme::load_themes();
                     self.apply_theme(&ctx);
@@ -416,7 +416,7 @@ impl NebulaApp {
             });
         } else {
             ui.horizontal(|ui| {
-                if ui.button("Theme löschen").clicked() {
+                if ui.button(t!("Theme löschen")).clicked() {
                     theme::delete_theme(&current);
                     *self.settings.theme_slot_mut(dark) = if dark { BUILTIN_DARK.into() } else { theme::BUILTIN_LIGHT.into() };
                     state.themes = theme::load_themes();
@@ -428,7 +428,7 @@ impl NebulaApp {
         // Color editor (read-only preview for built-in themes).
         let Some(idx) = state.themes.iter().position(|t| t.name == current) else { return };
         let mut changed = false;
-        section(ui, "Oberfläche");
+        section(ui, t!("Oberfläche"));
         ui.add_enabled_ui(!builtin, |ui| {
             egui::Grid::new("ui-colors").num_columns(4).spacing([12.0, 6.0]).show(ui, |ui| {
                 for (n, (key, label)) in UI_COLORS.iter().enumerate() {
@@ -438,15 +438,15 @@ impl NebulaApp {
                         file.ui.insert(key.to_string(), color_to_hex(c));
                         changed = true;
                     }
-                    ui.label(*label);
+                    ui.label(crate::i18n::tr(label));
                     if n % 2 == 1 {
                         ui.end_row();
                     }
                 }
             });
         });
-        section(ui, "Syntax");
-        ui.add(egui::TextEdit::singleline(&mut state.syntax_filter).hint_text("Kategorie filtern…").desired_width(240.0));
+        section(ui, t!("Syntax"));
+        ui.add(egui::TextEdit::singleline(&mut state.syntax_filter).hint_text(t!("Kategorie filtern…")).desired_width(240.0));
         ui.add_space(4.0);
         ui.add_enabled_ui(!builtin, |ui| {
             let filter = state.syntax_filter.to_lowercase();
@@ -465,7 +465,7 @@ impl NebulaApp {
         });
         if changed {
             if let Err(e) = theme::save_theme(&state.themes[idx]) {
-                self.error(format!("Theme konnte nicht gespeichert werden: {e:#}"));
+                self.error(t!("Theme konnte nicht gespeichert werden: {e}", e = format!("{:#}", e)));
             }
             self.apply_theme(&ctx);
         }
@@ -480,8 +480,8 @@ impl NebulaApp {
 
     fn import_theme_dialog(&mut self, state: &mut SettingsUi) {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("Themes", &["json", "css"])
-            .set_title("Theme importieren")
+            .add_filter(t!("Themes"), &["json", "css"])
+            .set_title(t!("Theme importieren"))
             .pick_file()
         else {
             return;
@@ -489,7 +489,7 @@ impl NebulaApp {
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) => {
-                self.error(format!("Datei konnte nicht gelesen werden: {e}"));
+                self.error(t!("Datei konnte nicht gelesen werden: {e}", e = e));
                 return;
             }
         };
@@ -497,20 +497,20 @@ impl NebulaApp {
         let parsed = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("css")) {
             crate::theme_import::import_nova_css(&text, &stem)
         } else {
-            serde_json::from_str::<ThemeFile>(&text).map_err(|e| anyhow::anyhow!("Ungültige Theme-Datei: {e}"))
+            serde_json::from_str::<ThemeFile>(&text).map_err(|e| anyhow::anyhow!(t!("Ungültige Theme-Datei: {e}", e = e)))
         };
         match parsed {
             Ok(file) => {
                 // Fill colors the source doesn't define from the base theme.
                 let mut file = Theme::from_file(&file).to_file(&file.name);
                 if file.is_builtin() {
-                    file.name = format!("{} (importiert)", file.name);
+                    file.name = t!("{name} (importiert)", name = file.name);
                 }
                 if let Err(e) = theme::save_theme(&file) {
                     self.error(format!("{e:#}"));
                     return;
                 }
-                self.info(format!("Theme „{}“ importiert", file.name));
+                self.info(t!("Theme „{name}“ importiert", name = file.name));
                 // Use it for its kind of design and show it right away.
                 *self.settings.theme_slot_mut(file.dark) = file.name.clone();
                 if self.settings.is_dark() != file.dark {
@@ -532,8 +532,8 @@ impl NebulaApp {
             return;
         };
         match serde_json::to_vec_pretty(&file).map_err(anyhow::Error::from).and_then(|b| Ok(std::fs::write(&path, b)?)) {
-            Ok(()) => self.info(format!("Theme exportiert nach {}", path.display())),
-            Err(e) => self.error(format!("Export fehlgeschlagen: {e:#}")),
+            Ok(()) => self.info(t!("Theme exportiert nach {path}", path = path.display())),
+            Err(e) => self.error(t!("Export fehlgeschlagen: {e}", e = format!("{:#}", e))),
         }
     }
 
@@ -571,12 +571,12 @@ impl NebulaApp {
                 let before = ls.clone();
                 ui.heading(lang.name());
                 ui.add_space(6.0);
-                section(ui, "Dateiendungen");
-                ui.label(RichText::new(format!("Eingebaut: {}", lang.default_extensions().join(", "))).color(self.theme.text_faint));
+                section(ui, t!("Dateiendungen"));
+                ui.label(RichText::new(t!("Eingebaut: {default_extensions}", default_extensions = lang.default_extensions().join(", "))).color(self.theme.text_faint));
                 ui.horizontal(|ui| {
-                    ui.label("Zusätzlich:");
+                    ui.label(t!("Zusätzlich:"));
                     if ui
-                        .add(egui::TextEdit::singleline(&mut state.ext_text).hint_text("z. B. tpl, inc").desired_width(260.0))
+                        .add(egui::TextEdit::singleline(&mut state.ext_text).hint_text(t!("z. B. tpl, inc")).desired_width(260.0))
                         .changed()
                     {
                         ls.extensions = state
@@ -588,9 +588,9 @@ impl NebulaApp {
                     }
                 });
 
-                section(ui, "Einrückung");
+                section(ui, t!("Einrückung"));
                 let mut custom = ls.tab_size.is_some() || ls.use_spaces.is_some();
-                if ui.checkbox(&mut custom, "Eigene Einrückung für diese Sprache").changed() {
+                if ui.checkbox(&mut custom, t!("Eigene Einrückung für diese Sprache")).changed() {
                     if custom {
                         ls.tab_size = Some(self.settings.editor.tab_size);
                         ls.use_spaces = Some(self.settings.editor.use_spaces);
@@ -602,22 +602,22 @@ impl NebulaApp {
                 if custom {
                     ui.horizontal(|ui| {
                         let mut t = ls.tab_size.unwrap_or(4);
-                        ui.label("Breite");
+                        ui.label(t!("Breite"));
                         if ui.add(egui::DragValue::new(&mut t).range(1..=8)).changed() {
                             ls.tab_size = Some(t);
                         }
                         let mut s = ls.use_spaces.unwrap_or(true);
-                        if ui.checkbox(&mut s, "Leerzeichen").changed() {
+                        if ui.checkbox(&mut s, t!("Leerzeichen")).changed() {
                             ls.use_spaces = Some(s);
                         }
                     });
                 }
 
-                section(ui, "Eigene Vervollständigungen");
+                section(ui, t!("Eigene Vervollständigungen"));
                 ui.label(
-                    RichText::new(
-                        "Eine Zeile pro Eintrag: ein Wort, oder „Kürzel => Text“. $0 setzt den Cursor, \\n bricht die Zeile um.\nBeispiel:  card => <div class=\"card\">\\n    $0\\n</div>\nMehrzeilige Snippets mit Platzhaltern legst du bequemer im rechten Panel unter „{ }“ an.",
-                    )
+                    RichText::new(t!(
+                        "Eine Zeile pro Eintrag: ein Wort, oder „Kürzel => Text“. $0 setzt den Cursor, \\n bricht die Zeile um.\nBeispiel:  card => <div class=\"card\">\\n    $0\\n</div>\nMehrzeilige Snippets mit Platzhaltern legst du bequemer im rechten Panel unter „{ }“ an."
+                    ))
                     .small()
                     .color(self.theme.text_faint),
                 );

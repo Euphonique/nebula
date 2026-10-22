@@ -142,7 +142,7 @@ impl NebulaApp {
         remote.sort_by(|a, b| a.site.cmp(&b.site).then_with(|| a.label.cmp(&b.label)));
         items.extend(remote);
         if items.is_empty() && self.active.is_none() {
-            self.info("Öffne zuerst einen Ordner oder verbinde einen Server, um Dateien schnell zu finden.");
+            self.info(t!("Öffne zuerst einen Ordner oder verbinde einen Server, um Dateien schnell zu finden."));
             return;
         }
         self.dialog = Some(Dialog::QuickOpen(QuickOpenState { query: String::new(), items: Arc::new(items), selected: 0, focus: true }));
@@ -186,7 +186,7 @@ impl NebulaApp {
             ui.set_width(560.0);
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut state.query)
-                    .hint_text("Dateiname eingeben… (:Zeile springt zur Zeile)")
+                    .hint_text(t!("Dateiname eingeben… (:Zeile springt zur Zeile)"))
                     .desired_width(f32::INFINITY),
             );
             if state.focus || resp.changed() {
@@ -214,10 +214,10 @@ impl NebulaApp {
             ui.add_space(4.0);
             if only_line {
                 let (line, _) = position.unwrap_or_default();
-                let text = if has_active { format!("Im aktuellen Tab zu Zeile {line} springen") } else { "Kein Tab geöffnet".into() };
+                let text = if has_active { t!("Im aktuellen Tab zu Zeile {line} springen", line = line) } else { t!("Kein Tab geöffnet").into() };
                 ui.label(egui::RichText::new(text).color(theme.gutter_fg));
             } else if results.is_empty() {
-                ui.label(egui::RichText::new("Keine passende Datei").color(theme.gutter_fg));
+                ui.label(egui::RichText::new(t!("Keine passende Datei")).color(theme.gutter_fg));
             }
             let font = egui::TextStyle::Button.resolve(ui.style());
             for (row, &idx) in results.iter().enumerate() {

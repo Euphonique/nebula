@@ -29,13 +29,13 @@ impl Section {
 
     pub fn label(self) -> &'static str {
         match self {
-            Section::Editor => "Editor und Darstellung",
-            Section::Themes => "Eigene Themes",
-            Section::Languages => "Sprachen und Snippets",
-            Section::Keys => "Tastenkürzel",
-            Section::Servers => "Server (ohne Passwörter)",
-            Section::Agents => "KI-Agenten (ohne API-Schlüssel)",
-            Section::Extensions => "Erweiterungen",
+            Section::Editor => t!("Editor und Darstellung"),
+            Section::Themes => t!("Eigene Themes"),
+            Section::Languages => t!("Sprachen und Snippets"),
+            Section::Keys => t!("Tastenkürzel"),
+            Section::Servers => t!("Server (ohne Passwörter)"),
+            Section::Agents => t!("KI-Agenten (ohne API-Schlüssel)"),
+            Section::Extensions => t!("Erweiterungen"),
         }
     }
 }
@@ -162,23 +162,23 @@ impl Bundle {
     /// One line about what the section contains.
     pub fn summary(&self, section: Section) -> String {
         let n = |count: usize, one: &str, many: &str| match count {
-            0 => format!("keine {many}"),
+            0 => t!("keine {many}", many = many),
             1 => format!("1 {one}"),
             _ => format!("{count} {many}"),
         };
         match section {
-            Section::Editor => self.editor.as_ref().map_or_default(|e| format!("Themes „{}“ / „{}“, Schrift {} pt", e.theme_light, e.theme_dark, e.editor.font_size)),
-            Section::Themes => n(self.themes.as_ref().map_or(0, Vec::len), "Theme", "Themes"),
+            Section::Editor => self.editor.as_ref().map_or_default(|e| t!("Themes „{theme_light}“ / „{theme_dark}“, Schrift {font_size} pt", theme_light = e.theme_light, theme_dark = e.theme_dark, font_size = e.editor.font_size)),
+            Section::Themes => n(self.themes.as_ref().map_or(0, Vec::len), t!("Theme"), t!("Themes")),
             Section::Languages => self.languages.as_ref().map_or_default(|l| {
-                format!("{}, {}", n(l.languages.len(), "Sprache angepasst", "Sprachen angepasst"), n(l.snippets.values().map(Vec::len).sum(), "Snippet", "Snippets"))
+                format!("{}, {}", n(l.languages.len(), t!("Sprache angepasst"), t!("Sprachen angepasst")), n(l.snippets.values().map(Vec::len).sum(), t!("Snippet"), t!("Snippets")))
             }),
             Section::Keys => match self.keybindings.as_ref().map_or(0, BTreeMap::len) {
-                0 => "keine geänderten Kürzel (Standardbelegung)".into(),
-                count => n(count, "geändertes Kürzel", "geänderte Kürzel"),
+                0 => t!("keine geänderten Kürzel (Standardbelegung)").into(),
+                count => n(count, t!("geändertes Kürzel"), t!("geänderte Kürzel")),
             },
-            Section::Servers => n(self.servers.as_ref().map_or(0, Vec::len), "Server", "Server"),
-            Section::Agents => n(self.agents.as_ref().map_or(0, |a| a.agents.len()), "Agent", "Agenten"),
-            Section::Extensions => n(self.extensions.as_ref().map_or(0, |e| e.installed.len()), "Erweiterung", "Erweiterungen"),
+            Section::Servers => n(self.servers.as_ref().map_or(0, Vec::len), t!("Server"), t!("Server")),
+            Section::Agents => n(self.agents.as_ref().map_or(0, |a| a.agents.len()), t!("Agent"), t!("Agenten")),
+            Section::Extensions => n(self.extensions.as_ref().map_or(0, |e| e.installed.len()), t!("Erweiterung"), t!("Erweiterungen")),
         }
     }
 
@@ -187,11 +187,11 @@ impl Bundle {
     }
 
     pub fn parse(bytes: &[u8]) -> Result<Bundle> {
-        let value: serde_json::Value = serde_json::from_slice(bytes).context("Die Datei ist kein gültiges JSON")?;
+        let value: serde_json::Value = serde_json::from_slice(bytes).context(t!("Die Datei ist kein gültiges JSON"))?;
         if value.get("nebula_settings").is_none() {
-            bail!("Das ist keine Nebula-Einstellungsdatei");
+            bail!(t!("Das ist keine Nebula-Einstellungsdatei"));
         }
-        serde_json::from_value(value).context("Die Einstellungsdatei ist beschädigt oder stammt von einer neueren Version")
+        serde_json::from_value(value).context(t!("Die Einstellungsdatei ist beschädigt oder stammt von einer neueren Version"))
     }
 }
 

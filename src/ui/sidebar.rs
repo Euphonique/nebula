@@ -106,7 +106,7 @@ pub fn drop_copies(items: &[Item], target: &DirRef, mods: Modifiers) -> bool {
 
 /// "Kopieren"/"Verschieben" next to the pointer while dragging over a target.
 fn drop_hint(ui: &Ui, theme: &Theme, copy: bool) {
-    drop_label(ui, theme, if copy { "+ Kopieren (Umschalt: verschieben)" } else { "→ Verschieben (Strg: kopieren)" });
+    drop_label(ui, theme, if copy { t!("+ Kopieren (Umschalt: verschieben)") } else { t!("→ Verschieben (Strg: kopieren)") });
 }
 
 /// Payload while dragging items inside the app.
@@ -121,7 +121,7 @@ struct SiteDrag(String);
 fn site_drop_target(ui: &Ui, theme: &Theme, resp: &egui::Response, group: &str, actions: &mut Vec<SidebarAction>) {
     if resp.dnd_hover_payload::<SiteDrag>().is_some() {
         ui.painter().rect_stroke(resp.rect, 6.0, Stroke::new(1.5, theme.accent), egui::StrokeKind::Inside);
-        let text = if group.is_empty() { "Ohne Gruppe".to_string() } else { format!("In „{group}“") };
+        let text = if group.is_empty() { t!("Ohne Gruppe").to_string() } else { t!("In „{group}“", group = group) };
         drop_label(ui, theme, &text);
     }
     if let Some(p) = resp.dnd_release_payload::<SiteDrag>() {
@@ -529,7 +529,7 @@ impl Sidebar {
             let files = icons::icon_button(ui, theme, seg, self.tab == SidebarTab::Files, |p, c, col| {
                 icons::folder(p, c, col, false)
             })
-            .on_hover_text("Dateien");
+            .on_hover_text(t!("Dateien"));
             // Hovering a tab while dragging switches to it (spring loading).
             if files.clicked() || (dragging && files.hovered()) {
                 self.tab = SidebarTab::Files;
@@ -537,19 +537,19 @@ impl Sidebar {
             let servers = icons::icon_button(ui, theme, seg, self.tab == SidebarTab::Servers, |p, c, col| {
                 icons::server(p, c, col)
             })
-            .on_hover_text("Server");
+            .on_hover_text(t!("Server"));
             if servers.clicked() || (dragging && servers.hovered()) {
                 self.tab = SidebarTab::Servers;
             }
             let search = icons::icon_button(ui, theme, seg, self.tab == SidebarTab::Search, |p, c, col| {
                 icons::search(p, c, col)
             })
-            .on_hover_text("Im Projekt suchen (Strg+Umschalt+F)");
+            .on_hover_text(t!("Im Projekt suchen (Strg+Umschalt+F)"));
             if search.clicked() {
                 self.open_search();
             }
             let changes = self.git.changes.len();
-            let git_tip = if changes > 0 { format!("Git ({changes} Änderungen)") } else { "Git".to_string() };
+            let git_tip = if changes > 0 { t!("Git ({changes} Änderungen)", changes = changes) } else { t!("Git").to_string() };
             let git = icons::icon_button(ui, theme, seg, self.tab == SidebarTab::Git, |p, c, col| icons::branch(p, c, col)).on_hover_text(git_tip);
             if changes > 0 {
                 // Small dot: there is something to commit.
@@ -560,7 +560,7 @@ impl Sidebar {
             }
             if self.has_extension_sidebars {
                 let ext = icons::icon_button(ui, theme, seg, self.tab == SidebarTab::Extensions, |p, c, col| icons::blocks(p, c, col))
-                    .on_hover_text("Erweiterungen");
+                    .on_hover_text(t!("Erweiterungen"));
                 if ext.clicked() {
                     self.tab = SidebarTab::Extensions;
                 }
@@ -573,29 +573,29 @@ impl Sidebar {
                     SidebarTab::Files => {
                         if self.root.is_some() {
                             let resp = icons::icon_button(ui, theme, small, false, |p, c, col| icons::upload(p, c, col))
-                                .on_hover_text("Veröffentlichen (geänderte Dateien hochladen)");
+                                .on_hover_text(t!("Veröffentlichen (geänderte Dateien hochladen)"));
                             if resp.clicked() {
                                 actions.push(SidebarAction::Publish);
                             }
                             resp.context_menu(|ui| {
-                                if ui.button("Synchronisieren…").on_hover_text("In beide Richtungen abgleichen, mit Vorschau").clicked() {
+                                if ui.button(t!("Synchronisieren…")).on_hover_text(t!("In beide Richtungen abgleichen, mit Vorschau")).clicked() {
                                     actions.push(SidebarAction::Sync);
                                     ui.close();
                                 }
-                                if ui.button("Veröffentlichen einrichten…").clicked() {
+                                if ui.button(t!("Veröffentlichen einrichten…")).clicked() {
                                     actions.push(SidebarAction::PublishSetup);
                                     ui.close();
                                 }
                             });
                         }
                         if icons::icon_button(ui, theme, small, false, |p, c, col| icons::refresh(p, c, col))
-                            .on_hover_text("Aktualisieren")
+                            .on_hover_text(t!("Aktualisieren"))
                             .clicked()
                         {
                             self.refresh_local(None);
                         }
                         if icons::icon_button(ui, theme, small, false, |p, c, col| icons::plus(p, c, col))
-                            .on_hover_text("Ordner öffnen…")
+                            .on_hover_text(t!("Ordner öffnen…"))
                             .clicked()
                         {
                             actions.push(SidebarAction::OpenFolder);
@@ -603,15 +603,15 @@ impl Sidebar {
                     }
                     SidebarTab::Servers => {
                         let more = icons::icon_button(ui, theme, small, false, |p, c, col| icons::more(p, c, col))
-                            .on_hover_text("Importieren und exportieren");
+                            .on_hover_text(t!("Importieren und exportieren"));
                         egui::Popup::menu(&more).show(|ui| server_list_menu(ui, actions));
                         if icons::icon_button(ui, theme, small, false, |p, c, col| icons::plus(p, c, col))
-                            .on_hover_text("Server hinzufügen…")
+                            .on_hover_text(t!("Server hinzufügen…"))
                             .clicked()
                         {
                             actions.push(SidebarAction::EditSite(None));
                         }
-                        let tip = if sites.flat { "Gruppen anzeigen" } else { "Alle Server ohne Gruppen anzeigen" };
+                        let tip = if sites.flat { t!("Gruppen anzeigen") } else { t!("Alle Server ohne Gruppen anzeigen") };
                         if icons::icon_button(ui, theme, small, !sites.flat, |p, c, col| icons::groups(p, c, col)).on_hover_text(tip).clicked() {
                             actions.push(SidebarAction::ToggleServerGroups);
                         }
@@ -694,11 +694,11 @@ impl Sidebar {
                         actions.push(SidebarAction::Transfer { items: payload.0.clone(), target, copy });
                     }
                     resp.context_menu(|ui| {
-                        if self.clipboard.is_some() && ui.button("Einfügen").clicked() {
+                        if self.clipboard.is_some() && ui.button(t!("Einfügen")).clicked() {
                             actions.push(SidebarAction::Paste(self.default_target().unwrap()));
                             ui.close();
                         }
-                        if ui.button("Aktualisieren").clicked() {
+                        if ui.button(t!("Aktualisieren")).clicked() {
                             self.refresh_local(None);
                             ui.close();
                         }
@@ -739,7 +739,7 @@ impl Sidebar {
         filter_ui.put(
             text_rect,
             egui::TextEdit::singleline(&mut self.filter)
-                .hint_text("Filtern")
+                .hint_text(t!("Filtern"))
                 .frame(egui::Frame::NONE)
                 .margin(egui::Margin::ZERO)
                 .align(egui::Align2::LEFT_CENTER)
@@ -910,7 +910,7 @@ impl Sidebar {
 
     fn show_local(&mut self, ui: &mut Ui, rc: &RowCtx, actions: &mut Vec<SidebarAction>) {
         let Some(root) = self.root.clone() else {
-            empty_state(ui, rc.theme, "Kein Ordner geöffnet", "Ordner öffnen…", || {
+            empty_state(ui, rc.theme, t!("Kein Ordner geöffnet"), t!("Ordner öffnen…"), || {
                 actions.push(SidebarAction::OpenFolder)
             });
             return;
@@ -940,7 +940,7 @@ impl Sidebar {
         }
         let clipboard_ready = self.clipboard.is_some();
         resp.context_menu(|ui| dir_menu(ui, &target, clipboard_ready, actions));
-        let resp = resp.on_hover_text("Projekt wechseln");
+        let resp = resp.on_hover_text(t!("Projekt wechseln"));
         // Own id: the context menu above already uses the default popup id of this response.
         egui::Popup::menu(&resp).id(resp.id.with("projects")).show(|ui| {
             ui.set_min_width(240.0);
@@ -958,7 +958,7 @@ impl Sidebar {
             if self.recent_folders.len() > 1 {
                 ui.separator();
             }
-            if ui.button("Ordner öffnen…").clicked() {
+            if ui.button(t!("Ordner öffnen…")).clicked() {
                 actions.push(SidebarAction::OpenFolder);
             }
         });
@@ -966,9 +966,9 @@ impl Sidebar {
         let matches = self.local_filter.update(ui.ctx(), &root, &filter);
         if !filter.is_empty() {
             let note = match &matches {
-                _ if self.local_filter.busy() => Some("Suche…"),
-                Some(m) if m.files.is_empty() && m.dirs.is_empty() => Some("Keine Treffer"),
-                Some(m) if m.truncated => Some("Nur die ersten Treffer – Filter genauer fassen"),
+                _ if self.local_filter.busy() => Some(t!("Suche…")),
+                Some(m) if m.files.is_empty() && m.dirs.is_empty() => Some(t!("Keine Treffer")),
+                Some(m) if m.truncated => Some(t!("Nur die ersten Treffer – Filter genauer fassen")),
                 _ => None,
             };
             if let Some(note) = note {
@@ -1032,15 +1032,15 @@ impl Sidebar {
         if sites.sites.is_empty() {
             ui.add_space(36.0);
             ui.vertical_centered(|ui| {
-                ui.label(RichText::new("Noch keine Server").color(theme.text_faint));
+                ui.label(RichText::new(t!("Noch keine Server")).color(theme.text_faint));
                 ui.add_space(10.0);
-                if ui.button("Server hinzufügen…").clicked() {
+                if ui.button(t!("Server hinzufügen…")).clicked() {
                     actions.push(SidebarAction::EditSite(None));
                 }
-                if crate::server_import::filezilla_path().is_some() && ui.button("Aus FileZilla importieren…").clicked() {
+                if crate::server_import::filezilla_path().is_some() && ui.button(t!("Aus FileZilla importieren…")).clicked() {
                     actions.push(SidebarAction::ImportFileZilla);
                 }
-                if ui.link("Aus Datei importieren…").clicked() {
+                if ui.link(t!("Aus Datei importieren…")).clicked() {
                     actions.push(SidebarAction::ImportSites);
                 }
             });
@@ -1050,7 +1050,7 @@ impl Sidebar {
         let filter = self.filter.to_lowercase();
         if sites.flat {
             // All servers in one list, by name.
-            section_header(ui, theme, "Alle Server").context_menu(|ui| server_list_menu(ui, actions));
+            section_header(ui, theme, t!("Alle Server")).context_menu(|ui| server_list_menu(ui, actions));
             let mut all: Vec<&Site> = sites.sites.iter().collect();
             all.sort_by_key(|s| s.display_name().to_lowercase());
             for site in all {
@@ -1062,7 +1062,7 @@ impl Sidebar {
         let ungrouped: Vec<&Site> = sites.sites.iter().filter(|s| s.group.is_empty()).collect();
         // While a server is dragged, "Server" is always there to drop it out of its group.
         if !ungrouped.is_empty() || dragging_site {
-            let header = section_header(ui, theme, "Server");
+            let header = section_header(ui, theme, t!("Server"));
             site_drop_target(ui, theme, &header, "", actions);
             header.context_menu(|ui| server_list_menu(ui, actions));
             for site in ungrouped {
@@ -1078,19 +1078,19 @@ impl Sidebar {
                 actions.push(SidebarAction::ToggleGroup(group.clone()));
             }
             resp.context_menu(|ui| {
-                if ui.button("Server hinzufügen…").clicked() {
+                if ui.button(t!("Server hinzufügen…")).clicked() {
                     actions.push(SidebarAction::AddSiteToGroup(group.clone()));
                     ui.close();
                 }
-                if ui.button("Umbenennen…").clicked() {
+                if ui.button(t!("Umbenennen…")).clicked() {
                     actions.push(SidebarAction::AskName {
-                        title: "Gruppe umbenennen".into(),
+                        title: t!("Gruppe umbenennen").into(),
                         initial: group.clone(),
                         action: NameAction::RenameGroup { old: group.clone() },
                     });
                     ui.close();
                 }
-                if ui.button("Gruppe auflösen").on_hover_text("Die Server bleiben erhalten").clicked() {
+                if ui.button(t!("Gruppe auflösen")).on_hover_text(t!("Die Server bleiben erhalten")).clicked() {
                     actions.push(SidebarAction::DissolveGroup(group.clone()));
                     ui.close();
                 }
@@ -1144,27 +1144,27 @@ impl Sidebar {
         let home = tree.and_then(|t| t.home.clone());
         resp.context_menu(|ui| {
             if connected {
-                if ui.button("Trennen").clicked() {
+                if ui.button(t!("Trennen")).clicked() {
                     actions.push(SidebarAction::Disconnect(site.id.clone()));
                     ui.close();
                 }
                 if let Some(home) = &home
-                    && ui.button("Aktualisieren").clicked()
+                    && ui.button(t!("Aktualisieren")).clicked()
                 {
                     actions.push(SidebarAction::Remote { site_id: site.id.clone(), request: Request::List(home.clone()) });
                     ui.close();
                 }
-            } else if ui.button("Verbinden").clicked() {
+            } else if ui.button(t!("Verbinden")).clicked() {
                 self.expanded_sites.insert(site.id.clone());
                 actions.push(SidebarAction::Connect(site.id.clone()));
                 ui.close();
             }
-            if ui.button("SSH-Terminal öffnen").clicked() {
+            if ui.button(t!("SSH-Terminal öffnen")).clicked() {
                 actions.push(SidebarAction::OpenTerminal(site.id.clone()));
                 ui.close();
             }
             if !site.commands.is_empty() {
-                ui.menu_button("Befehl ausführen", |ui| {
+                ui.menu_button(t!("Befehl ausführen"), |ui| {
                     for c in &site.commands {
                         if ui.button(&c.name).on_hover_text(&c.command).clicked() {
                             actions.push(SidebarAction::RunCommand { site_id: site.id.clone(), command: c.command.clone() });
@@ -1173,23 +1173,23 @@ impl Sidebar {
                     }
                 });
             }
-            if ui.button("Auf dem Server suchen…").clicked() {
+            if ui.button(t!("Auf dem Server suchen…")).clicked() {
                 let path = home.clone().unwrap_or_else(|| site.root_path.trim().to_string());
                 actions.push(SidebarAction::SearchIn(DirRef::Remote { site_id: site.id.clone(), path }));
                 ui.close();
             }
             ui.separator();
-            if ui.button("Bearbeiten…").clicked() {
+            if ui.button(t!("Bearbeiten…")).clicked() {
                 actions.push(SidebarAction::EditSite(Some(site.id.clone())));
                 ui.close();
             }
-            if ui.button("Duplizieren…").clicked() {
+            if ui.button(t!("Duplizieren…")).clicked() {
                 actions.push(SidebarAction::DuplicateSite(site.id.clone()));
                 ui.close();
             }
-            ui.menu_button("Gruppe", |ui| {
+            ui.menu_button(t!("Gruppe"), |ui| {
                 let set = |group: &str| SidebarAction::SetSiteGroup { site_id: site.id.clone(), group: group.to_string() };
-                if menu_radio(ui, site.group.is_empty(), "Ohne Gruppe") {
+                if menu_radio(ui, site.group.is_empty(), t!("Ohne Gruppe")) {
                     actions.push(set(""));
                     ui.close();
                 }
@@ -1200,16 +1200,16 @@ impl Sidebar {
                     }
                 }
                 ui.separator();
-                if ui.button("Neue Gruppe…").clicked() {
+                if ui.button(t!("Neue Gruppe…")).clicked() {
                     actions.push(SidebarAction::AskName {
-                        title: "Neue Gruppe".into(),
+                        title: t!("Neue Gruppe").into(),
                         initial: String::new(),
                         action: NameAction::NewGroup { site_id: site.id.clone() },
                     });
                     ui.close();
                 }
             });
-            if ui.button("Entfernen…").clicked() {
+            if ui.button(t!("Entfernen…")).clicked() {
                 actions.push(SidebarAction::RemoveSite(site.id.clone()));
                 ui.close();
             }
@@ -1220,14 +1220,14 @@ impl Sidebar {
         let Some(tree) = self.remote.get(&site.id) else { return };
         match &tree.status {
             RemoteStatus::Connecting if tree.home.is_none() => {
-                indent_label(ui, 1, "Verbinde…", theme.gutter_fg);
+                indent_label(ui, 1, t!("Verbinde…"), theme.gutter_fg);
             }
             RemoteStatus::Failed(msg) => {
                 let msg = msg.clone();
                 indent_label(ui, 1, &msg, theme.danger);
                 ui.horizontal(|ui| {
                     ui.add_space(28.0);
-                    if ui.small_button("Erneut versuchen").clicked() {
+                    if ui.small_button(t!("Erneut versuchen")).clicked() {
                         actions.push(SidebarAction::Connect(site.id.clone()));
                     }
                 });
@@ -1261,7 +1261,7 @@ impl Sidebar {
                 tree.loading.insert(dir.to_string());
                 actions.push(SidebarAction::Remote { site_id: site_id.to_string(), request: Request::List(dir.to_string()) });
             }
-            indent_label(ui, depth, "Lade…", rc.theme.gutter_fg);
+            indent_label(ui, depth, t!("Lade…"), rc.theme.gutter_fg);
             return;
         };
         if entries.is_empty() {
@@ -1311,7 +1311,7 @@ fn rename_action(item: &Item) -> SidebarAction {
         FileRef::Local(p) => NameAction::RenameLocal { path: p.clone() },
         FileRef::Remote { site_id, path } => NameAction::RenameRemote { site_id: site_id.clone(), path: path.clone() },
     };
-    SidebarAction::AskName { title: "Umbenennen".into(), initial, action }
+    SidebarAction::AskName { title: t!("Umbenennen").into(), initial, action }
 }
 
 fn menu_button(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
@@ -1331,7 +1331,7 @@ fn item_menu(
 ) {
     let mut close = false;
     if let Some(url) = url
-        && menu_button(ui, "Im Browser öffnen", "")
+        && menu_button(ui, t!("Im Browser öffnen"), "")
     {
         actions.push(SidebarAction::OpenUrl(url.to_string()));
         close = true;
@@ -1339,14 +1339,14 @@ fn item_menu(
     if item.is_dir {
         if let Some(dir) = target {
             new_entries(ui, dir, actions, &mut close);
-            if menu_button(ui, "In diesem Ordner suchen…", "") {
+            if menu_button(ui, t!("In diesem Ordner suchen…"), "") {
                 actions.push(SidebarAction::SearchIn(dir.clone()));
                 close = true;
             }
             ui.separator();
         }
     } else {
-        if menu_button(ui, "Öffnen", "") {
+        if menu_button(ui, t!("Öffnen"), "") {
             actions.push(match &item.file {
                 FileRef::Local(p) => SidebarAction::OpenLocal(p.clone()),
                 FileRef::Remote { site_id, path } => SidebarAction::OpenRemote { site_id: site_id.clone(), path: path.clone() },
@@ -1356,36 +1356,36 @@ fn item_menu(
         // Two selected files compare with each other, one with the active tab.
         let files: Vec<&Item> = selection.iter().filter(|i| !i.is_dir).collect();
         if files.len() == 2 {
-            if menu_button(ui, "Miteinander vergleichen", "") {
+            if menu_button(ui, t!("Miteinander vergleichen"), "") {
                 actions.push(SidebarAction::Compare(files.iter().map(|i| i.file.clone()).collect()));
                 close = true;
             }
-        } else if menu_button(ui, "Mit aktivem Tab vergleichen", "") {
+        } else if menu_button(ui, t!("Mit aktivem Tab vergleichen"), "") {
             actions.push(SidebarAction::Compare(vec![item.file.clone()]));
             close = true;
         }
-        let label = if files.len() > 1 { format!("{} Dateien an KI-Agent anhängen", files.len()) } else { "An KI-Agent anhängen".to_string() };
+        let label = if files.len() > 1 { t!("{files_count} Dateien an KI-Agent anhängen", files_count = files.len()) } else { t!("An KI-Agent anhängen").to_string() };
         if menu_button(ui, &label, "") {
             let files = if files.len() > 1 { files.iter().map(|i| i.file.clone()).collect() } else { vec![item.file.clone()] };
             actions.push(SidebarAction::AttachToAgent(files));
             close = true;
         }
     }
-    if menu_button(ui, "Ausschneiden", "Strg+X") {
+    if menu_button(ui, t!("Ausschneiden"), "Strg+X") {
         actions.push(SidebarAction::Clipboard { items: selection.to_vec(), cut: true });
         close = true;
     }
-    if menu_button(ui, "Kopieren", "Strg+C") {
+    if menu_button(ui, t!("Kopieren"), "Strg+C") {
         actions.push(SidebarAction::Clipboard { items: selection.to_vec(), cut: false });
         close = true;
     }
     if let Some(t) = target
-        && ui.add_enabled(clipboard_ready, egui::Button::new("Einfügen").shortcut_text("Strg+V")).clicked()
+        && ui.add_enabled(clipboard_ready, egui::Button::new(t!("Einfügen")).shortcut_text("Strg+V")).clicked()
     {
         actions.push(SidebarAction::Paste(t.clone()));
         close = true;
     }
-    if menu_button(ui, "Duplizieren", "Strg+D") {
+    if menu_button(ui, t!("Duplizieren"), "Strg+D") {
         actions.push(SidebarAction::Duplicate(selection.to_vec()));
         close = true;
     }
@@ -1396,10 +1396,10 @@ fn item_menu(
     };
     let others: Vec<&(String, String, String)> = servers.iter().filter(|(id, _, _)| Some(id.as_str()) != source_site).collect();
     if !others.is_empty() {
-        for (label, copy) in [("Auf Server kopieren", true), ("Auf Server verschieben", false)] {
+        for (label, copy) in [(t!("Auf Server kopieren"), true), (t!("Auf Server verschieben"), false)] {
             ui.menu_button(label, |ui| {
                 for (id, name, home) in &others {
-                    if ui.button(name).on_hover_text(format!("In den Startordner {home}")).clicked() {
+                    if ui.button(name).on_hover_text(t!("In den Startordner {home}", home = home)).clicked() {
                         let target = DirRef::Remote { site_id: id.clone(), path: home.clone() };
                         actions.push(SidebarAction::Transfer { items: selection.to_vec(), target, copy });
                         ui.close();
@@ -1409,47 +1409,47 @@ fn item_menu(
         }
     }
     ui.separator();
-    if menu_button(ui, "Umbenennen…", "F2") {
+    if menu_button(ui, t!("Umbenennen…"), "F2") {
         actions.push(rename_action(item));
         close = true;
     }
     match &item.file {
         FileRef::Local(p) => {
-            if menu_button(ui, "Pfad kopieren", "") {
+            if menu_button(ui, t!("Pfad kopieren"), "") {
                 actions.push(SidebarAction::CopyText(p.display().to_string()));
                 close = true;
             }
-            if menu_button(ui, "Im Explorer zeigen", "") {
+            if menu_button(ui, t!("Im Explorer zeigen"), "") {
                 let _ = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
                 close = true;
             }
         }
         FileRef::Remote { site_id, path } => {
-            if menu_button(ui, "Pfad kopieren", "") {
+            if menu_button(ui, t!("Pfad kopieren"), "") {
                 actions.push(SidebarAction::CopyText(path.clone()));
                 close = true;
             }
-            if item.is_dir && menu_button(ui, "Dateien hochladen…", "") {
+            if item.is_dir && menu_button(ui, t!("Dateien hochladen…"), "") {
                 actions.push(SidebarAction::UploadFiles { site_id: site_id.clone(), dir: path.clone() });
                 close = true;
             }
-            if menu_button(ui, "Herunterladen nach…", "") {
+            if menu_button(ui, t!("Herunterladen nach…"), "") {
                 actions.push(SidebarAction::DownloadTo(item.clone()));
                 close = true;
             }
-            if menu_button(ui, "Berechtigungen…", "") {
+            if menu_button(ui, t!("Berechtigungen…"), "") {
                 actions.push(SidebarAction::Permissions(selection.to_vec()));
                 close = true;
             }
-            if item.is_dir && menu_button(ui, "Aktualisieren", "") {
+            if item.is_dir && menu_button(ui, t!("Aktualisieren"), "") {
                 actions.push(SidebarAction::Remote { site_id: site_id.clone(), request: Request::List(path.clone()) });
                 close = true;
             }
         }
     }
     ui.separator();
-    let label = if selection.len() > 1 { format!("{} Objekte löschen…", selection.len()) } else { "Löschen…".into() };
-    if menu_button(ui, &label, "Entf") {
+    let label = if selection.len() > 1 { t!("{selection_count} Objekte löschen…", selection_count = selection.len()) } else { t!("Löschen…").into() };
+    if menu_button(ui, &label, t!("Entf")) {
         actions.push(SidebarAction::ConfirmDelete(selection.to_vec()));
         close = true;
     }
@@ -1459,9 +1459,9 @@ fn item_menu(
 }
 
 fn new_entries(ui: &mut Ui, dir: &DirRef, actions: &mut Vec<SidebarAction>, close: &mut bool) {
-    if menu_button(ui, "Neue Datei…", "") {
+    if menu_button(ui, t!("Neue Datei…"), "") {
         actions.push(SidebarAction::AskName {
-            title: "Neue Datei".into(),
+            title: t!("Neue Datei").into(),
             initial: "neu.html".into(),
             action: match dir {
                 DirRef::Local(d) => NameAction::NewLocalFile { dir: d.clone() },
@@ -1470,9 +1470,9 @@ fn new_entries(ui: &mut Ui, dir: &DirRef, actions: &mut Vec<SidebarAction>, clos
         });
         *close = true;
     }
-    if menu_button(ui, "Neuer Ordner…", "") {
+    if menu_button(ui, t!("Neuer Ordner…"), "") {
         actions.push(SidebarAction::AskName {
-            title: "Neuer Ordner".into(),
+            title: t!("Neuer Ordner").into(),
             initial: "neuer-ordner".into(),
             action: match dir {
                 DirRef::Local(d) => NameAction::NewLocalFolder { dir: d.clone() },
@@ -1487,12 +1487,12 @@ fn new_entries(ui: &mut Ui, dir: &DirRef, actions: &mut Vec<SidebarAction>, clos
 fn dir_menu(ui: &mut Ui, dir: &DirRef, clipboard_ready: bool, actions: &mut Vec<SidebarAction>) {
     let mut close = false;
     new_entries(ui, dir, actions, &mut close);
-    if ui.add_enabled(clipboard_ready, egui::Button::new("Einfügen").shortcut_text("Strg+V")).clicked() {
+    if ui.add_enabled(clipboard_ready, egui::Button::new(t!("Einfügen")).shortcut_text("Strg+V")).clicked() {
         actions.push(SidebarAction::Paste(dir.clone()));
         close = true;
     }
     if let DirRef::Local(d) = dir
-        && menu_button(ui, "Im Explorer öffnen", "")
+        && menu_button(ui, t!("Im Explorer öffnen"), "")
     {
         let _ = std::process::Command::new("explorer").arg(d).spawn();
         close = true;
@@ -1604,15 +1604,15 @@ fn menu_radio(ui: &mut Ui, selected: bool, label: &str) -> bool {
 
 /// Import and export entries for the server list.
 fn server_list_menu(ui: &mut Ui, actions: &mut Vec<SidebarAction>) {
-    if crate::server_import::filezilla_path().is_some() && ui.button("Aus FileZilla importieren…").clicked() {
+    if crate::server_import::filezilla_path().is_some() && ui.button(t!("Aus FileZilla importieren…")).clicked() {
         actions.push(SidebarAction::ImportFileZilla);
         ui.close();
     }
-    if ui.button("Aus Datei importieren…").on_hover_text("Nebula-Export (.json) oder FileZilla (sitemanager.xml)").clicked() {
+    if ui.button(t!("Aus Datei importieren…")).on_hover_text(t!("Nebula-Export (.json) oder FileZilla (sitemanager.xml)")).clicked() {
         actions.push(SidebarAction::ImportSites);
         ui.close();
     }
-    if ui.button("Exportieren…").on_hover_text("Ohne Passwörter").clicked() {
+    if ui.button(t!("Exportieren…")).on_hover_text(t!("Ohne Passwörter")).clicked() {
         actions.push(SidebarAction::ExportSites);
         ui.close();
     }

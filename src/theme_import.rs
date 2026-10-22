@@ -168,7 +168,7 @@ pub fn import_nova_css(css: &str, fallback_name: &str) -> Result<ThemeFile> {
         rest = &rest[open + close + 1..];
     }
     if rules.is_empty() {
-        bail!("Keine CSS-Regeln gefunden – ist das ein Nova-Theme?");
+        bail!(t!("Keine CSS-Regeln gefunden – ist das ein Nova-Theme?"));
     }
 
     let meta = rules.get("meta").cloned().unwrap_or_default();
@@ -241,7 +241,7 @@ pub fn import_nova_css(css: &str, fallback_name: &str) -> Result<ThemeFile> {
         }
     }
     if syntax.is_empty() && ui.is_empty() {
-        bail!("Das Stylesheet enthält keine bekannten Nova-Theme-Farben.");
+        bail!(t!("Das Stylesheet enthält keine bekannten Nova-Theme-Farben."));
     }
     Ok(ThemeFile { name, dark, ui, syntax, extension: None, overrides_extension: false })
 }

@@ -135,28 +135,28 @@ fn parse(text: &str) -> Option<KeyboardShortcut> {
 pub(super) fn label(s: &KeyboardShortcut) -> String {
     let mut out = String::new();
     if s.modifiers.command || s.modifiers.ctrl {
-        out.push_str("Strg+");
+        out.push_str(t!("Strg+"));
     }
     if s.modifiers.alt {
         out.push_str("Alt+");
     }
     if s.modifiers.shift {
-        out.push_str("Umschalt+");
+        out.push_str(t!("Umschalt+"));
     }
     let key = match s.logical_key {
         Key::Semicolon => "Ö",
         Key::Quote => "Ä",
         Key::OpenBracket => "Ü",
-        Key::PageUp => "Bild↑",
-        Key::PageDown => "Bild↓",
-        Key::Enter => "Eingabe",
-        Key::Escape => "Esc",
-        Key::Space => "Leertaste",
-        Key::Delete => "Entf",
-        Key::Backspace => "Rücktaste",
-        Key::Home => "Pos1",
-        Key::End => "Ende",
-        Key::Insert => "Einfg",
+        Key::PageUp => t!("Bild↑"),
+        Key::PageDown => t!("Bild↓"),
+        Key::Enter => t!("Eingabe"),
+        Key::Escape => t!("Esc"),
+        Key::Space => t!("Leertaste"),
+        Key::Delete => t!("Entf"),
+        Key::Backspace => t!("Rücktaste"),
+        Key::Home => t!("Pos1"),
+        Key::End => t!("Ende"),
+        Key::Insert => t!("Einfg"),
         k => k.symbol_or_name(),
     };
     out.push_str(key);
@@ -244,11 +244,11 @@ impl NebulaApp {
 
     /// Settings page listing every command with its shortcuts.
     pub(super) fn keys_page(&mut self, ui: &mut Ui, state: &mut KeysPage) {
-        ui.label(RichText::new("Tastenkürzel").size(16.0).strong());
+        ui.label(RichText::new(t!("Tastenkürzel")).size(16.0).strong());
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut state.filter).hint_text("Befehl oder Taste suchen…").desired_width(300.0));
-            if !self.settings.keybindings.is_empty() && ui.button("Alle zurücksetzen").clicked() {
+            ui.add(egui::TextEdit::singleline(&mut state.filter).hint_text(t!("Befehl oder Taste suchen…")).desired_width(300.0));
+            if !self.settings.keybindings.is_empty() && ui.button(t!("Alle zurücksetzen")).clicked() {
                 self.settings.keybindings.clear();
                 state.recording = None;
             }
@@ -299,7 +299,7 @@ impl NebulaApp {
                 ui.label(if custom { RichText::new(name).strong() } else { RichText::new(name) });
                 ui.horizontal(|ui| {
                     if state.recording == Some(*c) {
-                        ui.label(RichText::new("Tasten drücken… (Esc: abbrechen)").color(self.theme.accent));
+                        ui.label(RichText::new(t!("Tasten drücken… (Esc: abbrechen)")).color(self.theme.accent));
                         return;
                     }
                     let mut remove = None;
@@ -311,9 +311,9 @@ impl NebulaApp {
                             .collect();
                         let text = RichText::new(&labels[n]).monospace();
                         let text = if others.is_empty() { text } else { text.color(self.theme.danger) };
-                        let mut r = ui.add(egui::Button::new(text).small()).on_hover_text("Klicken zum Entfernen");
+                        let mut r = ui.add(egui::Button::new(text).small()).on_hover_text(t!("Klicken zum Entfernen"));
                         if !others.is_empty() {
-                            r = r.on_hover_text(format!("Auch belegt mit: {}", others.join(", ")));
+                            r = r.on_hover_text(t!("Auch belegt mit: {others}", others = others.join(", ")));
                         }
                         if r.clicked() {
                             remove = Some(n);
@@ -329,16 +329,16 @@ impl NebulaApp {
                     }
                 });
                 ui.horizontal(|ui| {
-                    if ui.small_button("Ändern").on_hover_text("Neue Tastenkombination drücken").clicked() {
+                    if ui.small_button(t!("Ändern")).on_hover_text(t!("Neue Tastenkombination drücken")).clicked() {
                         state.recording = Some(*c);
                         state.replace = true;
                     }
-                    if ui.small_button("+").on_hover_text("Weitere Tastenkombination hinzufügen").clicked() {
+                    if ui.small_button("+").on_hover_text(t!("Weitere Tastenkombination hinzufügen")).clicked() {
                         state.recording = Some(*c);
                         state.replace = false;
                     }
                     // Always present (disabled when unchanged) so the layout doesn't jump.
-                    if ui.add_enabled(custom, egui::Button::new("↺").small()).on_hover_text("Standard wiederherstellen").clicked() {
+                    if ui.add_enabled(custom, egui::Button::new("↺").small()).on_hover_text(t!("Standard wiederherstellen")).clicked() {
                         self.settings.keybindings.remove(&command_id(*c));
                     }
                 });

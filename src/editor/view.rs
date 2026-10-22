@@ -175,35 +175,35 @@ impl EditorView<'_> {
                 handle_pointer(ui, &response, doc, id, &hit, &cell, &shown, visible, &m, tab);
 
                 response.context_menu(|ui| {
-                    if ui.button("Ausschneiden").clicked() {
+                    if ui.button(t!("Ausschneiden")).clicked() {
                         out.copied = Some(cmd::cut(doc));
                         ui.close();
                     }
-                    if ui.button("Kopieren").clicked() {
+                    if ui.button(t!("Kopieren")).clicked() {
                         out.copied = Some(cmd::copy_text(doc).0);
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Alles auswählen").clicked() {
+                    if ui.button(t!("Alles auswählen")).clicked() {
                         cmd::select_all(doc);
                         ui.close();
                     }
-                    if ui.button("Kommentar umschalten").clicked() {
+                    if ui.button(t!("Kommentar umschalten")).clicked() {
                         cmd::toggle_comment(doc);
                         ui.close();
                     }
-                    ui.menu_button("Text", |ui| {
+                    ui.menu_button(t!("Text"), |ui| {
                         type Tool = fn(&mut Document);
                         let tools: [(&str, Tool); 9] = [
-                            ("Zeilen sortieren (A–Z)", |d| cmd::sort_lines(d, false)),
-                            ("Zeilen sortieren (Z–A)", |d| cmd::sort_lines(d, true)),
-                            ("Doppelte Zeilen entfernen", cmd::unique_lines),
-                            ("Zeilen umkehren", cmd::reverse_lines),
-                            ("Zeilen verbinden", cmd::join_lines),
+                            (t!("Zeilen sortieren (A–Z)"), |d| cmd::sort_lines(d, false)),
+                            (t!("Zeilen sortieren (Z–A)"), |d| cmd::sort_lines(d, true)),
+                            (t!("Doppelte Zeilen entfernen"), cmd::unique_lines),
+                            (t!("Zeilen umkehren"), cmd::reverse_lines),
+                            (t!("Zeilen verbinden"), cmd::join_lines),
                             ("GROSSBUCHSTABEN", |d| cmd::change_case(d, cmd::Case::Upper)),
                             ("kleinbuchstaben", |d| cmd::change_case(d, cmd::Case::Lower)),
-                            ("Wörter Großschreiben", |d| cmd::change_case(d, cmd::Case::Title)),
-                            ("Mit Tag umschließen", cmd::wrap_in_tag),
+                            (t!("Wörter Großschreiben"), |d| cmd::change_case(d, cmd::Case::Title)),
+                            (t!("Mit Tag umschließen"), cmd::wrap_in_tag),
                         ];
                         for (label, tool) in tools {
                             if ui.button(label).clicked() {
@@ -213,15 +213,15 @@ impl EditorView<'_> {
                         }
                     });
                     ui.separator();
-                    if ui.button("Block ein-/ausklappen").clicked() {
+                    if ui.button(t!("Block ein-/ausklappen")).clicked() {
                         folding::toggle_at_cursor(doc, tab);
                         ui.close();
                     }
-                    if ui.button("Alles einklappen").clicked() {
+                    if ui.button(t!("Alles einklappen")).clicked() {
                         folding::fold_all(doc, tab);
                         ui.close();
                     }
-                    if ui.button("Alles ausklappen").clicked() {
+                    if ui.button(t!("Alles ausklappen")).clicked() {
                         folding::unfold_all(doc);
                         ui.close();
                     }
@@ -1595,9 +1595,9 @@ fn show_hover(
                         Some(s) => {
                             ui.horizontal_wrapped(|ui| {
                                 let (label, color) = match s {
-                                    1 => ("Fehler", theme.danger),
-                                    2 => ("Warnung", theme.modified),
-                                    _ => ("Hinweis", theme.accent),
+                                    1 => (t!("Fehler"), theme.danger),
+                                    2 => (t!("Warnung"), theme.modified),
+                                    _ => (t!("Hinweis"), theme.accent),
                                 };
                                 ui.label(egui::RichText::new(label).strong().color(color));
                                 ui.label(text);

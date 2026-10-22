@@ -119,32 +119,32 @@ pub fn plan(local: &[LocalFile], remote: &[ScannedFile], last: &BTreeMap<String,
         match (lf, rf, snap) {
             (Some(lf), Some(rf), Some(s)) => match (local_changed(lf, s), remote_changed(rf, s)) {
                 (false, false) => {}
-                (true, false) => items.push(Item::new(rel, Kind::Upload, true, "lokal geändert")),
-                (false, true) => items.push(Item::new(rel, Kind::Download, true, "auf dem Server geändert")),
-                (true, true) => items.push(conflict(rel, lf, rf, "auf beiden Seiten geändert")),
+                (true, false) => items.push(Item::new(rel, Kind::Upload, true, t!("lokal geändert"))),
+                (false, true) => items.push(Item::new(rel, Kind::Download, true, t!("auf dem Server geändert"))),
+                (true, true) => items.push(conflict(rel, lf, rf, t!("auf beiden Seiten geändert"))),
             },
             (Some(lf), Some(rf), None) => {
                 // First sync: same size counts as the same file.
                 if lf.size != rf.size {
-                    items.push(conflict(rel, lf, rf, "unterschiedlich, noch nie abgeglichen"));
+                    items.push(conflict(rel, lf, rf, t!("unterschiedlich, noch nie abgeglichen")));
                 }
             }
             (Some(lf), None, Some(s)) => {
                 if local_changed(lf, s) {
-                    items.push(Item::new(rel, Kind::Upload, false, "auf dem Server gelöscht, lokal geändert"));
+                    items.push(Item::new(rel, Kind::Upload, false, t!("auf dem Server gelöscht, lokal geändert")));
                 } else {
-                    items.push(Item::new(rel, Kind::DeleteLocal, false, "auf dem Server gelöscht"));
+                    items.push(Item::new(rel, Kind::DeleteLocal, false, t!("auf dem Server gelöscht")));
                 }
             }
             (None, Some(rf), Some(s)) => {
                 if remote_changed(rf, s) {
-                    items.push(Item::new(rel, Kind::Download, false, "lokal gelöscht, auf dem Server geändert"));
+                    items.push(Item::new(rel, Kind::Download, false, t!("lokal gelöscht, auf dem Server geändert")));
                 } else {
-                    items.push(Item::new(rel, Kind::DeleteRemote, false, "lokal gelöscht"));
+                    items.push(Item::new(rel, Kind::DeleteRemote, false, t!("lokal gelöscht")));
                 }
             }
             (Some(_), None, None) => items.push(Item::new(rel, Kind::Upload, true, "neu")),
-            (None, Some(_), None) => items.push(Item::new(rel, Kind::Download, true, "neu auf dem Server")),
+            (None, Some(_), None) => items.push(Item::new(rel, Kind::Download, true, t!("neu auf dem Server"))),
             (None, None, _) => {}
         }
     }
@@ -155,8 +155,8 @@ fn conflict(rel: &str, lf: &LocalFile, rf: &ScannedFile, note: &str) -> Item {
     let remote_newer = rf.mtime.is_some_and(|m| m > lf.mtime as i64);
     let mut item = Item::new(rel, Kind::Conflict, false, note);
     item.suggestion = if remote_newer { Resolution::Download } else { Resolution::Upload };
-    let side = if remote_newer { "Server" } else { "lokal" };
-    item.note = format!("{note} – neuer: {side}");
+    let side = if remote_newer { t!("Server") } else { "lokal" };
+    item.note = t!("{note} – neuer: {side}", note = note, side = side);
     item
 }
 

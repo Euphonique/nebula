@@ -17,9 +17,9 @@ enum Act {
 fn ago(t: std::time::Instant) -> String {
     let s = t.elapsed().as_secs();
     match s {
-        0..60 => format!("vor {s} s"),
-        60..3600 => format!("vor {} Min.", s / 60),
-        _ => format!("vor {} Std.", s / 3600),
+        0..60 => t!("vor {s} s", s = s),
+        60..3600 => t!("vor {value} Min.", value = s / 60),
+        _ => t!("vor {value} Std.", value = s / 3600),
     }
 }
 
@@ -33,10 +33,10 @@ impl NebulaApp {
         }
         let (running, failed) = (list.running(), list.failed());
         let (text, color) = match (running, failed) {
-            (0, 0) => ("Übertragungen".to_string(), theme.text_faint),
-            (0, f) => (if f == 1 { "1 Übertragung fehlgeschlagen".into() } else { format!("{f} Übertragungen fehlgeschlagen") }, theme.danger),
-            (1, _) => ("1 Übertragung läuft".into(), theme.text_muted),
-            (r, _) => (format!("{r} Übertragungen laufen"), theme.text_muted),
+            (0, 0) => (t!("Übertragungen").to_string(), theme.text_faint),
+            (0, f) => (if f == 1 { t!("1 Übertragung fehlgeschlagen").into() } else { t!("{f} Übertragungen fehlgeschlagen", f = f) }, theme.danger),
+            (1, _) => (t!("1 Übertragung läuft").into(), theme.text_muted),
+            (r, _) => (t!("{r} Übertragungen laufen", r = r), theme.text_muted),
         };
         let resp = ui
             .horizontal(|ui| {
@@ -52,7 +52,7 @@ impl NebulaApp {
         if resp.hovered() {
             ui.painter().rect_filled(resp.rect.expand2(vec2(5.0, 2.0)), 4.0, theme.hover);
         }
-        let resp = resp.on_hover_text("Übertragungsliste");
+        let resp = resp.on_hover_text(t!("Übertragungsliste"));
         let mut acts = Vec::new();
         egui::Popup::menu(&resp)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -69,7 +69,7 @@ impl NebulaApp {
                             self.ensure_tree(&site);
                             self.remote.retry(&site, tag);
                         }
-                        None => self.error("Der Server dieser Übertragung existiert nicht mehr."),
+                        None => self.error(t!("Der Server dieser Übertragung existiert nicht mehr.")),
                     }
                 }
             }
@@ -86,10 +86,10 @@ impl NebulaApp {
         }
         ui.set_width(460.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Übertragungen").strong());
+            ui.label(RichText::new(t!("Übertragungen")).strong());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let finished = list.items.iter().any(|t| t.state.finished());
-                if ui.add_enabled(finished, egui::Button::new("Erledigte entfernen").small()).clicked() {
+                if ui.add_enabled(finished, egui::Button::new(t!("Erledigte entfernen")).small()).clicked() {
                     acts.push(Act::ClearFinished);
                 }
             });
@@ -106,10 +106,10 @@ impl NebulaApp {
                 };
                 let (status, color): (String, Color32) = match &t.state {
                     TransferState::Queued => ("wartet".into(), theme.text_faint),
-                    TransferState::Running { done, total: Some(total) } if *total > 1 => (format!("läuft – {done} von {total} Dateien"), theme.accent),
-                    TransferState::Running { done, total: None } if *done > 0 => (format!("läuft – {done} Dateien"), theme.accent),
-                    TransferState::Running { .. } => ("läuft …".into(), theme.accent),
-                    TransferState::Done(msg) => (format!("fertig {} – {msg}", ago(t.finished.unwrap_or(t.started))), theme.success),
+                    TransferState::Running { done, total: Some(total) } if *total > 1 => (t!("läuft – {done} von {total} Dateien", done = done, total = total), theme.accent),
+                    TransferState::Running { done, total: None } if *done > 0 => (t!("läuft – {done} Dateien", done = done), theme.accent),
+                    TransferState::Running { .. } => (t!("läuft …").into(), theme.accent),
+                    TransferState::Done(msg) => (t!("fertig {ago} – {msg}", ago = ago(t.finished.unwrap_or(t.started)), msg = msg), theme.success),
                     TransferState::Failed(msg) => (msg.clone(), theme.danger),
                 };
                 p.text(pos2(rect.left() + 10.0, rect.top() + 13.0), Align2::CENTER_CENTER, arrow, FontId::proportional(14.0), color);
@@ -134,24 +134,24 @@ impl NebulaApp {
                 match &t.state {
                     TransferState::Queued | TransferState::Running { .. } => {
                         let cancelling = t.cancel.load(std::sync::atomic::Ordering::Relaxed);
-                        if buttons.add_enabled(!cancelling, egui::Button::new("Abbrechen").small()).clicked() {
+                        if buttons.add_enabled(!cancelling, egui::Button::new(t!("Abbrechen")).small()).clicked() {
                             acts.push(Act::Cancel(t.tag));
                         }
                     }
                     TransferState::Failed(_) => {
-                        if buttons.small_button("✕").on_hover_text("Aus der Liste entfernen").clicked() {
+                        if buttons.small_button("✕").on_hover_text(t!("Aus der Liste entfernen")).clicked() {
                             acts.push(Act::Remove(t.tag));
                         }
                         if t.can_retry() {
-                            if buttons.button("Wiederholen").clicked() {
+                            if buttons.button(t!("Wiederholen")).clicked() {
                                 acts.push(Act::Retry(t.tag));
                             }
                         } else {
-                            buttons.label(RichText::new("Strg+S").small().color(theme.text_faint)).on_hover_text("Zum Wiederholen die Datei erneut speichern");
+                            buttons.label(RichText::new("Strg+S").small().color(theme.text_faint)).on_hover_text(t!("Zum Wiederholen die Datei erneut speichern"));
                         }
                     }
                     TransferState::Done(_) => {
-                        if buttons.small_button("✕").on_hover_text("Aus der Liste entfernen").clicked() {
+                        if buttons.small_button("✕").on_hover_text(t!("Aus der Liste entfernen")).clicked() {
                             acts.push(Act::Remove(t.tag));
                         }
                     }
