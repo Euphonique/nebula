@@ -16,7 +16,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 ## Suchen und Navigieren
 
 - **C** Regex-Ersetzung mit Vorschau.
-- **B** „Schnell öffnen“ (Strg+P) auch für Dateien auf dem Server (aus bereits geladenen Ordnern) und mit `:Zeile`-Suffix.
 - **C** Gehe zu Definition ohne Language Server für einfache Fälle (CSS-Klassen, PHP-Funktionen im Projekt).
 
 ## Git
@@ -68,7 +67,7 @@ Runde 1 und 2 sind abgeschlossen, dazu Zen-Modus, Schriftwahl, Farbwähler, Bild
 
 Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
-1. „Schnell öffnen“ (Strg+P) für Serverdateien und mit `:Zeile`.
+1. ~~„Schnell öffnen“ (Strg+P) für Serverdateien und mit `:Zeile`~~ (erledigt).
 2. Absturzbericht (Panics in Logdatei, beim nächsten Start anbieten).
 3. ~~Server duplizieren, gruppieren, Import/Export~~ (erledigt).
 4. Vorschau in Gerätebreiten (kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
@@ -92,3 +91,5 @@ KI-Agenten (19.10.): Claude Code, Codex (ChatGPT) und Gemini CLI über ACP im re
 Bugrunde vom 20.10.: Theme je für helles und dunkles Design mit Umschalter Hell/Dunkel/Automatisch (Einstellungen, Menü „Ansicht“, Knopf in der Titelleiste), Menüeintrag „KI-Agenten…“, Terminal-Knopf in der Titelleiste, geteilte Ansicht als Knopf in der (jetzt so hohen wie die Panel-Reiter) Pfadleiste, ID-Kollisionsmeldungen in den Einstellungen von Erweiterungen (z. B. Rust), Knopf für die Minimap neben dem für die geteilte Ansicht.
 
 Serververwaltung (22.10.): Server in einklappbaren Gruppen, duplizieren, Import aus FileZilla (`sitemanager.xml`, Ordner als Gruppen, Passwörter auf Wunsch) und aus Nebula-Exporten, Export als JSON ohne Passwörter; Dubletten werden erkannt.
+
+Schnell öffnen (22.10.): auch Dateien aus geladenen Serverordnern, `datei:Zeile[:Spalte]` und `:Zeile` für den aktuellen Tab; Treffer im Dateinamen werden besser gewichtet.

@@ -37,6 +37,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Autovervollständigung: HTML-Tags und -Attribute, CSS-Eigenschaften und -Werte, Schlüsselwörter, Snippets (z. B. `html5`, `media`, `log`) und Wörter aus dem Dokument. Eigene Einträge pro Sprache.
 - Emmet mit Tab, z. B. `ul.nav>li.item$*3>a{Link $}`
 - Mehrere Cursor, Suchen und Ersetzen (auch per Regex, auf Wunsch nur in der Auswahl – bei mehrzeiliger Auswahl automatisch), Projektsuche mit Ersetzen, Dateimustern (`*.php, !vendor/`) und Beachtung der `.gitignore` – auch auf Servern über SSH (nutzt `rg`, `git grep` oder `grep` auf dem Server; Rechtsklick auf einen Ordner: „In diesem Ordner suchen…“). Ort und Ordner der Suche folgen der zuletzt genutzten Ansicht (Dateien oder Server) und der Auswahl dort; laufende Suchen lassen sich abbrechen
+- Schnell öffnen (Strg+P): unscharfe Suche über die Projektdateien und die Dateien in bereits geladenen Serverordnern (Servername grau dahinter); `index.php:42` bzw. `:42:5` öffnet direkt in Zeile (und Spalte), nur `:42` springt im aktuellen Tab
 - Code-Faltung mit +/−-Knöpfen in der Zeilennummernleiste: nach Klammern und HTML-Tags (auch über PHP-Abschnitte hinweg), sonst nach Einrückung
 - Automatischer Zeilenumbruch (Ansicht, Alt+Z); Fortsetzungszeilen behalten die Einrückung und haben keine eigene Zeilennummer
 - Drucken mit Syntaxfarben, Zeilennummern und Seitenzahlen (Strg+Alt+P)

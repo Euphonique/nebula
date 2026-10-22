@@ -44,6 +44,7 @@ mod history;
 mod difftab;
 mod transfers_ui;
 mod servers;
+mod quick_open;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -90,7 +91,7 @@ enum Dialog {
     GotoLine { value: String, focus: bool },
     /// chmod for server files; `recurse` applies to folder contents too.
     Permissions { items: Vec<Item>, mode: u32, octal: String, recurse: Option<remote::Recurse> },
-    QuickOpen { query: String, files: Arc<Vec<PathBuf>>, selected: usize, focus: bool },
+    QuickOpen(quick_open::QuickOpenState),
     GotoSymbol(nav::SymbolSearch),
     Settings,
 }
@@ -904,27 +905,9 @@ impl NebulaApp {
             }
             SidebarAction::Publish => self.publish(),
             SidebarAction::PublishSetup => self.open_publish_setup(),
-            SidebarAction::Search(crate::ui::search::SearchAction::Open { file: FileRef::Local(path), line, column }) => {
-                self.open_local(&path);
-                // open_local activates the file (or the already open tab).
-                if let Some(i) = self.active
-                    && matches!(&self.docs[i].source, DocSource::Local(p) if p.file_name() == path.file_name())
-                {
-                    self.goto_line_column(i, line, column);
-                    self.sidebar.focused = false;
-                }
-            }
-            SidebarAction::Search(crate::ui::search::SearchAction::Open { file: FileRef::Remote { site_id, path }, line, column }) => {
-                let source = DocSource::Remote { site_id: site_id.clone(), path: path.clone() };
-                if let Some(i) = self.docs.iter().position(|d| d.source == source) {
-                    self.activate(i);
-                    self.goto_line_column(i, line, column);
-                    self.sidebar.focused = false;
-                } else {
-                    // Applied once the download arrives.
-                    self.pending_lines.insert((site_id.clone(), path.clone()), (line, column));
-                    self.open_remote(&site_id, &path);
-                }
+            SidebarAction::Search(crate::ui::search::SearchAction::Open { file, line, column }) => {
+                self.open_file_at(file, line, column);
+                self.sidebar.focused = false;
             }
             SidebarAction::Search(crate::ui::search::SearchAction::HostKey { site_id, prompt }) => {
                 self.host_keys.push_back((site_id, prompt));
@@ -1167,15 +1150,6 @@ impl NebulaApp {
             let doc = &mut self.docs[i];
             self.find.find(doc, forward);
         }
-    }
-
-    fn open_quick_open(&mut self) {
-        let Some(root) = self.sidebar.root.clone() else {
-            self.info("Öffne zuerst einen Ordner, um Dateien schnell zu finden.");
-            return;
-        };
-        let files = Arc::new(collect_files(&root, 20_000));
-        self.dialog = Some(Dialog::QuickOpen { query: String::new(), files, selected: 0, focus: true });
     }
 
     // ---- UI ------------------------------------------------------------------
@@ -2697,51 +2671,9 @@ impl NebulaApp {
                 }
                 Dialog::Permissions { items, mode, octal, recurse }
             }
-            Dialog::QuickOpen { mut query, files, mut selected, focus } => {
-                let mut open: Option<PathBuf> = None;
-                let root = self.sidebar.root.clone().unwrap_or_default();
-                modal(ctx, egui::Id::unique("quick-open")).show(ctx, |ui| {
-                    ui.set_width(520.0);
-                    let resp = ui.add(
-                        egui::TextEdit::singleline(&mut query)
-                            .hint_text("Dateiname eingeben…")
-                            .desired_width(f32::INFINITY),
-                    );
-                    if focus || resp.changed() {
-                        resp.request_focus();
-                    }
-                    if resp.changed() {
-                        selected = 0;
-                    }
-                    let results = fuzzy_filter(&files, &root, &query, 14);
-                    ui.input_mut(|i| {
-                        if i.consume_key(Modifiers::NONE, Key::ArrowDown) {
-                            selected = (selected + 1).min(results.len().saturating_sub(1));
-                        }
-                        if i.consume_key(Modifiers::NONE, Key::ArrowUp) {
-                            selected = selected.saturating_sub(1);
-                        }
-                    });
-                    ui.add_space(4.0);
-                    for (i, (rel, path)) in results.iter().enumerate() {
-                        if ui.selectable_label(i == selected, rel.as_str()).clicked() {
-                            open = Some(path.clone());
-                        }
-                    }
-                    if ui.input(|i| i.key_pressed(Key::Enter))
-                        && let Some((_, p)) = results.get(selected)
-                    {
-                        open = Some(p.clone());
-                    }
-                    if ui.input(|i| i.key_pressed(Key::Escape)) {
-                        keep = false;
-                    }
-                });
-                if let Some(p) = open {
-                    keep = false;
-                    self.open_local(&p);
-                }
-                Dialog::QuickOpen { query, files, selected, focus: false }
+            Dialog::QuickOpen(mut state) => {
+                keep = self.quick_open_dialog(ctx, &mut state);
+                Dialog::QuickOpen(state)
             }
             Dialog::Settings => {
                 keep = self.settings_window(ctx);
@@ -3107,66 +3039,6 @@ fn human_bytes(n: usize) -> String {
     } else {
         format!("{:.1} KB", n as f64 / 1024.0)
     }
-}
-
-/// Lists files below `root`, skipping VCS and dependency folders.
-fn collect_files(root: &Path, limit: usize) -> Vec<PathBuf> {
-    const SKIP: &[&str] = &[".git", "node_modules", "vendor", ".svn", ".hg", "target", ".idea", ".vs"];
-    let mut out = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-        for e in rd.flatten() {
-            let name = e.file_name();
-            let Ok(ft) = e.file_type() else { continue };
-            if ft.is_dir() {
-                if !SKIP.iter().any(|s| name == *s) {
-                    stack.push(e.path());
-                }
-            } else {
-                out.push(e.path());
-                if out.len() >= limit {
-                    return out;
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Subsequence match scored by contiguity and filename hits.
-fn fuzzy_filter(files: &[PathBuf], root: &Path, query: &str, max: usize) -> Vec<(String, PathBuf)> {
-    let q: Vec<char> = query.to_lowercase().chars().filter(|c| !c.is_whitespace()).collect();
-    let mut scored: Vec<(i64, String, &PathBuf)> = files
-        .iter()
-        .filter_map(|p| {
-            let rel = p.strip_prefix(root).unwrap_or(p).to_string_lossy().replace('\\', "/");
-            if q.is_empty() {
-                return Some((0, rel, p));
-            }
-            let lower = rel.to_lowercase();
-            let name_start = lower.rfind('/').map_or(0, |i| i + 1);
-            let mut score = 0i64;
-            let mut qi = 0;
-            let mut last: Option<usize> = None;
-            for (i, c) in lower.chars().enumerate() {
-                if qi < q.len() && c == q[qi] {
-                    score += 1;
-                    if last == Some(i.wrapping_sub(1)) {
-                        score += 5;
-                    }
-                    if i >= name_start {
-                        score += 3;
-                    }
-                    last = Some(i);
-                    qi += 1;
-                }
-            }
-            (qi == q.len()).then(|| (score * 100 - rel.len() as i64, rel, p))
-        })
-        .collect();
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-    scored.into_iter().take(max).map(|(_, r, p)| (r, p.clone())).collect()
 }
 
 /// A clickable row on the welcome screen: icon, label and a muted hint.
