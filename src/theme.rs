@@ -280,6 +280,11 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// Bookmarks: orange, a little darker on light backgrounds.
+    pub fn bookmark(&self) -> Color32 {
+        if self.dark { Color32::from_rgb(247, 150, 38) } else { Color32::from_rgb(232, 121, 12) }
+    }
+
     pub fn dark() -> Self {
         let accent = system_accent()
             .map(|c| brighten(c, 0.15))

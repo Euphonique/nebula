@@ -720,7 +720,7 @@
     "Ohne Rückfragen": "Without asking",
     "Ohne Titel {n}": "Untitled {n}",
     "Ollama (lokal)": "Ollama (local)",
-    "Ollama antwortet nicht unter {base} – läuft es? ({e})": "Ollama does not answer at {base} – is it running? ({e})",
+    "Ollama antwortet nicht unter {base} – läuft es?": "Ollama does not answer at {base} – is it running?",
     "Ollama hat noch keine Modelle – z. B. „ollama pull qwen2.5-coder“ ausführen.": "Ollama has no models yet – run e.g. “ollama pull qwen2.5-coder”.",
     "OpenAI (API-Schlüssel)": "OpenAI (API key)",
     "OpenAI-kompatibel": "OpenAI-compatible",

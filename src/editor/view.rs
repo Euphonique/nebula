@@ -99,7 +99,8 @@ impl EditorView<'_> {
         let m = Metrics {
             row_h,
             char_w,
-            gutter_w: (digits * char_w + 28.0).round(),
+            // Fold marker, bookmark flag, numbers, Git bar.
+            gutter_w: (digits * char_w + 44.0).round(),
             font,
         };
         let tab = settings.tab_size;
@@ -339,7 +340,7 @@ fn overview_ruler(ui: &Ui, doc: &mut Document, theme: &Theme, matches: &[Range<u
         }
     }
     for b in doc.view.bookmarks.clone() {
-        mark(b, w - 12.0, theme.accent, 3.0);
+        mark(b, w - 12.0, theme.bookmark(), 3.0);
     }
     for m in matches.iter().take(20_000) {
         mark(doc.char_to_line(m.start), w - 8.0, theme.find_match.gamma_multiply(2.5), 2.0);
@@ -499,7 +500,7 @@ fn handle_pointer(
         state.origin = None;
         state.block = None;
 
-        if in_gutter && p.x < visible.left() + 20.0 {
+        if in_gutter && p.x < visible.left() + 17.0 {
             // Fold marker.
             let line = doc.char_to_line(at);
             if doc.view.folds.contains(&line) || folding::range_at(doc, line, tab).is_some() {
@@ -1359,7 +1360,7 @@ fn paint_doc(
         let range = fold_ranges.binary_search_by_key(&line, |r| r.0).ok().map(|i| fold_ranges[i]);
         if folded || range.is_some() {
             let center = pos2(gutter.left() + 10.0, cy);
-            let hovered = pointer.is_some_and(|p| p.x < gutter.left() + 20.0 && (p.y - cy).abs() <= m.row_h / 2.0);
+            let hovered = pointer.is_some_and(|p| p.x < gutter.left() + 17.0 && (p.y - cy).abs() <= m.row_h / 2.0);
             let color = if hovered || folded { theme.gutter_fg_active } else { theme.gutter_fg };
             if hovered
                 && !folded
@@ -1384,18 +1385,19 @@ fn paint_doc(
                 doc.char_to_line(r.start) <= line && line <= doc.char_to_line(r.end)
             });
         let bookmarked = doc.view.bookmarks.contains(&line);
-        if bookmarked {
-            let r = Rect::from_min_max(pos2(gutter.left() + 19.0, y + 3.0), pos2(gutter.right() - 8.0, y + m.row_h - 3.0));
-            painter.rect_filled(r, 4.0, theme.accent.gamma_multiply(0.45));
-        }
         let color = if active || bookmarked { theme.gutter_fg_active } else { theme.gutter_fg };
-        painter.text(
+        let number = painter.text(
             pos2(gutter.right() - 14.0, y + num_offset),
             egui::Align2::RIGHT_TOP,
             (line + 1).to_string(),
             num_font.clone(),
             color,
         );
+        if bookmarked {
+            // A small flag right before the number, as high as the fold marker.
+            let (w, h) = (7.0, 9.0);
+            crate::ui::icons::bookmark_filled(&painter, pos2(number.left() - 3.0 - w / 2.0, cy), w, h, theme.bookmark());
+        }
     }
 }
 

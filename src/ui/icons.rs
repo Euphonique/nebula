@@ -343,6 +343,17 @@ pub fn bookmark(painter: &Painter, c: Pos2, color: Color32) {
     painter.add(eframe::egui::Shape::closed_line(points.to_vec(), Stroke::new(1.3, color)));
 }
 
+/// A filled bookmark ribbon, `w` wide and `h` high (for the gutter).
+pub fn bookmark_filled(painter: &Painter, c: Pos2, w: f32, h: f32, color: Color32) {
+    let (x, y) = (w / 2.0, h / 2.0);
+    let notch = y - h * 0.32;
+    // The ribbon isn't convex: two halves that overlap a little in the middle.
+    for (a, b) in [(-x, 0.4), (-0.4, x)] {
+        let points = vec![c + vec2(a, -y), c + vec2(b, -y), c + vec2(b, if b > 0.5 { y } else { notch }), c + vec2(a, if a < -0.5 { y } else { notch })];
+        painter.add(eframe::egui::Shape::convex_polygon(points, color, Stroke::NONE));
+    }
+}
+
 /// Monitor and phone side by side ("device width").
 pub fn devices(painter: &Painter, c: Pos2, color: Color32) {
     let stroke = Stroke::new(1.3, color);

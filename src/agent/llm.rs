@@ -64,6 +64,24 @@ pub struct Turn {
     pub stop: Option<Stop>,
 }
 
+/// Why a request failed.
+#[derive(Debug)]
+pub enum Error {
+    /// No answer from the server (the system's message).
+    Unreachable(String),
+    Other(String),
+}
+
+impl Error {
+    /// For the user, naming the server that didn't answer.
+    pub fn message(&self, base: &str) -> String {
+        match self {
+            Error::Unreachable(text) => t!("Keine Verbindung zu {base} ({text})", base = base, text = text),
+            Error::Other(text) => text.clone(),
+        }
+    }
+}
+
 /// Returned when the user stopped the answer.
 pub const CANCELLED: &str = "cancelled";
 
@@ -108,14 +126,12 @@ impl Llm {
     }
 
     /// Sends a request; errors carry the server's message.
-    fn send(&self, req: ureq::http::Request<Vec<u8>>) -> Result<ureq::http::Response<ureq::Body>, String> {
+    fn send(&self, req: ureq::http::Request<Vec<u8>>) -> Result<ureq::http::Response<ureq::Body>, Error> {
+        // No answer at all (server down, no network, wrong address); the
+        // system's message may be in any language.
         let mut resp = http().run(req).map_err(|e| {
             let text = e.to_string();
-            if text.to_lowercase().contains("connect") {
-                t!("Keine Verbindung zu {base} ({text})", base = self.base, text = text)
-            } else {
-                text
-            }
+            Error::Unreachable(text.strip_prefix("io: ").unwrap_or(&text).to_string())
         })?;
         let status = resp.status();
         if status.is_success() {
@@ -126,23 +142,23 @@ impl Llm {
             .ok()
             .and_then(|v| v.pointer("/error/message").or_else(|| v.get("error")).and_then(Value::as_str).map(str::to_string))
             .unwrap_or_else(|| body.chars().take(300).collect());
-        Err(match status.as_u16() {
+        Err(Error::Other(match status.as_u16() {
             401 | 403 => t!("Zugriff verweigert – API-Schlüssel prüfen ({message})", message = message),
             404 => t!("Nicht gefunden: {url} ({message})", url = self.base, message = message),
             429 => t!("Zu viele Anfragen oder Kontingent erschöpft ({message})", message = message),
             code => format!("HTTP {code}: {message}"),
-        })
+        }))
     }
 
     /// The models the server offers, sorted (chat models only, as far as recognizable).
-    pub fn models(&self) -> Result<Vec<String>, String> {
+    pub fn models(&self) -> Result<Vec<String>, Error> {
         let path = match self.provider {
             Provider::Anthropic => "models?limit=100",
             Provider::OpenAi => "models",
         };
-        let req = self.request("GET", path).body(Vec::new()).map_err(|e| e.to_string())?;
+        let req = self.request("GET", path).body(Vec::new()).map_err(|e| Error::Other(e.to_string()))?;
         let mut resp = self.send(req)?;
-        let body: Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
+        let body: Value = resp.body_mut().read_json().map_err(|e| Error::Other(e.to_string()))?;
         let mut ids: Vec<String> = body
             .get("data")
             .and_then(Value::as_array)
@@ -175,7 +191,7 @@ impl Llm {
             Provider::OpenAi => "chat/completions",
         };
         let req = self.request("POST", path).body(body.to_string().into_bytes()).map_err(|e| e.to_string())?;
-        let resp = self.send(req)?;
+        let resp = self.send(req).map_err(|e| e.message(&self.base))?;
         let reader = resp.into_body().into_reader();
         match self.provider {
             Provider::Anthropic => read_anthropic(reader, on_text, cancel),

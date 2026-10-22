@@ -220,12 +220,9 @@ impl Server {
             return Err(t!("Kein API-Schlüssel hinterlegt – unter Einstellungen › KI-Agenten bei diesem Agenten eintragen.").into());
         }
         if self.models.is_empty() {
-            self.models = self.llm.models().map_err(|e| {
-                if self.local && e.contains(&*self.llm.base) {
-                    t!("Ollama antwortet nicht unter {base} – läuft es? ({e})", base = self.llm.base, e = e)
-                } else {
-                    e
-                }
+            self.models = self.llm.models().map_err(|e| match e {
+                llm::Error::Unreachable(_) if self.local => t!("Ollama antwortet nicht unter {base} – läuft es?", base = self.llm.base),
+                e => e.message(&self.llm.base),
             })?;
             if self.models.is_empty() {
                 return Err(if self.local { t!("Ollama hat noch keine Modelle – z. B. „ollama pull qwen2.5-coder“ ausführen.").into() } else { t!("Der Server bietet keine Modelle an.").into() });

@@ -720,7 +720,7 @@
     "Ohne Rückfragen": "Sin preguntar",
     "Ohne Titel {n}": "Sin título {n}",
     "Ollama (lokal)": "Ollama (local)",
-    "Ollama antwortet nicht unter {base} – läuft es? ({e})": "Ollama no responde en {base}: ¿está en marcha? ({e})",
+    "Ollama antwortet nicht unter {base} – läuft es?": "Ollama no responde en {base}: ¿está en marcha?",
     "Ollama hat noch keine Modelle – z. B. „ollama pull qwen2.5-coder“ ausführen.": "Ollama aún no tiene modelos: ejecuta p. ej. «ollama pull qwen2.5-coder».",
     "OpenAI (API-Schlüssel)": "OpenAI (clave de API)",
     "OpenAI-kompatibel": "Compatible con OpenAI",
