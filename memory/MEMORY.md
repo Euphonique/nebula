@@ -1,3 +1,4 @@
-- [Nebula: Stand und nächste Schritte](nebula-progress.md) — Bugrunde + KI-Agenten fertig; als Nächstes KI weiter oder Runde 3 (vorher fragen)
+- [Nebula: Stand und nächste Schritte](nebula-progress.md) — Runde 3 + Ergänzungen 22.10. fertig, Lokalisierung fertig; nächste Aufgabe beim Nutzer erfragen
 - [Nebula: Arbeitsweise und Test-Tricks](nebula-workflow.md) — Commit pro Aufgabe, Screenshot-Tests, Edit-Tool statt perl, Schein-Agent für KI-Tests
 - [Nebula: KI-Integration](nebula-ki-scope.md) — ACP-Agenten fertig, Node in %APPDATA%\nebula, kein Abo-OAuth; offen: eigener Agent, Befehle, Commit-Msg, MCP, Inline
+- [Nebula: Übersetzungen](nebula-i18n.md) — t!(deutscher Text), JSON pro Sprache, i18n-wrap keys/merge
