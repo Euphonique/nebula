@@ -476,6 +476,9 @@ pub struct Sites {
     /// Groups folded in the sidebar.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub collapsed_groups: Vec<String>,
+    /// Show all servers as one list instead of in their groups.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub flat: bool,
 }
 
 impl Sites {

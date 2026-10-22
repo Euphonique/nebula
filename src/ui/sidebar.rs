@@ -106,8 +106,32 @@ pub fn drop_copies(items: &[Item], target: &DirRef, mods: Modifiers) -> bool {
 
 /// "Kopieren"/"Verschieben" next to the pointer while dragging over a target.
 fn drop_hint(ui: &Ui, theme: &Theme, copy: bool) {
+    drop_label(ui, theme, if copy { "+ Kopieren (Umschalt: verschieben)" } else { "→ Verschieben (Strg: kopieren)" });
+}
+
+/// Payload while dragging items inside the app.
+#[derive(Clone)]
+pub struct DragItems(pub Vec<Item>);
+
+/// Payload while dragging a server (by id) into a group.
+#[derive(Clone)]
+struct SiteDrag(String);
+
+/// `resp` accepts a dragged server and puts it into `group` (empty: none).
+fn site_drop_target(ui: &Ui, theme: &Theme, resp: &egui::Response, group: &str, actions: &mut Vec<SidebarAction>) {
+    if resp.dnd_hover_payload::<SiteDrag>().is_some() {
+        ui.painter().rect_stroke(resp.rect, 6.0, Stroke::new(1.5, theme.accent), egui::StrokeKind::Inside);
+        let text = if group.is_empty() { "Ohne Gruppe".to_string() } else { format!("In „{group}“") };
+        drop_label(ui, theme, &text);
+    }
+    if let Some(p) = resp.dnd_release_payload::<SiteDrag>() {
+        actions.push(SidebarAction::SetSiteGroup { site_id: p.0.clone(), group: group.to_string() });
+    }
+}
+
+/// A small label next to the pointer while dragging.
+fn drop_label(ui: &Ui, theme: &Theme, text: &str) {
     let Some(pos) = ui.ctx().pointer_latest_pos() else { return };
-    let text = if copy { "+ Kopieren (Umschalt: verschieben)" } else { "→ Verschieben (Strg: kopieren)" };
     let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("drop-hint")));
     let galley = painter.layout_no_wrap(text.to_string(), FontId::proportional(11.5), theme.foreground);
     let rect = Rect::from_min_size(pos + vec2(16.0, 18.0), galley.size() + vec2(12.0, 6.0));
@@ -115,10 +139,6 @@ fn drop_hint(ui: &Ui, theme: &Theme, copy: bool) {
     painter.rect_stroke(rect, 5.0, Stroke::new(1.0, theme.accent), egui::StrokeKind::Inside);
     painter.galley(rect.min + vec2(6.0, 3.0), galley, theme.foreground);
 }
-
-/// Payload while dragging items inside the app.
-#[derive(Clone)]
-pub struct DragItems(pub Vec<Item>);
 
 #[derive(Clone, Debug)]
 pub enum NameAction {
@@ -156,6 +176,8 @@ pub enum SidebarAction {
     ToggleGroup(String),
     /// Remove the group, keeping its servers.
     DissolveGroup(String),
+    /// Switch the server list between groups and one flat list.
+    ToggleServerGroups,
     ImportSites,
     ImportFileZilla,
     ExportSites,
@@ -232,6 +254,8 @@ struct RowCtx<'a> {
     modifiers: Modifiers,
     /// Connected servers (id, name, start folder) as targets for "copy to server".
     servers: Vec<(String, String, String)>,
+    /// The server list shows all servers without groups.
+    servers_flat: bool,
 }
 
 pub struct Sidebar {
@@ -587,6 +611,10 @@ impl Sidebar {
                         {
                             actions.push(SidebarAction::EditSite(None));
                         }
+                        let tip = if sites.flat { "Gruppen anzeigen" } else { "Alle Server ohne Gruppen anzeigen" };
+                        if icons::icon_button(ui, theme, small, !sites.flat, |p, c, col| icons::groups(p, c, col)).on_hover_text(tip).clicked() {
+                            actions.push(SidebarAction::ToggleServerGroups);
+                        }
                     }
                     SidebarTab::Search | SidebarTab::Git | SidebarTab::Extensions => {}
                 }
@@ -616,6 +644,7 @@ impl Sidebar {
             external_hover: self.external_hover,
             modifiers: ui.input(|i| i.modifiers),
             servers,
+            servers_flat: sites.flat,
         };
         let mut list_ui = ui.new_child(egui::UiBuilder::new().max_rect(list_rect.shrink2(vec2(8.0, 0.0))));
         if self.tab == SidebarTab::Extensions {
@@ -1019,9 +1048,23 @@ impl Sidebar {
         }
         let groups = sites.groups();
         let filter = self.filter.to_lowercase();
+        if sites.flat {
+            // All servers in one list, by name.
+            section_header(ui, theme, "Alle Server").context_menu(|ui| server_list_menu(ui, actions));
+            let mut all: Vec<&Site> = sites.sites.iter().collect();
+            all.sort_by_key(|s| s.display_name().to_lowercase());
+            for site in all {
+                self.show_site(ui, site, rc, &groups, &filter, actions);
+            }
+            return;
+        }
+        let dragging_site = egui::DragAndDrop::has_payload_of_type::<SiteDrag>(ui.ctx());
         let ungrouped: Vec<&Site> = sites.sites.iter().filter(|s| s.group.is_empty()).collect();
-        if !ungrouped.is_empty() {
-            section_header(ui, theme, "Server").context_menu(|ui| server_list_menu(ui, actions));
+        // While a server is dragged, "Server" is always there to drop it out of its group.
+        if !ungrouped.is_empty() || dragging_site {
+            let header = section_header(ui, theme, "Server");
+            site_drop_target(ui, theme, &header, "", actions);
+            header.context_menu(|ui| server_list_menu(ui, actions));
             for site in ungrouped {
                 self.show_site(ui, site, rc, &groups, &filter, actions);
             }
@@ -1030,6 +1073,7 @@ impl Sidebar {
             let open = !sites.collapsed_groups.contains(group);
             let members: Vec<&Site> = sites.sites.iter().filter(|s| &s.group == group).collect();
             let resp = group_header(ui, theme, group, open, members.len());
+            site_drop_target(ui, theme, &resp, group, actions);
             if resp.clicked() {
                 actions.push(SidebarAction::ToggleGroup(group.clone()));
             }
@@ -1070,6 +1114,12 @@ impl Sidebar {
             None => theme.gutter_fg,
         };
         let resp = site_row(ui, theme, open, &site.display_name(), site.protocol.label(), status_color);
+        // Servers are dragged into groups (in the grouped view): onto a group
+        // header, or onto a server of the group.
+        if !rc.servers_flat {
+            resp.dnd_set_drag_payload(SiteDrag(site.id.clone()));
+            site_drop_target(ui, theme, &resp, &site.group, actions);
+        }
         // Dropping onto a server uploads into its start folder.
         if let Some(home) = tree.and_then(|t| t.home.clone()) {
             let target = DirRef::Remote { site_id: site.id.clone(), path: home };
@@ -1475,7 +1525,7 @@ fn folder_color(theme: &Theme) -> Color32 {
 
 fn site_row(ui: &mut Ui, theme: &Theme, open: bool, name: &str, proto: &str, status: Color32) -> egui::Response {
     let width = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, ROW_H + 4.0), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, ROW_H + 4.0), Sense::click_and_drag());
     let painter = ui.painter();
     if resp.dnd_hover_payload::<DragItems>().is_some() {
         painter.rect_stroke(rect, 6.0, Stroke::new(1.5, theme.accent), egui::StrokeKind::Inside);

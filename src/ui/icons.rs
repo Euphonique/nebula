@@ -309,6 +309,16 @@ pub fn menu(painter: &Painter, c: Pos2, color: Color32) {
     }
 }
 
+/// Two headings with indented rows ("show groups").
+pub fn groups(painter: &Painter, c: Pos2, color: Color32) {
+    let strong = Stroke::new(1.6, color);
+    let thin = Stroke::new(1.2, color);
+    painter.line_segment([c + vec2(-6.0, -5.5), c + vec2(1.0, -5.5)], strong);
+    painter.line_segment([c + vec2(-3.0, -2.0), c + vec2(6.0, -2.0)], thin);
+    painter.line_segment([c + vec2(-6.0, 2.0), c + vec2(1.0, 2.0)], strong);
+    painter.line_segment([c + vec2(-3.0, 5.5), c + vec2(6.0, 5.5)], thin);
+}
+
 /// Push pin, tilted ("pinned tab").
 pub fn pin(painter: &Painter, c: Pos2, color: Color32) {
     let stroke = Stroke::new(1.3, color);

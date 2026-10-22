@@ -1062,6 +1062,10 @@ impl NebulaApp {
             SidebarAction::SetSiteGroup { site_id, group } => self.set_site_group(&site_id, &group),
             SidebarAction::ToggleGroup(group) => self.toggle_group(group),
             SidebarAction::DissolveGroup(group) => self.dissolve_group(&group),
+            SidebarAction::ToggleServerGroups => {
+                self.sites.flat = !self.sites.flat;
+                let _ = self.sites.save();
+            }
             SidebarAction::ImportSites => self.import_sites(None),
             SidebarAction::ImportFileZilla => self.import_sites(crate::server_import::filezilla_path()),
             SidebarAction::ExportSites => self.export_sites(),
