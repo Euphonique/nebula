@@ -17,6 +17,7 @@ mod icon;
 mod integration;
 mod ext;
 mod lang;
+mod mcp;
 mod preview;
 mod print;
 mod crash;

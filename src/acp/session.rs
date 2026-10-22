@@ -208,6 +208,8 @@ pub struct AgentSession {
     pub agent_info: Option<String>,
     /// The agent accepts file contents embedded in the prompt.
     embedded_context: bool,
+    /// The agent can use MCP servers over HTTP (Nebula's own is given to it).
+    mcp_http: bool,
     pub auth_methods: Vec<AuthOption>,
     /// The agent can log out (`logout` method).
     pub can_logout: bool,
@@ -236,6 +238,7 @@ impl AgentSession {
             config: Vec::new(),
             agent_info: None,
             embedded_context: false,
+            mcp_http: false,
             auth_methods: Vec::new(),
             can_logout: false,
             pending: HashMap::new(),
@@ -394,6 +397,7 @@ impl AgentSession {
                     self.has_usage = info.name.contains("claude-agent-acp");
                 }
                 self.embedded_context = resp.as_ref().is_some_and(|r| r.agent_capabilities.prompt_capabilities.embedded_context);
+                self.mcp_http = resp.as_ref().is_some_and(|r| r.agent_capabilities.mcp_capabilities.http);
                 self.new_session();
             }
             Pending::Authenticate => self.new_session(),
@@ -534,7 +538,9 @@ impl AgentSession {
 
     fn new_session(&mut self) {
         let cwd = self.cwd.to_string_lossy().into_owned();
-        self.send("session/new", Pending::NewSession, json!({ "cwd": cwd, "mcpServers": [] }));
+        // Nebula's MCP server: open files, selection, problems, opening files.
+        let servers: Vec<Value> = if self.mcp_http { crate::mcp::acp_entry().into_iter().collect() } else { Vec::new() };
+        self.send("session/new", Pending::NewSession, json!({ "cwd": cwd, "mcpServers": servers }));
     }
 
     /// Logs in with one of the methods offered by the agent.

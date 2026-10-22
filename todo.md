@@ -40,7 +40,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 Agenten über ACP und der eigene Agent (API-Schlüssel, Ollama) sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
 
-- **C** Nebula als MCP-Server: externe Agenten sehen offene Dateien, Auswahl und Fehler und können Dateien im Editor öffnen.
 - **C** Inline-Vorschläge beim Tippen (graue Vervollständigung, Tab übernimmt) – unbedingt ein-/ausschaltbar (Kosten).
 - **C** Angehängte Serverdateien direkt bearbeitbar machen (virtueller Pfad, Lesen/Schreiben über die Serververbindung); bisher nur lesend bzw. über ein lokales Projekt mit „Beim Speichern hochladen“.
 - **C** Limits-Anzeige auch für Codex (ChatGPT-Abo), sobald der Adapter sie meldet.
@@ -132,3 +131,5 @@ Eigener KI-Agent (22.10.): „In Nebula eingebaut“, ohne Node.js – Anthropic
 KI-Befehle (22.10.): Rechtsklick im Editor › „KI“ (und Befehlspalette): Erklären, Kommentieren, Umschreiben… (mit Anweisung, Vorschläge wie „lesbarer“), Fehler beheben (mit den gemeldeten Problemen) – für die Auswahl oder die aktuelle Zeile; geht an den Agenten im Panel, Änderungen als Diff zum Übernehmen. Ändern nur bei lokalen Dateien. Nebenbei: Markdown im Agent-Panel bricht lange Absätze jetzt um.
 
 Commit-Nachricht per KI (22.10.): ✦ im Nachrichtenfeld des Git-Tabs – der Agent des Panels schreibt die Nachricht aus dem Diff (vorgemerkte Änderungen, sonst alle samt neuer Dateien) in einer eigenen, unsichtbaren Sitzung; Sprache und Stil wie die letzten Commits; darf Dateien lesen, nichts ändern; nochmal klicken bricht ab.
+
+Nebula als MCP-Server (22.10.): lokaler MCP-Server (HTTP, nur 127.0.0.1, Schlüssel in der Adresse) mit get_open_files, get_active_editor (Cursor, Auswahl), get_diagnostics, get_file_text (ungespeicherter Stand) und open_file; Agenten im Panel bekommen ihn automatisch, für Claude Code im Terminal gibt es den Befehl zum Kopieren (Einstellungen › KI-Agenten), dort auch Aus und „Neuer Schlüssel“.

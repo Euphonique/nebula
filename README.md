@@ -67,6 +67,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Vergleichen als eigener Tab (Unified-Diff, schreibgeschützt, mit Strg+S als .diff speicherbar): Arbeitsstand gegen den letzten Commit, Tab gegen eine Datei, zwei Dateien aus der Seitenleiste (lokal und auf dem Server gemischt) – offene Tabs werden mit ihrem aktuellen Stand verglichen
 - Git-Tab in der Seitenleiste: Dateien vormerken und zurücknehmen, Commit mit Nachricht (Strg+Enter; ohne Vormerkung werden alle Änderungen committet), Pull/Push mit Anzeige der Commits, Abrufen, Branch wechseln und neu anlegen; Klick auf eine Datei zeigt ihre Änderungen
 - Commit-Nachricht per KI: ✦ im Nachrichtenfeld des Git-Tabs lässt den Agenten aus dem Panel eine Nachricht aus dem Diff schreiben (vorgemerkte Änderungen, sonst alle), in Sprache und Stil der letzten Commits; in einer eigenen Sitzung, die Unterhaltung im Panel bleibt unberührt
+- Nebula als MCP-Server (Einstellungen › KI-Agenten): Agenten sehen offene Dateien, den aktiven Editor mit Cursor und Auswahl, gemeldete Probleme und ungespeicherte Texte und können Dateien im Editor öffnen. Nur lokal erreichbar, mit Schlüssel in der Adresse; die Agenten im Panel bekommen ihn automatisch, für Claude Code im Terminal gibt es den fertigen `claude mcp add`-Befehl zum Kopieren
 - Übertragungsliste in der Statusleiste: Uploads, Downloads, Kopien und Speichervorgänge auf Servern mit Fortschritt (Dateien), Abbrechen, Wiederholen bei Fehlern und „Erledigte entfernen“
 - Übersicht am rechten Rand: Suchtreffer, Probleme, Git-Änderungen, Lesezeichen und Cursor der ganzen Datei
 - Lesezeichen: Doppelklick auf eine Zeilennummer (oder Strg+F2) setzt bzw. entfernt eins; der Reiter „Lesezeichen“ im rechten Panel listet sie für alle offenen Dateien mit Zeilentext, Klick springt hin, × entfernt; Lesezeichen bleiben über einen Neustart erhalten
@@ -163,6 +164,7 @@ src/
   app/agents_page.rs   Einstellungsseite KI-Agenten (Anmeldung, Node.js)
   acp/                 Agent Client Protocol: Verbindung, Sitzung, Node-Verwaltung, Limits
   agent/               Eingebauter Agent: ACP im Thread, Anthropic-/OpenAI-API (llm.rs), Werkzeuge (tools.rs)
+  mcp.rs               Nebula als MCP-Server (HTTP, Werkzeuge in app/mcp_tools.rs)
   app/extensions.rs    Erweiterungen in der App: Dokument-Abgleich, Anfragen, Probleme
   app/extensions_page.rs  Einstellungsseite: installierte Erweiterungen, Bibliothek, Konsole
   preview.rs           WebView2-Fenster und eigenes URL-Schema

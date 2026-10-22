@@ -53,6 +53,7 @@ mod system_page;
 mod folder_pick;
 mod ai_commands;
 mod commit_msg;
+mod mcp_tools;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -224,6 +225,8 @@ pub struct NebulaApp {
     commit_msg: Option<commit_msg::CommitMessageJob>,
     /// Earlier cursor positions for Alt+←/→.
     nav: nav::NavHistory,
+    /// Nebula as MCP server (if turned on).
+    mcp: Option<crate::mcp::McpServer>,
 }
 
 impl NebulaApp {
@@ -294,6 +297,7 @@ impl NebulaApp {
             agent: Default::default(),
             commit_msg: None,
             nav: Default::default(),
+            mcp: None,
             settings,
         };
         // The preview used to be a setting of its own; it now lives in the right panel.
@@ -301,6 +305,7 @@ impl NebulaApp {
             app.settings.right_panel = true;
             app.settings.right_tab = crate::settings::RightTab::Preview;
         }
+        app.start_mcp(&cc.egui_ctx);
         app.restore_session();
         if let Some(root) = app.sidebar.root.clone() {
             app.remember_folder(&root);
@@ -3091,6 +3096,7 @@ impl eframe::App for NebulaApp {
         self.poll_terminals();
         self.poll_agent();
         self.poll_commit_message();
+        self.poll_mcp();
         self.poll_printing();
         self.serve_preview();
         self.sync_extensions(&ctx);

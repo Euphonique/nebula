@@ -174,6 +174,54 @@ impl NebulaApp {
         });
     }
 
+    /// Nebula as MCP server: on/off, address and how to connect other agents.
+    fn mcp_info(&mut self, ui: &mut Ui) {
+        let theme = self.theme.clone();
+        let ctx = ui.ctx().clone();
+        egui::Frame::new().fill(theme.hover.gamma_multiply(0.6)).corner_radius(8.0).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            let mut on = self.settings.mcp.enabled;
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut on, RichText::new(t!("Nebula als MCP-Server")).strong()).changed() {
+                    self.settings.mcp.enabled = on;
+                    let _ = self.settings.save();
+                    self.start_mcp(&ctx);
+                }
+                if let Some(url) = self.mcp_url() {
+                    ui.label(RichText::new(t!("● läuft")).size(12.0).color(theme.success)).on_hover_text(url);
+                }
+            });
+            ui.label(
+                RichText::new(t!("Agenten sehen damit offene Dateien, Auswahl und gemeldete Probleme und können Dateien im Editor öffnen. Die Agenten im Panel bekommen ihn automatisch (sofern sie MCP über HTTP unterstützen); nur von diesem Rechner aus erreichbar."))
+                    .size(11.5)
+                    .color(theme.text_muted),
+            );
+            let Some(url) = self.mcp_url() else { return };
+            ui.add_space(4.0);
+            let command = format!("claude mcp add --transport http nebula {url}");
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(t!("Für Claude Code im Terminal:")).size(12.0));
+                if ui.small_button(t!("Befehl kopieren")).on_hover_text(&command).clicked() {
+                    ctx.copy_text(command.clone());
+                    self.info(t!("Befehl kopiert"));
+                }
+                if ui.small_button(t!("Adresse kopieren")).on_hover_text(&url).clicked() {
+                    ctx.copy_text(url.clone());
+                    self.info(t!("Adresse kopiert"));
+                }
+                if ui
+                    .small_button(t!("Neuer Schlüssel"))
+                    .on_hover_text(t!("Erzeugt eine neue Adresse; bereits eingerichtete Programme müssen sie neu bekommen."))
+                    .clicked()
+                {
+                    self.settings.mcp.token = crate::mcp::new_token();
+                    let _ = self.settings.save();
+                    self.start_mcp(&ctx);
+                }
+            });
+        });
+    }
+
     pub(super) fn agents_page(&mut self, ui: &mut Ui, state: &mut AgentsPage) {
         let theme = self.theme.clone();
         let ctx = ui.ctx().clone();
@@ -193,6 +241,8 @@ impl NebulaApp {
         );
         ui.add_space(8.0);
         self.runtime_info(ui, state);
+        ui.add_space(8.0);
+        self.mcp_info(ui);
         ui.add_space(8.0);
 
         if let Some(edit) = &mut state.edit {

@@ -152,6 +152,8 @@ pub struct AppSettings {
     /// Coding agents (ACP) and the one used for new sessions (by name).
     pub agents: Vec<crate::acp::AgentConfig>,
     pub agent: String,
+    /// Nebula as MCP server for agents (local only, with token).
+    pub mcp: crate::mcp::McpSettings,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -285,6 +287,7 @@ impl Default for AppSettings {
             keybindings: Default::default(),
             agents: crate::acp::default_agents(),
             agent: "Claude Code".into(),
+            mcp: Default::default(),
         }
     }
 }

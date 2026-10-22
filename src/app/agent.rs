@@ -406,7 +406,7 @@ impl NebulaApp {
         }
     }
 
-    fn local_doc(&self, path: &Path) -> Option<usize> {
+    pub(super) fn local_doc(&self, path: &Path) -> Option<usize> {
         let want = crate::ui::sidebar::normalize_path(path).to_string_lossy().to_lowercase();
         self.docs.iter().position(|d| match &d.source {
             DocSource::Local(p) => d.image.is_none() && p.to_string_lossy().to_lowercase() == want,
