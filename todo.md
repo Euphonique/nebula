@@ -97,4 +97,4 @@ Absturzbericht (22.10.): Panics landen mit Meldung, Stelle und Backtrace in `cra
 
 Gerätebreiten (22.10.): Vorschau wahlweise in Panelbreite, Handy (390 px), Tablet (768 px) oder Desktop (1440 px), bei Bedarf verkleinert (WebView-Zoom).
 
-Snippets (22.10.): Tab-Sprünge durch Platzhalter mit Mehrfachbearbeitung gleicher Nummern, eingebaute Snippets mit Platzhaltern, eigener Reiter „{ }“ im rechten Panel zum Einfügen, Anlegen (auch aus der Auswahl) und Bearbeiten, pro Sprache oder für alle Sprachen.
+Snippets (22.10.): Tab-Sprünge durch Platzhalter mit Mehrfachbearbeitung gleicher Nummern, eingebaute Snippets mit Platzhaltern, eigener Reiter „{ }“ im rechten Panel zum Einfügen, Anlegen (auch aus der Auswahl) und Bearbeiten, pro Sprache oder für alle Sprachen. Export/Import als JSON, Import von VS-Code-Snippets.

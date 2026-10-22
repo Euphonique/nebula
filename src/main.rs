@@ -17,6 +17,7 @@ mod print;
 mod crash;
 mod remote;
 mod server_import;
+mod snippet_io;
 mod settings;
 mod theme;
 mod theme_import;

@@ -8,6 +8,7 @@ use crate::editor::complete;
 use crate::editor::snippet;
 use crate::lang::Language;
 use crate::settings::{ALL_LANGUAGES, UserSnippet};
+use crate::snippet_io;
 use crate::ui::icons;
 
 #[derive(Default)]
@@ -33,6 +34,14 @@ enum Action {
     /// Built-in snippet copied into an own one.
     Customize(UserSnippet),
     Delete(String, usize),
+    Import,
+    Export,
+}
+
+/// Snippets found in import files, shown for selection.
+pub(super) struct SnippetImport {
+    source: String,
+    entries: Vec<(snippet_io::Imported, bool, bool)>,
 }
 
 const HELP: &str = "$1, ${2:Name} – Platzhalter, Tab springt weiter · $0 – Cursor am Ende · \
@@ -60,6 +69,7 @@ impl NebulaApp {
             })
             .collect();
         let builtin = complete::builtin_snippets(language);
+        let own_all_empty = self.settings.snippets.values().all(|l| l.is_empty());
         let state = &mut self.right_state.snippets;
         let mut action = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(10.0, 4.0))), |ui| {
@@ -69,6 +79,18 @@ impl NebulaApp {
                 if add.clicked() {
                     action = Some(Action::New);
                 }
+                let more = icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::more(p, c, col))
+                    .on_hover_text("Importieren und exportieren");
+                egui::Popup::menu(&more).show(|ui| {
+                    if ui.button("Importieren…").on_hover_text("Nebula-Export oder VS-Code-Snippets (.json, .code-snippets)").clicked() {
+                        action = Some(Action::Import);
+                        ui.close();
+                    }
+                    if ui.add_enabled(!own_all_empty, egui::Button::new("Alle eigenen exportieren…")).clicked() {
+                        action = Some(Action::Export);
+                        ui.close();
+                    }
+                });
                 ui.add(
                     egui::TextEdit::singleline(&mut state.query)
                         .hint_text(format!("Snippets für {} filtern…", language.name()))
@@ -169,8 +191,150 @@ impl NebulaApp {
                 }
                 self.save_snippets();
             }
+            Some(Action::Import) => self.import_snippets(),
+            Some(Action::Export) => self.export_snippets(),
             None => {}
         }
+    }
+
+    pub(super) fn export_snippets(&mut self) {
+        if self.settings.snippets.values().all(|l| l.is_empty()) {
+            self.info("Es gibt noch keine eigenen Snippets zum Exportieren.");
+            return;
+        }
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Snippets exportieren")
+            .set_file_name("nebula-snippets.json")
+            .add_filter("Nebula-Snippets", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        let count: usize = self.settings.snippets.values().map(Vec::len).sum();
+        match snippet_io::export(&self.settings.snippets).and_then(|b| Ok(std::fs::write(&path, b)?)) {
+            Ok(()) => self.info(if count == 1 { "1 Snippet exportiert.".to_string() } else { format!("{count} Snippets exportiert.") }),
+            Err(e) => self.error(format!("Export fehlgeschlagen: {e:#}")),
+        }
+    }
+
+    /// Asks for files and shows what they contain.
+    pub(super) fn import_snippets(&mut self) {
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Snippets importieren")
+            .add_filter("Snippets", &["json", "code-snippets"])
+            .add_filter("Alle Dateien", &["*"]);
+        // VS Code keeps the user's snippets here.
+        if let Some(dir) = std::env::var_os("APPDATA").map(|a| std::path::PathBuf::from(a).join("Code").join("User").join("snippets"))
+            && dir.is_dir()
+        {
+            dialog = dialog.set_directory(dir);
+        }
+        let Some(files) = dialog.pick_files() else { return };
+        let mut found = Vec::new();
+        let mut errors = Vec::new();
+        for path in &files {
+            let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            match std::fs::read(path).map_err(anyhow::Error::from).and_then(|b| snippet_io::parse(&b, &name)) {
+                Ok(list) => found.extend(list),
+                Err(e) => errors.push(format!("{name}: {e:#}")),
+            }
+        }
+        if !errors.is_empty() {
+            self.error(errors.join("\n"));
+        }
+        if found.is_empty() {
+            return;
+        }
+        found.sort_by(|a, b| a.key.cmp(&b.key));
+        let source = match files.as_slice() {
+            [one] => one.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            many => format!("{} Dateien", many.len()),
+        };
+        let entries = found
+            .into_iter()
+            .map(|item| {
+                let dup = snippet_io::is_duplicate(&self.settings.snippets, &item);
+                (item, !dup, dup)
+            })
+            .collect();
+        self.dialog = Some(super::Dialog::ImportSnippets(Box::new(SnippetImport { source, entries })));
+    }
+
+    /// Returns whether the dialog stays open.
+    pub(super) fn snippet_import_dialog(&mut self, ctx: &egui::Context, form: &mut SnippetImport) -> bool {
+        let theme = self.theme.clone();
+        let mut keep = true;
+        let mut import = false;
+        super::modal(ctx, egui::Id::unique("import-snippets")).show(ctx, |ui| {
+            ui.set_width(540.0);
+            ui.heading(format!("Snippets importieren – {}", form.source));
+            ui.add_space(6.0);
+            let dupes = form.entries.iter().filter(|e| e.2).count();
+            if dupes > 0 {
+                let text = if dupes == 1 { "Eines gibt es schon, es ist abgewählt.".to_string() } else { format!("{dupes} gibt es schon, sie sind abgewählt.") };
+                ui.label(RichText::new(text).small().color(theme.gutter_fg));
+            }
+            ui.horizontal(|ui| {
+                if ui.small_button("Alle").clicked() {
+                    form.entries.iter_mut().for_each(|e| e.1 = true);
+                }
+                if ui.small_button("Keine").clicked() {
+                    form.entries.iter_mut().for_each(|e| e.1 = false);
+                }
+            });
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical().max_height(380.0).auto_shrink([false, true]).show(ui, |ui| {
+                let mut last_key = None;
+                for (item, selected, dup) in &mut form.entries {
+                    if last_key != Some(&item.key) {
+                        ui.add_space(4.0);
+                        let name = if item.key == ALL_LANGUAGES {
+                            "Alle Sprachen"
+                        } else {
+                            Language::from_id(&item.key).map_or(item.key.as_str(), |l| l.name())
+                        };
+                        ui.label(RichText::new(name.to_uppercase()).small().strong().color(theme.text_faint));
+                    }
+                    last_key = Some(&item.key);
+                    ui.horizontal(|ui| {
+                        let trigger = if item.snippet.trigger.is_empty() { "(ohne Kürzel)" } else { item.snippet.trigger.as_str() };
+                        ui.checkbox(selected, RichText::new(trigger).monospace().color(theme.accent));
+                        ui.label(RichText::new(&item.snippet.description).small().color(theme.gutter_fg));
+                        if *dup {
+                            ui.label(RichText::new("vorhanden").small().color(theme.modified));
+                        }
+                    })
+                    .response
+                    .on_hover_ui(|ui| {
+                        ui.label(RichText::new(&item.snippet.body).monospace());
+                    });
+                }
+            });
+            ui.add_space(10.0);
+            let count = form.entries.iter().filter(|e| e.1).count();
+            ui.horizontal(|ui| {
+                let label = if count == 1 { "1 Snippet importieren".to_string() } else { format!("{count} Snippets importieren") };
+                if ui.add_enabled(count > 0, primary_button(&label, theme.accent)).clicked() {
+                    import = true;
+                }
+                if ui.button("Abbrechen").clicked() {
+                    keep = false;
+                }
+            });
+        });
+        if import {
+            let mut count = 0;
+            for (item, _, _) in form.entries.iter().filter(|e| e.1) {
+                self.settings.snippets.entry(item.key.clone()).or_default().push(item.snippet.clone());
+                count += 1;
+            }
+            self.save_snippets();
+            self.settings.right_panel = true;
+            self.settings.right_tab = crate::settings::RightTab::Snippets;
+            self.info(if count == 1 { "1 Snippet importiert.".to_string() } else { format!("{count} Snippets importiert.") });
+            keep = false;
+        }
+        keep
     }
 
     fn snippet_editor(&mut self, ui: &mut egui::Ui, body: Rect, language: Language) {

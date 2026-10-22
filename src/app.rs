@@ -77,6 +77,7 @@ struct SiteForm {
 enum Dialog {
     EditSite(Box<SiteForm>),
     ImportSites(Box<servers::ImportForm>),
+    ImportSnippets(Box<snippets_panel::SnippetImport>),
     /// The report of the last crash.
     CrashReport(Box<crate::crash::Report>),
     AskName { title: String, value: String, action: NameAction, focus: bool },
@@ -2679,6 +2680,10 @@ impl NebulaApp {
                     }
                 }
                 Dialog::Permissions { items, mode, octal, recurse }
+            }
+            Dialog::ImportSnippets(mut form) => {
+                keep = self.snippet_import_dialog(ctx, &mut form);
+                Dialog::ImportSnippets(form)
             }
             Dialog::CrashReport(report) => {
                 keep = self.crash_dialog(ctx, &report);
