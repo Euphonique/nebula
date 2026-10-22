@@ -46,6 +46,8 @@ pub fn parse(bytes: &[u8], file_name: &str) -> Result<Vec<Imported>> {
     // VS Code: { "Name": { "prefix": …, "body": …, "description": …, "scope": … } }
     let stem = file_name.rsplit(['/', '\\']).next().unwrap_or(file_name);
     let file_lang = stem.strip_suffix(".json").and_then(language_key);
+    // A collection (`laravel.code-snippets`) becomes a group of its own.
+    let group = stem.strip_suffix(".code-snippets").unwrap_or("").to_string();
     let mut out = Vec::new();
     for (name, entry) in map {
         let Value::Object(entry) = entry else { continue };
@@ -56,7 +58,7 @@ pub fn parse(bytes: &[u8], file_name: &str) -> Result<Vec<Imported>> {
             _ => String::new(),
         };
         let description = entry.get("description").and_then(lines).filter(|d| !d.is_empty()).unwrap_or_else(|| name.clone());
-        let snippet = UserSnippet { trigger, description, body };
+        let snippet = UserSnippet { trigger, description, body, group: group.clone() };
         let mut keys: Vec<String> = entry
             .get("scope")
             .and_then(Value::as_str)
@@ -181,10 +183,11 @@ mod tests {
     #[test]
     fn nebula_round_trip() {
         let mut map = BTreeMap::new();
-        map.insert("php".to_string(), vec![UserSnippet { trigger: "dd".into(), description: "Dump".into(), body: "dd($1);$0".into() }]);
-        map.insert("*".to_string(), vec![UserSnippet { trigger: "date".into(), description: String::new(), body: "$DATE".into() }]);
+        map.insert("php".to_string(), vec![UserSnippet { trigger: "dd".into(), description: "Dump".into(), body: "dd($1);$0".into(), group: "Laravel".into() }]);
+        map.insert("*".to_string(), vec![UserSnippet { trigger: "date".into(), description: String::new(), body: "$DATE".into(), ..Default::default() }]);
         let back = parse(&export(&map).unwrap(), "nebula-snippets.json").unwrap();
         assert_eq!(back.len(), 2);
+        assert!(back.iter().any(|i| i.snippet.group == "Laravel"));
         assert!(back.iter().all(|i| is_duplicate(&map, i)));
     }
 
@@ -216,6 +219,7 @@ mod tests {
             "Signature": { "prefix": "sig", "body": "Gruß, $1" }
         }"#;
         let list = parse(json.as_bytes(), "my.code-snippets").unwrap();
+        assert!(list.iter().all(|i| i.snippet.group == "my"));
         let keys: Vec<(&str, &str)> = list.iter().map(|i| (i.key.as_str(), i.snippet.trigger.as_str())).collect();
         assert!(keys.contains(&("javascript", "cl")) && keys.contains(&("tsx", "cl")));
         assert!(keys.contains(&("*", "sig")));

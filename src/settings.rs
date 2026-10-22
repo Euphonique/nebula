@@ -128,6 +128,8 @@ pub struct AppSettings {
     pub languages: std::collections::BTreeMap<String, LanguageSettings>,
     /// Own snippets per language id; `*` = all languages.
     pub snippets: std::collections::BTreeMap<String, Vec<UserSnippet>>,
+    /// Snippet groups folded in the panel.
+    pub collapsed_snippet_groups: Vec<String>,
     /// Live preview shown next to the editor, and its share of the width.
     pub preview: bool,
     pub preview_split: f32,
@@ -261,6 +263,7 @@ impl Default for AppSettings {
             project_tabs: Default::default(),
             languages: Default::default(),
             snippets: Default::default(),
+            collapsed_snippet_groups: Vec::new(),
             session: Vec::new(),
             publish: Default::default(),
             session_active: None,
@@ -603,6 +606,9 @@ pub struct UserSnippet {
     pub trigger: String,
     pub description: String,
     pub body: String,
+    /// Group in the snippets panel; empty = none.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub group: String,
 }
 
 /// Key of snippets that apply to every language.

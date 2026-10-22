@@ -1,6 +1,5 @@
 # Ergänzungen und Bugs:
 
-- Snippets: Ebenfalls in Gruppen sortierbar machen. Gruppen auch bei Import und Export beachten.
 
 
 
@@ -114,3 +113,5 @@ Synchronisieren (22.10.): Projekt und Serverordner in beide Richtungen abgleiche
 Kopieren zwischen Servern (22.10.): Ziehen zwischen verschiedenen Orten kopiert (Umschalt verschiebt), Hinweis am Mauszeiger, Kontextmenü „Auf Server kopieren/verschieben ›“; „Veröffentlichen“ und „Beim Speichern hochladen“ beachten jetzt die Ausschlussliste (z. B. `.env`).
 
 Serverliste (22.10.): Server per Drag \& Drop in Gruppen sortieren, Umschalter zwischen Gruppen und flacher Liste.
+
+Snippet-Gruppen (22.10.): eigene Snippets in einklappbaren Gruppen (Feld „Gruppe“, Drag \& Drop), Gruppen in Export\/Import und Einstellungs-Export; VS-Code-Sammlungen (`*.code-snippets`) werden zu einer Gruppe.

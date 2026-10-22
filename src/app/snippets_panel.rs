@@ -35,6 +35,10 @@ enum Action {
     Customize(UserSnippet),
     Delete(String, usize),
     Import,
+    /// Fold or unfold a snippet group.
+    ToggleGroup(String),
+    /// Move a snippet (language key, index) into a group (empty: none).
+    SetGroup(String, usize, String),
     Export,
 }
 
@@ -70,6 +74,7 @@ impl NebulaApp {
             .collect();
         let builtin = complete::builtin_snippets(language);
         let own_all_empty = self.settings.snippets.values().all(|l| l.is_empty());
+        let collapsed = self.settings.collapsed_snippet_groups.clone();
         let state = &mut self.right_state.snippets;
         let mut action = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(10.0, 4.0))), |ui| {
@@ -104,7 +109,9 @@ impl NebulaApp {
             };
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 let own_shown: Vec<_> = own.iter().filter(|(_, _, s)| matches(&s.trigger, &s.description, &s.body)).collect();
-                heading(ui, &theme, "Eigene");
+                // "Eigene" also takes snippets dragged out of their group.
+                let own_heading = heading(ui, &theme, "Eigene");
+                snippet_drop_target(ui, &theme, &own_heading, "", &mut action);
                 if own_shown.is_empty() {
                     ui.label(
                         RichText::new(if own.is_empty() { "Noch keine – mit + anlegen oder ein eingebautes anpassen." } else { "Keine Treffer" })
@@ -112,26 +119,46 @@ impl NebulaApp {
                             .color(theme.text_faint),
                     );
                 }
-                for (key, n, s) in own_shown {
-                    let tag = (key == ALL_LANGUAGES).then_some("alle Sprachen");
-                    let resp = row(ui, &theme, &s.trigger, &s.description, &s.body, tag);
-                    if resp.clicked() {
-                        action = Some(Action::Insert(s.body.clone()));
+                let mut groups: Vec<&str> = own_shown.iter().map(|(_, _, s)| s.group.as_str()).filter(|g| !g.is_empty()).collect();
+                groups.sort_by_key(|g| g.to_lowercase());
+                groups.dedup();
+                // Ungrouped first, then each group under a foldable heading.
+                for group in std::iter::once("").chain(groups.iter().copied()) {
+                    let members: Vec<_> = own_shown.iter().filter(|(_, _, s)| s.group == group).collect();
+                    if !group.is_empty() {
+                        let open = !collapsed.iter().any(|c| c == group);
+                        let resp = group_heading(ui, &theme, group, open, members.len());
+                        snippet_drop_target(ui, &theme, &resp, group, &mut action);
+                        if resp.clicked() {
+                            action = Some(Action::ToggleGroup(group.to_string()));
+                        }
+                        if !open {
+                            continue;
+                        }
                     }
-                    resp.context_menu(|ui| {
-                        if ui.button("Einfügen").clicked() {
+                    for (key, n, s) in members {
+                        let tag = (key == ALL_LANGUAGES).then_some("alle Sprachen");
+                        let resp = row(ui, &theme, &s.trigger, &s.description, &s.body, tag);
+                        resp.dnd_set_drag_payload(SnippetDrag(key.clone(), *n));
+                        snippet_drop_target(ui, &theme, &resp, &s.group, &mut action);
+                        if resp.clicked() {
                             action = Some(Action::Insert(s.body.clone()));
-                            ui.close();
                         }
-                        if ui.button("Bearbeiten…").clicked() {
-                            action = Some(Action::Edit(key.clone(), *n));
-                            ui.close();
-                        }
-                        if ui.button("Löschen").clicked() {
-                            action = Some(Action::Delete(key.clone(), *n));
-                            ui.close();
-                        }
-                    });
+                        resp.context_menu(|ui| {
+                            if ui.button("Einfügen").clicked() {
+                                action = Some(Action::Insert(s.body.clone()));
+                                ui.close();
+                            }
+                            if ui.button("Bearbeiten…").clicked() {
+                                action = Some(Action::Edit(key.clone(), *n));
+                                ui.close();
+                            }
+                            if ui.button("Löschen").clicked() {
+                                action = Some(Action::Delete(key.clone(), *n));
+                                ui.close();
+                            }
+                        });
+                    }
                 }
                 if !builtin.is_empty() {
                     ui.add_space(8.0);
@@ -148,6 +175,7 @@ impl NebulaApp {
                             }
                             if ui.button("Als eigenes Snippet anpassen…").clicked() {
                                 action = Some(Action::Customize(UserSnippet {
+                                    group: String::new(),
                                     trigger: trigger.to_string(),
                                     description: desc.to_string(),
                                     body: body.to_string(),
@@ -192,6 +220,24 @@ impl NebulaApp {
                 self.save_snippets();
             }
             Some(Action::Import) => self.import_snippets(),
+            Some(Action::ToggleGroup(group)) => {
+                let c = &mut self.settings.collapsed_snippet_groups;
+                match c.iter().position(|g| *g == group) {
+                    Some(i) => {
+                        c.remove(i);
+                    }
+                    None => c.push(group),
+                }
+                let _ = self.settings.save();
+            }
+            Some(Action::SetGroup(key, n, group)) => {
+                if let Some(s) = self.settings.snippets.get_mut(&key).and_then(|l| l.get_mut(n))
+                    && s.group != group
+                {
+                    s.group = group;
+                    self.save_snippets();
+                }
+            }
             Some(Action::Export) => self.export_snippets(),
             None => {}
         }
@@ -300,6 +346,9 @@ impl NebulaApp {
                         let trigger = if item.snippet.trigger.is_empty() { "(ohne Kürzel)" } else { item.snippet.trigger.as_str() };
                         ui.checkbox(selected, RichText::new(trigger).monospace().color(theme.accent));
                         ui.label(RichText::new(&item.snippet.description).small().color(theme.gutter_fg));
+                        if !item.snippet.group.is_empty() {
+                            ui.label(RichText::new(format!("Gruppe: {}", item.snippet.group)).small().color(theme.text_faint));
+                        }
                         if *dup {
                             ui.label(RichText::new("vorhanden").small().color(theme.modified));
                         }
@@ -339,6 +388,9 @@ impl NebulaApp {
 
     fn snippet_editor(&mut self, ui: &mut egui::Ui, body: Rect, language: Language) {
         let theme = self.theme.clone();
+        let mut all_groups: Vec<String> = self.settings.snippets.values().flatten().map(|s| s.group.clone()).filter(|g| !g.is_empty()).collect();
+        all_groups.sort_by_key(|g| g.to_lowercase());
+        all_groups.dedup();
         let Some(edit) = &mut self.right_state.snippets.edit else { return };
         let (mut save, mut cancel, mut delete) = (false, false, false);
         ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(12.0, 6.0))), |ui| {
@@ -354,6 +406,22 @@ impl NebulaApp {
                 ui.end_row();
                 ui.label("Beschreibung");
                 ui.add(egui::TextEdit::singleline(&mut edit.snippet.description).hint_text("optional").desired_width(f32::INFINITY));
+                ui.end_row();
+                ui.label("Gruppe");
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut edit.snippet.group).hint_text("keine").desired_width(ui.available_width() - 34.0));
+                    if !all_groups.is_empty() {
+                        let pick = ui.button("▾").on_hover_text("Vorhandene Gruppe wählen");
+                        egui::Popup::menu(&pick).show(|ui| {
+                            for g in &all_groups {
+                                if ui.selectable_label(&edit.snippet.group == g, g).clicked() {
+                                    edit.snippet.group = g.clone();
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                });
                 ui.end_row();
                 ui.label("Gilt für");
                 ui.horizontal(|ui| {
@@ -409,6 +477,7 @@ impl NebulaApp {
         if save {
             let mut s = edit.snippet;
             s.trigger = s.trigger.trim().to_string();
+            s.group = s.group.trim().to_string();
             s.description = s.description.trim().to_string();
             let list = self.settings.snippets.entry(edit.key).or_default();
             let at = index.unwrap_or(list.len()).min(list.len());
@@ -440,14 +509,45 @@ impl NebulaApp {
     }
 }
 
-fn heading(ui: &mut egui::Ui, theme: &crate::theme::Theme, title: &str) {
-    ui.label(RichText::new(title.to_uppercase()).size(10.5).strong().color(theme.text_faint));
+fn heading(ui: &mut egui::Ui, theme: &crate::theme::Theme, title: &str) -> egui::Response {
+    let resp = ui.label(RichText::new(title.to_uppercase()).size(10.5).strong().color(theme.text_faint));
     ui.add_space(2.0);
+    resp
+}
+
+/// Foldable heading of a snippet group with the number of snippets.
+fn group_heading(ui: &mut egui::Ui, theme: &crate::theme::Theme, title: &str, open: bool, count: usize) -> egui::Response {
+    ui.add_space(4.0);
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(r, 5.0, theme.hover);
+    }
+    let cy = r.center().y;
+    icons::chevron(ui.painter(), pos2(r.left() + 9.0, cy), open, theme.text_faint);
+    let galley = ui.painter().layout_no_wrap(title.to_uppercase(), FontId::proportional(10.5), theme.text_faint);
+    let w = galley.size().x;
+    ui.painter().galley(pos2(r.left() + 20.0, cy - galley.size().y / 2.0), galley, theme.text_faint);
+    ui.painter().text(pos2(r.left() + 26.0 + w, cy), Align2::LEFT_CENTER, count.to_string(), FontId::proportional(10.0), theme.gutter_fg);
+    resp
+}
+
+/// Payload while dragging an own snippet: (language key, index).
+#[derive(Clone)]
+struct SnippetDrag(String, usize);
+
+/// `resp` accepts a dragged snippet and moves it into `group` (empty: none).
+fn snippet_drop_target(ui: &egui::Ui, theme: &crate::theme::Theme, resp: &egui::Response, group: &str, action: &mut Option<Action>) {
+    if resp.dnd_hover_payload::<SnippetDrag>().is_some() {
+        ui.painter().rect_stroke(resp.rect.expand(2.0), 5.0, egui::Stroke::new(1.5, theme.accent), egui::StrokeKind::Inside);
+    }
+    if let Some(p) = resp.dnd_release_payload::<SnippetDrag>() {
+        *action = Some(Action::SetGroup(p.0.clone(), p.1, group.to_string()));
+    }
 }
 
 /// Two-line row: trigger and description, then the first line of the body.
 fn row(ui: &mut egui::Ui, theme: &crate::theme::Theme, trigger: &str, desc: &str, body: &str, tag: Option<&str>) -> egui::Response {
-    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click_and_drag());
     if resp.hovered() {
         ui.painter().rect_filled(r, 5.0, theme.hover);
     }
