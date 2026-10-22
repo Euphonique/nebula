@@ -309,6 +309,11 @@ pub fn menu(painter: &Painter, c: Pos2, color: Color32) {
     }
 }
 
+/// Curly braces ("snippets").
+pub fn snippets(painter: &Painter, c: Pos2, color: Color32) {
+    painter.text(c + vec2(0.0, -0.5), eframe::egui::Align2::CENTER_CENTER, "{ }", eframe::egui::FontId::monospace(13.0), color);
+}
+
 /// Monitor and phone side by side ("device width").
 pub fn devices(painter: &Painter, c: Pos2, color: Color32) {
     let stroke = Stroke::new(1.3, color);

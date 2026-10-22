@@ -1,11 +1,12 @@
 //! Context-aware completions for HTML and CSS, with document words as fallback.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{LazyLock, RwLock};
 
 use super::commands::is_word_char;
 use super::document::{Change, Document, EditKind, Selection};
 use crate::lang::Language;
+use crate::settings::{ALL_LANGUAGES, UserSnippet};
 
 const HTML_TAGS: &[&str] = &[
     "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base", "bdi", "bdo",
@@ -206,6 +207,30 @@ pub fn set_user_completions(map: HashMap<Language, Vec<String>>) {
     *USER.write().unwrap() = map;
 }
 
+/// Own snippets per language id (`*` = all languages).
+static USER_SNIPPETS: LazyLock<RwLock<BTreeMap<String, Vec<UserSnippet>>>> = LazyLock::new(Default::default);
+
+pub fn set_user_snippets(map: BTreeMap<String, Vec<UserSnippet>>) {
+    *USER_SNIPPETS.write().unwrap() = map;
+}
+
+/// Own snippets for a language, including those for all languages.
+pub fn user_snippets(language: Language) -> Vec<UserSnippet> {
+    let map = USER_SNIPPETS.read().unwrap();
+    [language.id(), ALL_LANGUAGES]
+        .iter()
+        .filter_map(|k| map.get(*k))
+        .flatten()
+        .filter(|s| !s.trigger.trim().is_empty() || !s.body.is_empty())
+        .cloned()
+        .collect()
+}
+
+/// Built-in snippets of a language: (trigger, body, description).
+pub fn builtin_snippets(language: Language) -> &'static [(&'static str, &'static str, &'static str)] {
+    snippets(language)
+}
+
 /// Language at the cursor, looking into `<style>`/`<script>` blocks of HTML files.
 fn language_at(doc: &Document, before: &str) -> Language {
     if !matches!(doc.language, Language::Html | Language::Php) {
@@ -366,57 +391,58 @@ fn keywords(language: Language) -> &'static [&'static str] {
     }
 }
 
-/// Built-in snippets: (trigger, expansion, description).
+/// Built-in snippets: (trigger, expansion, description). Placeholders like
+/// `${1:name}` are visited with Tab, `$0` is where the cursor ends up.
 fn snippets(language: Language) -> &'static [(&'static str, &'static str, &'static str)] {
     match language {
         Language::Html | Language::Php => &[
             (
                 "html5",
-                "<!DOCTYPE html>\n<html lang=\"de\">\n<head>\n    <meta charset=\"utf-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <title>$0</title>\n    <link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n    \n</body>\n</html>",
+                "<!DOCTYPE html>\n<html lang=\"${1:de}\">\n<head>\n    <meta charset=\"utf-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <title>${2:Titel}</title>\n    <link rel=\"stylesheet\" href=\"${3:style.css}\">\n</head>\n<body>\n    $0\n</body>\n</html>",
                 "HTML5-Grundgerüst",
             ),
-            ("linkcss", "<link rel=\"stylesheet\" href=\"$0\">", "Stylesheet einbinden"),
-            ("scriptsrc", "<script src=\"$0\"></script>", "Skript einbinden"),
+            ("linkcss", "<link rel=\"stylesheet\" href=\"${1:style.css}\">$0", "Stylesheet einbinden"),
+            ("scriptsrc", "<script src=\"${1:script.js}\"></script>$0", "Skript einbinden"),
             ("viewport", "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">$0", "Viewport-Meta"),
-            ("img", "<img src=\"$0\" alt=\"\">", "Bild"),
-            ("ahref", "<a href=\"$0\"></a>", "Link"),
-            ("ul", "<ul>\n    <li>$0</li>\n</ul>", "Liste"),
-            ("table", "<table>\n    <tr>\n        <td>$0</td>\n    </tr>\n</table>", "Tabelle"),
-            ("form", "<form action=\"$0\" method=\"post\">\n    \n</form>", "Formular"),
+            ("img", "<img src=\"$1\" alt=\"$2\">$0", "Bild"),
+            ("ahref", "<a href=\"$1\">$2</a>$0", "Link"),
+            ("ul", "<ul>\n    <li>$1</li>\n</ul>$0", "Liste"),
+            ("table", "<table>\n    <tr>\n        <td>$1</td>\n    </tr>\n</table>$0", "Tabelle"),
+            ("form", "<form action=\"$1\" method=\"${2:post}\">\n    $0\n</form>", "Formular"),
             ("lorem", "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.$0", "Blindtext"),
             ("php", "<?php $0 ?>", "PHP-Block"),
             ("echo", "<?= $0 ?>", "PHP-Ausgabe"),
         ],
         Language::Css | Language::Scss | Language::Less => &[
-            ("media", "@media (max-width: $0) {\n    \n}", "Media Query"),
+            ("media", "@media (max-width: ${1:768px}) {\n    $0\n}", "Media Query"),
             ("flexcenter", "display: flex;\nalign-items: center;\njustify-content: center;$0", "Flex zentriert"),
-            ("grid", "display: grid;\ngrid-template-columns: repeat($0, 1fr);\ngap: 1rem;", "Raster"),
-            ("fontface", "@font-face {\n    font-family: \"$0\";\n    src: url(\"\") format(\"woff2\");\n}", "Schrift einbinden"),
-            ("keyframes", "@keyframes $0 {\n    from {  }\n    to {  }\n}", "Animation"),
-            ("transition", "transition: all 0.2s ease$0;", "Übergang"),
+            ("grid", "display: grid;\ngrid-template-columns: repeat(${1:3}, 1fr);\ngap: ${2:1rem};$0", "Raster"),
+            ("fontface", "@font-face {\n    font-family: \"$1\";\n    src: url(\"$2\") format(\"woff2\");\n}$0", "Schrift einbinden"),
+            ("keyframes", "@keyframes ${1:name} {\n    from { $2 }\n    to { $3 }\n}$0", "Animation"),
+            ("transition", "transition: ${1:all} ${2:0.2s} ${3:ease};$0", "Übergang"),
         ],
         Language::JavaScript | Language::TypeScript | Language::Tsx => &[
             ("log", "console.log($0);", "Konsolenausgabe"),
-            ("fn", "function $0() {\n    \n}", "Funktion"),
-            ("arrow", "($0) => {\n    \n}", "Pfeilfunktion"),
-            ("for", "for (let i = 0; i < $0; i++) {\n    \n}", "Zählschleife"),
-            ("forof", "for (const item of $0) {\n    \n}", "for…of"),
-            ("if", "if ($0) {\n    \n}", "Bedingung"),
+            ("fn", "function ${1:name}($2) {\n    $0\n}", "Funktion"),
+            ("arrow", "($1) => {\n    $0\n}", "Pfeilfunktion"),
+            ("for", "for (let ${1:i} = 0; $1 < $2; $1++) {\n    $0\n}", "Zählschleife"),
+            ("forof", "for (const ${1:item} of $2) {\n    $0\n}", "for…of"),
+            ("if", "if ($1) {\n    $0\n}", "Bedingung"),
             ("trycatch", "try {\n    $0\n} catch (error) {\n    console.error(error);\n}", "try/catch"),
-            ("qs", "document.querySelector('$0')", "querySelector"),
-            ("ael", "addEventListener('$0', (event) => {\n    \n});", "Event-Listener"),
-            ("fetchjson", "const response = await fetch('$0');\nconst data = await response.json();", "fetch + JSON"),
+            ("qs", "document.querySelector('$1')$0", "querySelector"),
+            ("ael", "addEventListener('${1:click}', (event) => {\n    $0\n});", "Event-Listener"),
+            ("fetchjson", "const response = await fetch('$1');\nconst data = await response.json();$0", "fetch + JSON"),
         ],
         Language::Python => &[
-            ("main", "if __name__ == \"__main__\":\n    $0", "Einstiegspunkt"),
-            ("def", "def $0():\n    pass", "Funktion"),
-            ("class", "class $0:\n    def __init__(self):\n        pass", "Klasse"),
+            ("main", "if __name__ == \"__main__\":\n    ${0:main()}", "Einstiegspunkt"),
+            ("def", "def ${1:name}($2):\n    ${0:pass}", "Funktion"),
+            ("class", "class ${1:Name}:\n    def __init__(self$2):\n        ${0:pass}", "Klasse"),
         ],
         Language::Markdown => &[
-            ("link", "[$0]()", "Link"),
-            ("img", "![$0]()", "Bild"),
-            ("code", "```\n$0\n```", "Codeblock"),
-            ("table", "| $0 |  |\n| --- | --- |\n|  |  |", "Tabelle"),
+            ("link", "[$1]($2)$0", "Link"),
+            ("img", "![$1]($2)$0", "Bild"),
+            ("code", "```$1\n$0\n```", "Codeblock"),
+            ("table", "| ${1:Spalte} | ${2:Spalte} |\n| --- | --- |\n| $3 | $4 |$0", "Tabelle"),
         ],
         _ => &[],
     }
@@ -557,6 +583,17 @@ fn compute_builtin(doc: &mut Document) -> Option<Completion> {
         }
         if let Some(user) = USER.read().unwrap().get(&language) {
             items.extend(user.iter().filter_map(|l| parse_user(l)));
+        }
+        for s in user_snippets(language).into_iter().filter(|s| !s.trigger.trim().is_empty()) {
+            items.push(Item {
+                label: s.trigger.trim().to_string(),
+                insert: s.body,
+                kind: Kind::Snippet,
+                detail: if s.description.is_empty() { "Eigenes Snippet".into() } else { s.description },
+                start: None,
+                end: None,
+                filter: None,
+            });
         }
     }
 

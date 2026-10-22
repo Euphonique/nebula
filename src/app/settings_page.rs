@@ -612,7 +612,7 @@ impl NebulaApp {
                 section(ui, "Eigene Vervollständigungen");
                 ui.label(
                     RichText::new(
-                        "Eine Zeile pro Eintrag: ein Wort, oder „Kürzel => Text“. $0 setzt den Cursor, \\n bricht die Zeile um.\nBeispiel:  card => <div class=\"card\">\\n    $0\\n</div>",
+                        "Eine Zeile pro Eintrag: ein Wort, oder „Kürzel => Text“. $0 setzt den Cursor, \\n bricht die Zeile um.\nBeispiel:  card => <div class=\"card\">\\n    $0\\n</div>\nMehrzeilige Snippets mit Platzhaltern legst du bequemer im rechten Panel unter „{ }“ an.",
                     )
                     .small()
                     .color(self.theme.text_faint),

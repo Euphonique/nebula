@@ -46,6 +46,7 @@ mod transfers_ui;
 mod servers;
 mod quick_open;
 mod crash_ui;
+mod snippets_panel;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};

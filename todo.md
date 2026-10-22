@@ -7,7 +7,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 - **C** `.bak`-Kopie auf dem Server vor dem Überschreiben (eine lokale Kopie leistet schon der lokale Verlauf).
 
 ## Editor
-- **B** Eigene Snippets pro Sprache in den Einstellungen anlegen/bearbeiten (mit Platzhaltern `$1`, `${2:name}`).
 - **C** Makros aufnehmen und abspielen.
 - **C** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
 - **C** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
@@ -71,7 +70,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 2. ~~Absturzbericht~~ (erledigt).
 3. ~~Server duplizieren, gruppieren, Import/Export~~ (erledigt).
 4. ~~Vorschau in Gerätebreiten~~ (erledigt; kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
-5. Eigene Snippets pro Sprache.
+5. ~~Eigene Snippets pro Sprache~~ (erledigt, als Panel „{ }“).
 6. Tabs anheften; Einstellungen exportieren/importieren.
 7. Große Dateien schreibgeschützt öffnen, Hex-Ansicht.
 8. Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“.
@@ -97,3 +96,5 @@ Schnell öffnen (22.10.): auch Dateien aus geladenen Serverordnern, `datei:Zeile
 Absturzbericht (22.10.): Panics landen mit Meldung, Stelle und Backtrace in `crashes\` (Release-Build mit Zeilentabellen in `nebula.pdb`), beim nächsten Start Dialog mit Öffnen/Kopieren/Explorer; Testauslöser `NEBULA_CRASH_TEST=1`.
 
 Gerätebreiten (22.10.): Vorschau wahlweise in Panelbreite, Handy (390 px), Tablet (768 px) oder Desktop (1440 px), bei Bedarf verkleinert (WebView-Zoom).
+
+Snippets (22.10.): Tab-Sprünge durch Platzhalter mit Mehrfachbearbeitung gleicher Nummern, eingebaute Snippets mit Platzhaltern, eigener Reiter „{ }“ im rechten Panel zum Einfügen, Anlegen (auch aus der Auswahl) und Bearbeiten, pro Sprache oder für alle Sprachen.

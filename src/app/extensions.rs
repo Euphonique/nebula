@@ -702,7 +702,7 @@ impl NebulaApp {
         true
     }
 
-    fn snippet_vars(&self, i: usize) -> snippet::Vars {
+    pub(super) fn snippet_vars(&self, i: usize) -> snippet::Vars {
         let doc = &self.docs[i];
         let path = match &doc.source {
             DocSource::Local(p) => p.display().to_string(),

@@ -1,0 +1,306 @@
+//! Snippets tab of the right panel: own and built-in snippets of the current
+//! language; click inserts, own ones are created and edited right here.
+
+use eframe::egui::{self, Align2, FontId, Rect, RichText, Sense, pos2, vec2};
+
+use super::{NebulaApp, primary_button};
+use crate::editor::complete;
+use crate::editor::snippet;
+use crate::lang::Language;
+use crate::settings::{ALL_LANGUAGES, UserSnippet};
+use crate::ui::icons;
+
+#[derive(Default)]
+pub(super) struct SnippetsState {
+    query: String,
+    edit: Option<Edit>,
+}
+
+/// A snippet being created or changed.
+struct Edit {
+    /// Where the snippet came from (language key, index); `None` for a new one.
+    original: Option<(String, usize)>,
+    /// Language id or `*`.
+    key: String,
+    snippet: UserSnippet,
+    focus: bool,
+}
+
+enum Action {
+    Insert(String),
+    New,
+    Edit(String, usize),
+    /// Built-in snippet copied into an own one.
+    Customize(UserSnippet),
+    Delete(String, usize),
+}
+
+const HELP: &str = "$1, ${2:Name} – Platzhalter, Tab springt weiter · $0 – Cursor am Ende · \
+                    $SELECTED_TEXT – Auswahl · $FILENAME, $DATE";
+
+impl NebulaApp {
+    pub(super) fn snippets_pane(&mut self, ui: &mut egui::Ui, body: Rect) {
+        let theme = self.theme.clone();
+        let Some(i) = self.active else {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(8.0, 26.0))), |ui| {
+                ui.vertical_centered(|ui| ui.label(RichText::new("Keine Datei geöffnet").color(theme.text_faint)));
+            });
+            return;
+        };
+        let language = self.docs[i].language;
+        if self.right_state.snippets.edit.is_some() {
+            self.snippet_editor(ui, body, language);
+            return;
+        }
+
+        let own: Vec<(String, usize, UserSnippet)> = [language.id(), ALL_LANGUAGES]
+            .iter()
+            .flat_map(|k| {
+                self.settings.snippets.get(*k).into_iter().flatten().enumerate().map(move |(n, s)| (k.to_string(), n, s.clone()))
+            })
+            .collect();
+        let builtin = complete::builtin_snippets(language);
+        let state = &mut self.right_state.snippets;
+        let mut action = None;
+        ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(10.0, 4.0))), |ui| {
+            ui.horizontal(|ui| {
+                let add = icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, |p, c, col| icons::plus(p, c, col))
+                    .on_hover_text("Neues Snippet (mit der Auswahl als Inhalt)");
+                if add.clicked() {
+                    action = Some(Action::New);
+                }
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.query)
+                        .hint_text(format!("Snippets für {} filtern…", language.name()))
+                        .desired_width(f32::INFINITY),
+                );
+            });
+            ui.add_space(4.0);
+            let q = state.query.to_lowercase();
+            let matches = |trigger: &str, desc: &str, body: &str| {
+                q.is_empty() || trigger.to_lowercase().contains(&q) || desc.to_lowercase().contains(&q) || body.to_lowercase().contains(&q)
+            };
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                let own_shown: Vec<_> = own.iter().filter(|(_, _, s)| matches(&s.trigger, &s.description, &s.body)).collect();
+                heading(ui, &theme, "Eigene");
+                if own_shown.is_empty() {
+                    ui.label(
+                        RichText::new(if own.is_empty() { "Noch keine – mit + anlegen oder ein eingebautes anpassen." } else { "Keine Treffer" })
+                            .small()
+                            .color(theme.text_faint),
+                    );
+                }
+                for (key, n, s) in own_shown {
+                    let tag = (key == ALL_LANGUAGES).then_some("alle Sprachen");
+                    let resp = row(ui, &theme, &s.trigger, &s.description, &s.body, tag);
+                    if resp.clicked() {
+                        action = Some(Action::Insert(s.body.clone()));
+                    }
+                    resp.context_menu(|ui| {
+                        if ui.button("Einfügen").clicked() {
+                            action = Some(Action::Insert(s.body.clone()));
+                            ui.close();
+                        }
+                        if ui.button("Bearbeiten…").clicked() {
+                            action = Some(Action::Edit(key.clone(), *n));
+                            ui.close();
+                        }
+                        if ui.button("Löschen").clicked() {
+                            action = Some(Action::Delete(key.clone(), *n));
+                            ui.close();
+                        }
+                    });
+                }
+                if !builtin.is_empty() {
+                    ui.add_space(8.0);
+                    heading(ui, &theme, "Eingebaut");
+                    for (trigger, body, desc) in builtin.iter().filter(|(t, b, d)| matches(t, d, b)) {
+                        let resp = row(ui, &theme, trigger, desc, body, None);
+                        if resp.clicked() {
+                            action = Some(Action::Insert(body.to_string()));
+                        }
+                        resp.context_menu(|ui| {
+                            if ui.button("Einfügen").clicked() {
+                                action = Some(Action::Insert(body.to_string()));
+                                ui.close();
+                            }
+                            if ui.button("Als eigenes Snippet anpassen…").clicked() {
+                                action = Some(Action::Customize(UserSnippet {
+                                    trigger: trigger.to_string(),
+                                    description: desc.to_string(),
+                                    body: body.to_string(),
+                                }));
+                                ui.close();
+                            }
+                        });
+                    }
+                }
+            });
+        });
+
+        match action {
+            Some(Action::Insert(body)) => self.insert_snippet_body(&body),
+            Some(Action::New) => {
+                let doc = &self.docs[i];
+                let selected = doc.slice(doc.primary_selection().range());
+                self.right_state.snippets.edit = Some(Edit {
+                    original: None,
+                    key: language.id().to_string(),
+                    snippet: UserSnippet { body: selected, ..Default::default() },
+                    focus: true,
+                });
+            }
+            Some(Action::Edit(key, n)) => {
+                if let Some(s) = self.settings.snippets.get(&key).and_then(|l| l.get(n)).cloned() {
+                    self.right_state.snippets.edit = Some(Edit { original: Some((key.clone(), n)), key, snippet: s, focus: true });
+                }
+            }
+            Some(Action::Customize(s)) => {
+                self.right_state.snippets.edit = Some(Edit { original: None, key: language.id().to_string(), snippet: s, focus: true });
+            }
+            Some(Action::Delete(key, n)) => {
+                if let Some(list) = self.settings.snippets.get_mut(&key)
+                    && n < list.len()
+                {
+                    list.remove(n);
+                    if list.is_empty() {
+                        self.settings.snippets.remove(&key);
+                    }
+                }
+                self.save_snippets();
+            }
+            None => {}
+        }
+    }
+
+    fn snippet_editor(&mut self, ui: &mut egui::Ui, body: Rect, language: Language) {
+        let theme = self.theme.clone();
+        let Some(edit) = &mut self.right_state.snippets.edit else { return };
+        let (mut save, mut cancel, mut delete) = (false, false, false);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(12.0, 6.0))), |ui| {
+            ui.label(RichText::new(if edit.original.is_some() { "Snippet bearbeiten" } else { "Neues Snippet" }).strong());
+            ui.add_space(6.0);
+            egui::Grid::new("snippet-edit").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+                ui.label("Kürzel");
+                let t = ui.add(egui::TextEdit::singleline(&mut edit.snippet.trigger).hint_text("z. B. card").desired_width(f32::INFINITY));
+                if edit.focus {
+                    t.request_focus();
+                    edit.focus = false;
+                }
+                ui.end_row();
+                ui.label("Beschreibung");
+                ui.add(egui::TextEdit::singleline(&mut edit.snippet.description).hint_text("optional").desired_width(f32::INFINITY));
+                ui.end_row();
+                ui.label("Gilt für");
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut edit.key, language.id().to_string(), language.name());
+                    ui.radio_value(&mut edit.key, ALL_LANGUAGES.to_string(), "alle Sprachen");
+                });
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            ui.label("Inhalt");
+            let rows = ((ui.available_height() - 110.0) / 18.0).clamp(4.0, 24.0) as usize;
+            ui.add(
+                egui::TextEdit::multiline(&mut edit.snippet.body)
+                    .code_editor()
+                    .desired_rows(rows)
+                    .desired_width(f32::INFINITY)
+                    .hint_text("<div class=\"${1:name}\">\n    $0\n</div>"),
+            );
+            ui.add_space(4.0);
+            ui.label(RichText::new(HELP).small().color(theme.text_faint));
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                let valid = !edit.snippet.body.trim().is_empty();
+                if ui.add_enabled(valid, primary_button("Sichern", theme.accent)).clicked() {
+                    save = true;
+                }
+                if ui.button("Abbrechen").clicked() {
+                    cancel = true;
+                }
+                if edit.original.is_some() && ui.button("Löschen").clicked() {
+                    delete = true;
+                }
+            });
+        });
+        if !(save || cancel || delete) {
+            return;
+        }
+        let edit = self.right_state.snippets.edit.take().unwrap();
+        if cancel {
+            return;
+        }
+        // Take the old version out, then put the new one in (same place if the language stayed).
+        let mut index = None;
+        if let Some((key, n)) = &edit.original
+            && let Some(list) = self.settings.snippets.get_mut(key)
+            && *n < list.len()
+        {
+            list.remove(*n);
+            if *key == edit.key {
+                index = Some(*n);
+            }
+        }
+        if save {
+            let mut s = edit.snippet;
+            s.trigger = s.trigger.trim().to_string();
+            s.description = s.description.trim().to_string();
+            let list = self.settings.snippets.entry(edit.key).or_default();
+            let at = index.unwrap_or(list.len()).min(list.len());
+            list.insert(at, s);
+        }
+        self.settings.snippets.retain(|_, l| !l.is_empty());
+        self.save_snippets();
+    }
+
+    fn save_snippets(&mut self) {
+        self.settings.apply_languages();
+        if let Err(e) = self.settings.save() {
+            self.error(format!("Einstellungen konnten nicht gespeichert werden: {e:#}"));
+        }
+    }
+
+    /// Inserts a snippet at the cursor (replacing the selection) and selects its first placeholder.
+    pub(super) fn insert_snippet_body(&mut self, body: &str) {
+        let Some(i) = self.active else { return };
+        let vars = self.snippet_vars(i);
+        let doc = &mut self.docs[i];
+        let range = doc.primary_selection().range();
+        let line = doc.line_text(doc.char_to_line(range.start));
+        let indent: String = line.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        let text = body.replace('\n', &format!("\n{indent}"));
+        doc.insert_snippet(range, snippet::expand(&text, &vars));
+        doc.view.scroll_to_cursor = true;
+        self.focus_editor = true;
+    }
+}
+
+fn heading(ui: &mut egui::Ui, theme: &crate::theme::Theme, title: &str) {
+    ui.label(RichText::new(title.to_uppercase()).size(10.5).strong().color(theme.text_faint));
+    ui.add_space(2.0);
+}
+
+/// Two-line row: trigger and description, then the first line of the body.
+fn row(ui: &mut egui::Ui, theme: &crate::theme::Theme, trigger: &str, desc: &str, body: &str, tag: Option<&str>) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(r, 5.0, theme.hover);
+    }
+    let painter = ui.painter().with_clip_rect(r);
+    let x = r.left() + 8.0;
+    let top = r.top() + 12.0;
+    let trigger = if trigger.is_empty() { "(ohne Kürzel)" } else { trigger };
+    let galley = painter.layout_no_wrap(trigger.to_string(), FontId::monospace(12.5), theme.accent);
+    let w = galley.size().x;
+    painter.galley(pos2(x, top - galley.size().y / 2.0), galley, theme.accent);
+    painter.text(pos2(x + w + 10.0, top), Align2::LEFT_CENTER, desc, FontId::proportional(12.5), theme.foreground);
+    if let Some(tag) = tag {
+        painter.text(pos2(r.right() - 8.0, top), Align2::RIGHT_CENTER, tag, FontId::proportional(10.5), theme.text_faint);
+    }
+    let first = body.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    painter.text(pos2(x, r.top() + 29.0), Align2::LEFT_CENTER, first, FontId::monospace(11.0), theme.text_faint);
+    resp.on_hover_ui(|ui| {
+        ui.label(RichText::new(body).monospace());
+    })
+}

@@ -126,6 +126,8 @@ pub struct AppSettings {
     pub session_active: Option<usize>,
     /// Per-language settings, keyed by `Language::id`.
     pub languages: std::collections::BTreeMap<String, LanguageSettings>,
+    /// Own snippets per language id; `*` = all languages.
+    pub snippets: std::collections::BTreeMap<String, Vec<UserSnippet>>,
     /// Live preview shown next to the editor, and its share of the width.
     pub preview: bool,
     pub preview_split: f32,
@@ -232,6 +234,7 @@ impl Default for AppSettings {
             recent_folders: Vec::new(),
             project_tabs: Default::default(),
             languages: Default::default(),
+            snippets: Default::default(),
             session: Vec::new(),
             publish: Default::default(),
             session_active: None,
@@ -545,6 +548,7 @@ impl AppSettings {
         }
         Language::set_overrides(ext);
         crate::editor::complete::set_user_completions(completions);
+        crate::editor::complete::set_user_snippets(self.snippets.clone());
     }
 }
 
@@ -561,6 +565,19 @@ mod keyring_tests {
         site.set_password(&std::env::var("NEBULA_PASS").unwrap_or_default()).unwrap();
     }
 }
+
+/// A snippet the user created (format like Nova/VS Code: `$1`, `${2:name}`, `$0`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UserSnippet {
+    /// Typed to get it as a completion.
+    pub trigger: String,
+    pub description: String,
+    pub body: String,
+}
+
+/// Key of snippets that apply to every language.
+pub const ALL_LANGUAGES: &str = "*";
 
 /// Width the preview simulates.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -602,6 +619,8 @@ pub enum RightTab {
     #[default]
     Preview,
     Outline,
+    /// Own and built-in snippets of the current language.
+    Snippets,
     /// Chat with a coding agent.
     Agent,
 }

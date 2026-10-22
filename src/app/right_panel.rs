@@ -19,6 +19,7 @@ pub(super) struct RightPanelState {
     /// Symbols for (document id, version).
     symbols: Option<((u64, u64), Arc<Vec<Symbol>>)>,
     filter: String,
+    pub(super) snippets: super::snippets_panel::SnippetsState,
 }
 
 impl NebulaApp {
@@ -73,8 +74,9 @@ impl NebulaApp {
         tabs.spacing_mut().item_spacing.x = 2.0;
         let tip = |name: &str, key: String| if key.is_empty() { name.to_string() } else { format!("{name} ({key})") };
         let preview_tip = tip("Vorschau", self.shortcut_label(super::palette::Command::TogglePreview));
-        let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 3] = [
+        let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 4] = [
             (RightTab::Outline, "Gliederung".into(), icons::outline),
+            (RightTab::Snippets, "Snippets".into(), icons::snippets),
             (RightTab::Agent, tip("KI-Agent", self.shortcut_label(super::palette::Command::ToggleAgent)), icons::sparkle),
             (RightTab::Preview, preview_tip, icons::eye),
         ];
@@ -92,6 +94,10 @@ impl NebulaApp {
             RightTab::Preview => self.preview_pane(ui, row, body, row.right() - 13.0, x + 6.0),
             RightTab::Outline => {
                 self.outline(ui, body);
+                None
+            }
+            RightTab::Snippets => {
+                self.snippets_pane(ui, body);
                 None
             }
             RightTab::Agent => {
