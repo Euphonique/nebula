@@ -44,7 +44,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Drucken mit Syntaxfarben, Zeilennummern und Seitenzahlen (Strg+Alt+P)
 - Farbvorschau unter CSS-Farbwerten; ein Klick darauf öffnet einen Farbwähler, der den Wert in seiner Schreibweise (Hex, rgb(), hsl()) zurückschreibt
 - Bildvorschau: PNG, JPG, GIF, WebP, BMP und ICO öffnen als Tab mit Abmessungen und Dateigröße (lokal und vom Server; Klick wechselt zwischen eingepasst und 100 %); SVG bleibt bearbeitbarer Text mit Vorschau im rechten Panel
-- Hex-Ansicht für Binärdateien (schreibgeschützt; Offset, Bytes und Zeichen; große Dateien werden stückweise gelesen, „Als Text öffnen“ falls die Datei doch Text ist). Textdateien über 64 MB öffnen schreibgeschützt (bis 512 MB, darüber als Hex)
+- Hex-Editor für Binärdateien: Offset, Bytes und Zeichen; Bytes per Hex-Ziffern oder als Text überschreiben (Tab wechselt die Spalte), geänderte Bytes farbig, Strg+Z/Strg+Y, Strg+S schreibt lokal nur die geänderten Bytes in die Datei (auch bei sehr großen Dateien, die stückweise gelesen werden), Serverdateien werden hochgeladen; „Als Text öffnen“ falls die Datei doch Text ist. Textdateien über 64 MB öffnen schreibgeschützt (bis 512 MB, darüber als Hex)
 - Pfadleiste mit Position im Dokument (z. B. `body › main#content › ul`, sonst die Funktion/Klasse am Cursor); Klick auf Ordner oder Datei zeigt die Nachbarn zum Springen (auch auf dem Server), Klick auf das Symbol die Gliederung
 - HTML-Tags und Klammern werden automatisch geschlossen
 - Die Sitzung wird beim nächsten Start wiederhergestellt (geöffnete Dateien und Cursor)

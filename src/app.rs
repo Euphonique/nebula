@@ -377,7 +377,7 @@ impl NebulaApp {
     fn reopen_as_text(&mut self, index: usize) {
         let Some(hex) = self.docs.get(index).and_then(|d| d.hex.clone()) else { return };
         let bytes = match &hex.source {
-            crate::hex_view::Source::Memory(b) => b.as_ref().clone(),
+            crate::hex_view::Source::Memory => hex.bytes(),
             crate::hex_view::Source::File { path, .. } => match std::fs::read(path) {
                 Ok(b) => b,
                 Err(e) => return self.error(format!("{}: {e}", path.display())),
@@ -496,8 +496,35 @@ impl NebulaApp {
 
     /// `force` overwrites the server file even if it changed in the meantime.
     fn save_doc_with(&mut self, index: usize, close_after: bool, force: bool) -> bool {
+        // Hex tab of a local file: only the changed bytes are written into the file.
+        if let Some(doc) = self.docs.get(index)
+            && let (Some(hex), DocSource::Local(path)) = (doc.hex.clone(), doc.source.clone())
+        {
+            if hex.is_dirty() {
+                if !force && self.changed_on_disk(index) {
+                    let doc_id = self.docs[index].id;
+                    self.dialog = Some(Dialog::Conflict { doc_id, close_after, saving: true });
+                    return false;
+                }
+                if let Err(e) = hex.save_in_place(&path) {
+                    self.error(format!("Speichern fehlgeschlagen: {e}"));
+                    return false;
+                }
+                let doc = &mut self.docs[index];
+                doc.disk_stamp = DiskStamp::of(&path);
+                self.upload_on_save(&path);
+                self.preview_saved(&DocSource::Local(path.clone()));
+            }
+            if close_after {
+                self.docs.remove(index);
+                self.fix_active_after_remove(index);
+            }
+            return true;
+        }
+        // Hex tab of a server file: uploaded like text (unless nothing changed).
+        let unchanged_hex = self.docs.get(index).is_some_and(|d| d.hex.as_ref().is_some_and(|h| !h.is_dirty()));
         // An image tab has no text: saving would overwrite the picture.
-        if self.docs.get(index).is_some_and(|d| d.image.is_some() || d.hex.is_some()) {
+        if self.docs.get(index).is_some_and(|d| d.image.is_some()) || unchanged_hex {
             if close_after {
                 self.docs.remove(index);
                 self.fix_active_after_remove(index);
@@ -508,6 +535,7 @@ impl NebulaApp {
         if let Some(doc) = self.docs.get(index)
             && !matches!(doc.source, DocSource::Untitled(_))
             && !self.autosave.running
+            && doc.hex.is_none()
         {
             let e = self.settings.editor_for_doc(doc);
             crate::editor::commands::tidy_whitespace(&mut self.docs[index], e.trim_trailing_whitespace, e.insert_final_newline);
@@ -780,6 +808,9 @@ impl NebulaApp {
                         doc.saving = false;
                         doc.remote_stamp = stamp;
                         doc.mark_saved_at(save.point);
+                        if let Some(hex) = &doc.hex {
+                            hex.saved(&save.data);
+                        }
                         let saved_id = doc.id;
                         self.ext_doc_saved(saved_id);
                         let doc = &mut self.docs[i];

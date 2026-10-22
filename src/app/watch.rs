@@ -136,7 +136,11 @@ impl NebulaApp {
                 continue;
             }
             // Hex view: show the new content without reading a possibly huge file here.
-            if doc.hex.is_some() {
+            if let Some(hex) = &doc.hex {
+                // Unsaved byte changes win; saving then asks about the conflict.
+                if hex.is_dirty() {
+                    continue;
+                }
                 doc.disk_stamp = Some(now);
                 let len = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                 doc.hex = Some(std::sync::Arc::new(match len > MAX_OPEN_BYTES as u64 {

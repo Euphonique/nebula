@@ -398,6 +398,9 @@ impl Document {
 
     /// Encodes the document for writing with its original encoding and line endings.
     pub fn to_bytes(&self) -> Vec<u8> {
+        if let Some(hex) = &self.hex {
+            return hex.bytes();
+        }
         let mut text = self.rope.to_string();
         if self.line_ending == LineEnding::CrLf {
             text = text.replace('\n', "\r\n");
@@ -413,7 +416,7 @@ impl Document {
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.undo.last().map_or(0, |t| t.id) != self.saved_tx
+        self.undo.last().map_or(0, |t| t.id) != self.saved_tx || self.hex.as_ref().is_some_and(|h| h.is_dirty())
     }
 
     pub fn mark_saved(&mut self) {
@@ -759,6 +762,10 @@ impl Document {
     }
 
     pub fn undo(&mut self) {
+        if let Some(hex) = &self.hex {
+            hex.undo();
+            return;
+        }
         let Some(tx) = self.undo.pop() else { return };
         self.view.snippet = None;
         self.view.folds.clear();
@@ -776,6 +783,10 @@ impl Document {
     }
 
     pub fn redo(&mut self) {
+        if let Some(hex) = &self.hex {
+            hex.redo();
+            return;
+        }
         let Some(tx) = self.redo.pop() else { return };
         self.view.snippet = None;
         self.view.folds.clear();
