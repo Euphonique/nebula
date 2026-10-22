@@ -176,7 +176,7 @@ impl NebulaApp {
         let mut lines: Vec<Vec<(String, Color32)>> = (0..doc.len_lines())
             .map(|l| {
                 let text = doc.line_text(l);
-                let spans = if colored { doc.highlights.get(l).map(|v| v.as_slice()) } else { None };
+                let spans = if colored { doc.highlights.get(l).map(|v| &v[..]) } else { None };
                 color_runs(&text, spans.unwrap_or(&[]), &paper)
             })
             .collect();

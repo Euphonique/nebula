@@ -300,7 +300,7 @@ impl NebulaApp {
             git_bases: Default::default(),
             compare: None,
             split: None,
-            right_state: Default::default(),
+            right_state: right_panel::RightPanelState::new(&cc.egui_ctx),
             agent: Default::default(),
             commit_msg: None,
             nav: Default::default(),
@@ -3068,12 +3068,12 @@ impl NebulaApp {
                 }
             }
         }
+        self.highlighter.retain(self.docs.iter().map(|d| d.id));
         // Only the visible document needs fresh colors.
         if let Some(i) = self.active {
             let doc = &mut self.docs[i];
             if doc.highlight_version != doc.version && doc.highlight_pending != Some(doc.version) {
-                let text = doc.text();
-                self.highlighter.request(doc.id, doc.version, doc.language, text);
+                self.highlighter.request(doc.id, doc.version, doc.language, doc.rope.clone());
                 doc.highlight_pending = Some(doc.version);
                 if doc.highlight_version == u64::MAX {
                     // Language changed: drop stale colors.
@@ -3109,6 +3109,7 @@ impl NebulaApp {
 
 impl eframe::App for NebulaApp {
     fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let _perf = crate::perf::frame();
         let ctx = root.ctx().clone();
         let ui = root;
         crate::win32::init(frame, &ctx);
@@ -3118,6 +3119,7 @@ impl eframe::App for NebulaApp {
             crate::win32::set_backdrop(backdrop.0, backdrop.1);
             self.backdrop_state = Some(backdrop);
         }
+        let polls = crate::perf::section("Polls");
         self.process_remote_events();
         self.resume_waiting_transfers();
         self.poll_disk(&ctx);
@@ -3132,6 +3134,7 @@ impl eframe::App for NebulaApp {
         self.poll_printing();
         self.serve_preview();
         self.sync_extensions(&ctx);
+        drop(polls);
 
         // Files dropped onto the window.
         // Files dragged in from Explorer: highlight the folder under the
@@ -3163,7 +3166,10 @@ impl eframe::App for NebulaApp {
                 self.ext_shortcuts(&ctx);
             }
         }
-        self.update_highlights();
+        {
+            let _s = crate::perf::section("Highlights");
+            self.update_highlights();
+        }
 
         // The editor font was changed in the settings.
         if self.applied_font != self.settings.editor.font_family {
@@ -3182,7 +3188,10 @@ impl eframe::App for NebulaApp {
                 .exact_size(chrome::TITLEBAR_H)
                 .show_separator_line(false)
                 .frame(egui::Frame::new())
-                .show(ui, |ui| self.title_bar(ui));
+                .show(ui, |ui| {
+                    let _s = crate::perf::section("Titelleiste");
+                    self.title_bar(ui)
+                });
         }
 
         if self.show_sidebar && !self.zen {
@@ -3199,6 +3208,7 @@ impl eframe::App for NebulaApp {
                 .frame(egui::Frame::new().fill(self.theme.sidebar_bg))
                 .show(ui, |ui| {
                     self.sidebar.has_extension_sidebars = self.ext.installed.iter().any(|e| !e.sidebars.is_empty() && !self.settings.disabled_extensions.contains(&e.identifier));
+                    let _s = crate::perf::section("Seitenleiste");
                     self.sidebar.show(ui, &self.sites, &self.theme, active_path.as_deref(), &mut actions);
                     if let Some(rect) = self.sidebar.extension_rect.take() {
                         self.extension_sidebars(ui, rect);
@@ -3217,7 +3227,12 @@ impl eframe::App for NebulaApp {
         }
 
         // Preview or outline on the right, below the title bar like the sidebar.
-        let preview_rect = if self.zen { None } else { self.right_panel(ui) };
+        let preview_rect = if self.zen {
+            None
+        } else {
+            let _s = crate::perf::section("Rechte Leiste");
+            self.right_panel(ui)
+        };
         egui::CentralPanel::no_frame().show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             // Below the (translucent) title bar everything sits on the document color,
@@ -3234,9 +3249,13 @@ impl eframe::App for NebulaApp {
                     .exact_size(26.0)
                     .show_separator_line(false)
                     .frame(egui::Frame::new().fill(self.theme.jumpbar_bg).inner_margin(egui::Margin::symmetric(12, 0)))
-                    .show(ui, |ui| self.status_bar(ui));
+                    .show(ui, |ui| {
+                        let _s = crate::perf::section("Statusleiste");
+                        self.status_bar(ui)
+                    });
                 self.terminal_panel(ui);
                 fill_background(ui, self.theme.background);
+                let _s = crate::perf::section("Sprungleiste");
                 self.jump_bar(ui);
             } else {
                 fill_background(ui, self.theme.background);
@@ -3255,7 +3274,9 @@ impl eframe::App for NebulaApp {
             }
 
             let matches = if self.find.visible { std::mem::take(&mut self.find.matches) } else { Vec::new() };
+            let editor = crate::perf::section("Editor");
             let out = self.editor_area(ui, editor_rect, &matches);
+            drop(editor);
             self.track_navigation();
             if self.find.visible {
                 self.find.matches = matches;
@@ -3278,6 +3299,7 @@ impl eframe::App for NebulaApp {
             }
         });
 
+        let _rest = crate::perf::section("Dialoge und Rest");
         if self.dialog.is_none() && self.host_keys.is_empty() {
             self.ext_prompts(&ctx);
         }

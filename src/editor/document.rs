@@ -239,6 +239,33 @@ pub struct Ghost {
     pub text: String,
 }
 
+/// Display width of the longest line, in one pass over the text (counting
+/// whole chunks at once where they contain no tabs).
+fn widest_line(rope: &Rope, tab_size: usize) -> usize {
+    let mut widest = 0;
+    let mut col = 0;
+    for chunk in rope.chunks() {
+        for (i, part) in chunk.split('\n').enumerate() {
+            if i > 0 {
+                widest = widest.max(col);
+                col = 0;
+            }
+            if part.contains(['\t', '\r']) {
+                for ch in part.chars() {
+                    match ch {
+                        '\t' => col = (col / tab_size + 1) * tab_size,
+                        '\r' => {}
+                        _ => col += 1,
+                    }
+                }
+            } else {
+                col += part.chars().count();
+            }
+        }
+    }
+    widest.max(col)
+}
+
 impl Document {
     /// The suggestion if it still fits the text and the single, empty cursor.
     pub fn live_ghost(&self) -> Option<&Ghost> {
@@ -285,6 +312,8 @@ pub struct ViewState {
     pub git_base: Option<Arc<String>>,
     /// Git marker per line (0 none, 1 added, 2 modified, 3 lines deleted above) for a document version.
     pub git_marks: Option<(u64, Arc<Vec<u8>>)>,
+    /// When the marks were last computed (large files: at most twice a second).
+    pub git_marks_at: Option<Instant>,
     /// Matching tag names around the cursor for (version, cursor).
     pub tag_pair: Option<((u64, usize), Option<(Range<usize>, Range<usize>)>)>,
     /// Click areas of the color bars under CSS color values (last frame).
@@ -495,7 +524,7 @@ impl Document {
                 .flat_map(|&(a, b)| a.min(lines)..=b.min(lines - 1))
                 .map(|l| measure(&self.rope, l))
                 .fold(n, usize::max),
-            _ => (0..lines).map(|l| measure(&self.rope, l)).max().unwrap_or(0),
+            _ => widest_line(&self.rope, tab_size),
         };
         self.touched_lines.clear();
         self.max_line_cache = Some((tab_size, n));
@@ -557,12 +586,19 @@ impl Document {
         let line = self.char_to_line(pos);
         let start = self.line_to_char(line);
         let mut col = 0;
-        for ch in self.rope.slice(start..pos).chars() {
-            col = if ch == '\t' {
-                (col / tab_size + 1) * tab_size
-            } else {
-                col + 1
-            };
+        // Chunks without tabs are counted at once (fast on very long lines).
+        for chunk in self.rope.slice(start..pos).chunks() {
+            if !chunk.contains('\t') {
+                col += chunk.chars().count();
+                continue;
+            }
+            for ch in chunk.chars() {
+                col = if ch == '\t' {
+                    (col / tab_size + 1) * tab_size
+                } else {
+                    col + 1
+                };
+            }
         }
         col
     }
@@ -572,21 +608,34 @@ impl Document {
         let start = self.line_to_char(line);
         let len = self.line_len(line);
         let mut c = 0;
-        for (i, ch) in self.rope.slice(start..start + len).chars().enumerate() {
-            let next = if ch == '\t' {
-                (c / tab_size + 1) * tab_size
-            } else {
-                c + 1
-            };
-            if next > col {
-                // Snap to the nearer edge of the character.
-                return if col - c > (next - c) / 2 {
-                    start + i + 1
-                } else {
-                    start + i
-                };
+        let mut i = 0;
+        for chunk in self.rope.slice(start..start + len).chunks() {
+            // A chunk without tabs that ends before the column is skipped whole.
+            if !chunk.contains('\t') {
+                let n = chunk.chars().count();
+                if c + n <= col {
+                    c += n;
+                    i += n;
+                    continue;
+                }
             }
-            c = next;
+            for ch in chunk.chars() {
+                let next = if ch == '\t' {
+                    (c / tab_size + 1) * tab_size
+                } else {
+                    c + 1
+                };
+                if next > col {
+                    // Snap to the nearer edge of the character.
+                    return if col - c > (next - c) / 2 {
+                        start + i + 1
+                    } else {
+                        start + i
+                    };
+                }
+                c = next;
+                i += 1;
+            }
         }
         start + len
     }

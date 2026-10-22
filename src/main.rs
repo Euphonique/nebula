@@ -19,6 +19,7 @@ mod ext;
 mod lang;
 mod mcp;
 mod preview;
+mod perf;
 mod print;
 mod crash;
 mod remote;

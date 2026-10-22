@@ -142,8 +142,13 @@ impl EditorView<'_> {
         ui.painter()
             .rect_filled(ui.available_rect_before_wrap(), 0.0, theme.background);
 
-        update_git_marks(doc);
-        let rows = folding::rows(doc, tab, wrap);
+        let rows = {
+            let _s = crate::perf::section("Git-Marken+Zeilen");
+            if !update_git_marks(doc) {
+                ui.ctx().request_repaint_after(GIT_MARKS_PAUSE);
+            }
+            folding::rows(doc, tab, wrap)
+        };
         let mut area = ScrollArea::both().id_salt(("editor-scroll", doc.id, pane)).auto_shrink([false, false]);
         if let Some(y) = doc.view.scroll_request.take() {
             area = area.vertical_scroll_offset(y);
@@ -280,6 +285,7 @@ impl EditorView<'_> {
                         )
                     });
                     let page = ((viewport.height() / m.row_h) as isize - 2).max(1);
+                    let _s = crate::perf::section("Tastatur");
                     if let Some(copied) = handle_keyboard(ui, doc, settings, page, wrap) {
                         out.copied = Some(copied);
                     }
@@ -313,6 +319,7 @@ impl EditorView<'_> {
                     ui.scroll_to_rect(r, None);
                 }
 
+                let _s = crate::perf::section("Zeichnen");
                 paint(
                     ui, doc, settings, theme, matches, current_match, &m, origin, visible, focused, &rows,
                 );
@@ -335,6 +342,7 @@ impl EditorView<'_> {
                     show_completion(ui, doc, theme, anchor, id);
                 }
             });
+        let _s = crate::perf::section("Ruler+Minimap");
         overview_ruler(ui, doc, theme, matches, scroll.inner_rect, tab, wrap);
         if map_w > 0.0 {
             minimap(ui, doc, theme, map_rect, &scroll, m.row_h, tab, wrap, id);
@@ -432,7 +440,7 @@ fn minimap(
         // This row's part of the line (wrapped lines span several rows).
         let end = if r + 1 < total && rows.row(r + 1).line == row.line { rows.row(r + 1).byte } else { text.len() };
         let segment = text.get(row.byte..end.min(text.len())).unwrap_or("");
-        let line_spans: &[crate::highlight::Span] = spans.get(row.line).map_or(&[], |v| v.as_slice());
+        let line_spans: &[crate::highlight::Span] = spans.get(row.line).map_or(&[], |v| &v[..]);
         let mut col = row.col;
         let mut run: Option<(usize, usize, Color32)> = None; // (start col, end col, color)
         let flush = |run: &mut Option<(usize, usize, Color32)>| {
@@ -1147,17 +1155,37 @@ fn paint_doc(
             }
         }
     }
-    let start_idx = matches.partition_point(|r| r.end < first_char);
-    for (i, r) in matches.iter().enumerate().skip(start_idx) {
-        if r.start > last_char {
-            break;
-        }
-        let color = if Some(i) == current_match {
-            theme.find_match.gamma_multiply(2.0)
+    // The chars actually on screen, per row: on a very long line only the
+    // visible part, so marks elsewhere in it cost nothing.
+    let mut windows: Vec<Range<usize>> = Vec::new();
+    for r in first_row..last_row {
+        let row = rows.row(r);
+        let line_start = doc.line_to_char(row.line);
+        let w = if wrapped {
+            line_start + row.start..rows.continues(r).map_or(doc.line_end(row.line), |next| line_start + next)
         } else {
-            theme.find_match
+            doc.pos_at_column(row.line, first_col, tab)..doc.pos_at_column(row.line, first_col + col_count, tab)
         };
-        paint_range(r.clone(), color, false);
+        match windows.last_mut() {
+            Some(last) if last.end >= w.start => last.end = last.end.max(w.end),
+            _ => windows.push(w),
+        }
+    }
+    let mut painted_up_to = 0;
+    for w in &windows {
+        let start_idx = matches.partition_point(|r| r.end < w.start).max(painted_up_to);
+        for (i, r) in matches.iter().enumerate().skip(start_idx) {
+            if r.start > w.end {
+                break;
+            }
+            let color = if Some(i) == current_match {
+                theme.find_match.gamma_multiply(2.0)
+            } else {
+                theme.find_match
+            };
+            paint_range(r.clone(), color, false);
+            painted_up_to = i + 1;
+        }
     }
 
     // Matching opening and closing tag.
@@ -1178,18 +1206,25 @@ fn paint_doc(
         };
         if let Some(w) = word.filter(|w| (2..=100).contains(&w.len())) {
             let needle = doc.slice(w);
-            let text = doc.slice(first_char..last_char);
-            let (mut byte, mut chars) = (0usize, 0usize);
-            for (i, _) in text.match_indices(&needle) {
-                chars += text[byte..i].chars().count();
-                byte = i;
-                let before = text[..i].chars().next_back();
-                let after = text[i + needle.len()..].chars().next();
-                if before.is_some_and(cmd::is_word_char) || after.is_some_and(cmd::is_word_char) {
-                    continue;
+            let needle_chars = needle.chars().count();
+            let mut painted_up_to = 0;
+            for window in &windows {
+                // Words reaching into the window from either side count too.
+                let from = window.start.saturating_sub(needle_chars);
+                let text = doc.slice(from..window.end + needle_chars);
+                let (mut byte, mut chars) = (0usize, 0usize);
+                for (i, _) in text.match_indices(&needle) {
+                    chars += text[byte..i].chars().count();
+                    byte = i;
+                    let start = from + chars;
+                    let end = start + needle_chars;
+                    let before = start.checked_sub(1).and_then(|p| doc.char_at(p));
+                    if start < painted_up_to || before.is_some_and(cmd::is_word_char) || doc.char_at(end).is_some_and(cmd::is_word_char) {
+                        continue;
+                    }
+                    paint_range(start..end, theme.word_highlight, false);
+                    painted_up_to = end;
                 }
-                let start = first_char + chars;
-                paint_range(start..start + needle.chars().count(), theme.word_highlight, false);
             }
         }
     }
@@ -1236,10 +1271,18 @@ fn paint_doc(
             let mut colors = Vec::new();
             if show_colors {
                 let line_start = doc.line_to_char(line);
+                let (mut byte, mut chars) = (0usize, 0usize);
                 for c in COLOR_RE.find_iter(&text) {
+                    chars += text[byte..c.start()].chars().count();
+                    byte = c.start();
+                    let s = line_start + chars;
+                    let e = s + c.as_str().chars().count();
+                    // Only colors on screen (a minified line can hold thousands).
+                    let i = windows.partition_point(|w| w.end < s);
+                    if windows.get(i).is_none_or(|w| w.start > e) {
+                        continue;
+                    }
                     if let Some(color) = crate::theme_import::parse_color(c.as_str()) {
-                        let s = line_start + text[..c.start()].chars().count();
-                        let e = line_start + text[..c.end()].chars().count();
                         colors.push((s, e, color.to_opaque()));
                     }
                 }
@@ -1247,7 +1290,7 @@ fn paint_doc(
             current = Some((line, text, colors));
         }
         let (_, text, colors) = current.as_ref().unwrap();
-        let line_spans: &[Span] = spans.get(line).map_or(&[], |v| v.as_slice());
+        let line_spans: &[Span] = spans.get(line).map_or(&[], |v| &v[..]);
         let y = g.row_y(r);
         let last_of_line = rows.continues(r).is_none();
 
@@ -1717,14 +1760,26 @@ fn clean_markdown(text: &str) -> String {
 }
 
 /// Recomputes the Git change markers when the text changed.
-fn update_git_marks(doc: &mut Document) {
+/// Pause between two diffs against Git while typing in a large file.
+const GIT_MARKS_PAUSE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Updates the Git change marks; returns false when they were left stale
+/// for now (large files are diffed at most twice a second while typing).
+pub(crate) fn update_git_marks(doc: &mut Document) -> bool {
     let Some(base) = doc.view.git_base.clone() else {
         doc.view.git_marks = None;
-        return;
+        return true;
     };
     if doc.view.git_marks.as_ref().is_some_and(|(v, _)| *v == doc.version) {
-        return;
+        return true;
     }
+    if doc.len_chars() > 1_000_000
+        && doc.view.git_marks.is_some()
+        && doc.view.git_marks_at.is_some_and(|t| t.elapsed() < GIT_MARKS_PAUSE)
+    {
+        return false;
+    }
+    doc.view.git_marks_at = Some(std::time::Instant::now());
     let text = doc.text();
     let new = crate::diff::lines(&text);
     let mut marks = vec![0u8; doc.len_lines()];
@@ -1744,4 +1799,5 @@ fn update_git_marks(doc: &mut Document) {
         }
     }
     doc.view.git_marks = Some((doc.version, Arc::new(marks)));
+    true
 }

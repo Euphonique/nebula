@@ -47,7 +47,6 @@ Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über 
 
 ## Qualität und Technik
 
-- **B** Performance mit sehr großen Dateien (10–50 MB, minifiziertes JS in einer Zeile) und vielen Tabs prüfen; Highlighting inkrementell statt komplett neu.
 - **C** Große Textdateien im Hintergrund laden (bei ~70 MB blockiert das Öffnen die Oberfläche kurz); Hex-Editor: „Gehe zu Offset“, Suche, Bytes einfügen/löschen (Größe ändern).
 - **C** Absturzbericht auch für harte Abstürze in nativem Code (Zugriffsverletzung in WebView/wgpu), z. B. per `SetUnhandledExceptionFilter` – bisher nur Rust-Panics.
 - **C** Automatisierte UI-Tests für die wichtigsten Abläufe (Öffnen, Bearbeiten, Speichern lokal/Server).
@@ -136,3 +135,5 @@ Serverdateien für Agenten bearbeitbar (22.10.): Server-Dateien bekommen für de
 Codex-Limits (22.10.): verbleibende Limits des ChatGPT-Abos (5 Stunden, Woche) unter der Eingabe wie bei Claude – über `/status` des Codex-Adapters in einer unsichtbaren Sitzung, ohne Modellaufruf; Reset-Zeit in Ortszeit, Datum unabhängig von der Systemsprache.
 
 Mehrere Fenster (22.10.): „Neues Fenster“ (Strg+Umschalt+N), „Ordner in neuem Fenster öffnen…“ (Menü Datei, Projekt-Umschalter, Befehlspalette), Strg+Klick auf zuletzt geöffnete Projekte; jedes Fenster ist ein eigener Prozess mit eigenem Projekt. settings.json und sites.json werden beim Speichern dreiseitig zusammengeführt (jedes Fenster schreibt nur, was es selbst geändert hat) und von den anderen Fenstern binnen einer Sekunde neu eingelesen; Sitzung und letzter Ordner gehören dem Hauptfenster, weitere Fenster merken sich ihre Tabs pro Projekt. Fenstertitel nennt das Projekt.
+
+Performance (22.10.): Highlighting großer Dateien (ab 256 KB) inkrementell – der Syntaxbaum wird weitergeführt, nur geänderte Zeilen neu gefärbt (3 MB: 1,2 s → 30 ms pro Tastendruck), Farben jetzt bis 16 MB statt 4 MB; minifizierte Dateien mit einer 5-MB-Zeile hängen nicht mehr (Wort- und Suchmarkierungen nur im sichtbaren Ausschnitt, schnellere Spaltenberechnung); Wortvervollständigung, Gliederung (im Hintergrund), Zeilenumbruch, Git-Markierungen und Breitenmessung belasten das Tippen in großen Dateien nicht mehr. Getestet mit 3/5/20/50 MB und 120 Tabs. Zeitmessung pro Frame mit `NEBULA_PERF=1`.

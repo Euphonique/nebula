@@ -10,6 +10,7 @@ Voraussetzungen: Rust (stable, MSVC-Toolchain) und die Visual Studio Build Tools
 cargo run --release                     # starten
 cargo run --release -- C:\pfad\projekt  # Ordner direkt öffnen
 cargo test                              # Unit- und Integrationstests (inkl. FTP/SFTP)
+$env:NEBULA_PERF_FILE='C:gross.js'; cargo test --profile perf bench_file -- --ignored --nocapture  # Zeiten für eine große Datei
 ```
 
 Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\release\nebula.exe`.
@@ -182,7 +183,9 @@ src/
   win32.rs             Mica, Andocklayouts, Datei-Zwischenablage, Cursorposition, Browser öffnen, Dateien hinausziehen
   ui/                  Titelleiste, Seitenleiste, Projektsuche, Git, Icons
   editor/              Dokument, Befehle, Vervollständigung, Emmet, Faltung, Suche, Widget
-  highlight.rs         tree-sitter-Highlighting (Grammatiken werden bei Bedarf geladen)
+  highlight/           tree-sitter-Highlighting im Hintergrund (Grammatiken werden bei Bedarf geladen);
+                       große Dateien inkrementell (incremental.rs)
+  perf.rs              Zeitmessung pro Frame (NEBULA_PERF=1) und Benchmark-Test
   queries/             Eigene Abfragen für HTML und CSS mit Nova-Kategorien
   remote/              FTP/FTPS (suppaftp) und SFTP (russh), Worker pro Server, SSH-Shell (terminal.rs, vt100)
   theme.rs             Themes, Theme-Dateien

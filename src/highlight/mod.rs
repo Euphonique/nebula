@@ -1,12 +1,16 @@
 //! Background syntax highlighting with tree-sitter.
 //!
-//! Documents send their full text to a worker thread whenever they change.
-//! The worker keeps only the newest request per document, highlights it, and
-//! sends back per-line style spans. The editor keeps drawing the previous
-//! spans until fresh ones arrive, so typing never waits on the parser.
+//! Documents send their text (a cheap rope clone) to a worker thread
+//! whenever they change. The worker keeps only the newest request per
+//! document, highlights it, and sends back per-line style spans. The editor
+//! keeps drawing the previous spans until fresh ones arrive, so typing never
+//! waits on the parser. Normal-sized files are highlighted completely each
+//! time; large ones incrementally (see `incremental.rs`).
 
-use std::collections::HashMap;
-use std::sync::Arc;
+mod incremental;
+
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, LazyLock};
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
@@ -17,7 +21,11 @@ use crate::lang::Language;
 use crate::theme::{HIGHLIGHT_NAMES, PLAIN};
 
 /// Files larger than this are shown without syntax colors.
-const MAX_HIGHLIGHT_BYTES: usize = 4 * 1024 * 1024;
+const MAX_HIGHLIGHT_BYTES: usize = 16 * 1024 * 1024;
+
+/// Files up to this size are highlighted completely on every change (with
+/// locals); larger ones incrementally.
+const FULL_HIGHLIGHT_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Span {
@@ -27,13 +35,27 @@ pub struct Span {
     pub style: u8,
 }
 
-pub type LineSpans = Vec<Vec<Span>>;
+/// Spans per line; lines are shared between versions, so an incremental
+/// update only allocates the lines that changed.
+pub type LineSpans = Vec<Arc<[Span]>>;
+
+/// A line without colors (shared, no allocation per line).
+pub fn empty_line() -> Arc<[Span]> {
+    static EMPTY: LazyLock<Arc<[Span]>> = LazyLock::new(|| Arc::from(Vec::new()));
+    EMPTY.clone()
+}
 
 struct Job {
     doc_id: u64,
     version: u64,
     language: Language,
-    text: Arc<String>,
+    text: ropey::Rope,
+}
+
+enum Msg {
+    Highlight(Job),
+    /// The document was closed.
+    Forget(u64),
 }
 
 pub struct HighlightResult {
@@ -43,13 +65,15 @@ pub struct HighlightResult {
 }
 
 pub struct HighlightService {
-    jobs: Sender<Job>,
+    jobs: Sender<Msg>,
     results: Receiver<HighlightResult>,
+    /// Documents the worker may still keep state for.
+    known: std::cell::RefCell<HashSet<u64>>,
 }
 
 impl HighlightService {
     pub fn spawn(ctx: egui::Context) -> Self {
-        let (job_tx, job_rx) = crossbeam_channel::unbounded::<Job>();
+        let (job_tx, job_rx) = crossbeam_channel::unbounded::<Msg>();
         let (res_tx, res_rx) = crossbeam_channel::unbounded();
         thread::Builder::new()
             .name("highlighter".into())
@@ -58,15 +82,29 @@ impl HighlightService {
         Self {
             jobs: job_tx,
             results: res_rx,
+            known: Default::default(),
         }
     }
 
-    pub fn request(&self, doc_id: u64, version: u64, language: Language, text: Arc<String>) {
-        let _ = self.jobs.send(Job {
+    pub fn request(&self, doc_id: u64, version: u64, language: Language, text: ropey::Rope) {
+        self.known.borrow_mut().insert(doc_id);
+        let _ = self.jobs.send(Msg::Highlight(Job {
             doc_id,
             version,
             language,
             text,
+        }));
+    }
+
+    /// Lets the worker drop what it keeps for documents that were closed.
+    pub fn retain(&self, open: impl Iterator<Item = u64>) {
+        let open: HashSet<u64> = open.collect();
+        self.known.borrow_mut().retain(|id| {
+            let keep = open.contains(id);
+            if !keep {
+                let _ = self.jobs.send(Msg::Forget(*id));
+            }
+            keep
         });
     }
 
@@ -164,11 +202,11 @@ fn grammar_source(grammar: &str) -> Option<(tree_sitter::Language, String, Strin
     Some(match grammar {
         "html" => (
             tree_sitter_html::LANGUAGE.into(),
-            s(include_str!("queries/html.scm")),
+            s(include_str!("../queries/html.scm")),
             s(tree_sitter_html::INJECTIONS_QUERY),
             String::new(),
         ),
-        "css" => (tree_sitter_css::LANGUAGE.into(), s(include_str!("queries/css.scm")), String::new(), String::new()),
+        "css" => (tree_sitter_css::LANGUAGE.into(), s(include_str!("../queries/css.scm")), String::new(), String::new()),
         "javascript" => (
             tree_sitter_javascript::LANGUAGE.into(),
             js_highlights,
@@ -252,7 +290,7 @@ fn grammar_source(grammar: &str) -> Option<(tree_sitter::Language, String, Strin
         "yaml" => (tree_sitter_yaml::LANGUAGE.into(), s(tree_sitter_yaml::HIGHLIGHTS_QUERY), String::new(), String::new()),
         "toml" => (tree_sitter_toml_ng::LANGUAGE.into(), s(tree_sitter_toml_ng::HIGHLIGHTS_QUERY), String::new(), String::new()),
         "ini" => (tree_sitter_ini::LANGUAGE.into(), s(tree_sitter_ini::HIGHLIGHTS_QUERY), String::new(), String::new()),
-        "diff" => (tree_sitter_diff::LANGUAGE.into(), s(include_str!("queries/diff.scm")), String::new(), String::new()),
+        "diff" => (tree_sitter_diff::LANGUAGE.into(), s(include_str!("../queries/diff.scm")), String::new(), String::new()),
         _ => return None,
     })
 }
@@ -314,26 +352,43 @@ impl Configs {
     }
 }
 
-fn worker(jobs: Receiver<Job>, results: Sender<HighlightResult>, ctx: egui::Context) {
+fn worker(jobs: Receiver<Msg>, results: Sender<HighlightResult>, ctx: egui::Context) {
     let mut configs = Configs::new();
     let mut highlighter = Highlighter::new();
+    let mut engine = incremental::Engine::new();
 
     while let Ok(first) = jobs.recv() {
         // Coalesce: only the newest request per document matters.
         let mut pending: HashMap<u64, Job> = HashMap::new();
-        pending.insert(first.doc_id, first);
-        for job in jobs.try_iter() {
-            pending.insert(job.doc_id, job);
+        for msg in std::iter::once(first).chain(jobs.try_iter()) {
+            match msg {
+                Msg::Highlight(job) => {
+                    pending.insert(job.doc_id, job);
+                }
+                Msg::Forget(id) => {
+                    pending.remove(&id);
+                    engine.forget(id);
+                }
+            }
         }
 
         for job in pending.into_values() {
-            configs.prepare(job.language, &job.text);
-            let lines = highlight(&configs, &mut highlighter, job.language, &job.text);
+            let text = job.text.to_string();
+            let lines = match grammar_of(job.language) {
+                Some(grammar) if text.len() > FULL_HIGHLIGHT_BYTES && text.len() <= MAX_HIGHLIGHT_BYTES => {
+                    engine.highlight(job.doc_id, grammar, text)
+                }
+                _ => {
+                    engine.forget(job.doc_id);
+                    configs.prepare(job.language, &text);
+                    Arc::new(highlight(&configs, &mut highlighter, job.language, &text))
+                }
+            };
             if results
                 .send(HighlightResult {
                     doc_id: job.doc_id,
                     version: job.version,
-                    lines: Arc::new(lines),
+                    lines,
                 })
                 .is_err()
             {
@@ -350,18 +405,19 @@ fn highlight(
     language: Language,
     text: &str,
 ) -> LineSpans {
-    let mut lines: LineSpans = vec![Vec::new()];
+    let plain = || vec![empty_line(); text.bytes().filter(|&b| b == b'\n').count() + 1];
     if text.len() > MAX_HIGHLIGHT_BYTES {
-        return lines;
+        return plain();
     }
     let Some(config) = configs.for_language(language) else {
-        return lines;
+        return plain();
     };
     let Ok(events) = highlighter.highlight(config, text.as_bytes(), None, None, |name| {
         configs.for_injection(name)
     }) else {
-        return lines;
+        return plain();
     };
+    let mut lines: Vec<Vec<Span>> = vec![Vec::new()];
 
     let bytes = text.as_bytes();
     let mut stack: Vec<u8> = Vec::new();
@@ -406,7 +462,7 @@ fn highlight(
             }
         }
     }
-    lines
+    lines.into_iter().map(|l| if l.is_empty() { empty_line() } else { Arc::from(l) }).collect()
 }
 
 #[cfg(test)]
@@ -416,7 +472,7 @@ mod tests {
     fn styles(lines: &LineSpans) -> Vec<&'static str> {
         lines
             .iter()
-            .flatten()
+            .flat_map(|l| l.iter())
             .map(|s| HIGHLIGHT_NAMES[s.style as usize])
             .collect()
     }
@@ -500,9 +556,39 @@ mod language_tests {
             configs.prepare(*lang, src);
             assert!(configs.for_language(*lang).is_some(), "{lang:?}: grammar failed to load");
             let spans = highlight(&configs, &mut h, *lang, src);
-            assert!(spans.iter().flatten().count() > 0, "{lang:?}: no highlights");
+            assert!(spans.iter().map(|l| l.len()).sum::<usize>() > 0, "{lang:?}: no highlights");
         }
         // Code fences in Markdown get their own grammar.
         assert!(configs.get("css").is_some());
+    }
+}
+
+/// Highlights a text once on the calling thread (benchmarks).
+#[cfg(test)]
+pub fn highlight_once(language: Language, text: &str) -> LineSpans {
+    let mut configs = Configs::new();
+    configs.prepare(language, text);
+    highlight(&configs, &mut Highlighter::new(), language, text)
+}
+
+/// Times of the incremental engine: first version, then typing in the middle (benchmarks).
+#[cfg(test)]
+pub fn bench_incremental(language: Language, text: &str) {
+    use std::time::Instant;
+    let Some(grammar) = grammar_of(language) else { return };
+    let mut engine = incremental::Engine::new();
+    let t = Instant::now();
+    engine.highlight(1, grammar, text.to_string());
+    eprintln!("  Inkrementell, erste Fassung: {:.1} ms", t.elapsed().as_secs_f64() * 1000.0);
+    let mut edited = text.to_string();
+    let mut mid = text.len() / 2;
+    while !edited.is_char_boundary(mid) {
+        mid += 1;
+    }
+    for (i, c) in "abc".chars().enumerate() {
+        edited.insert(mid + i, c);
+        let t = Instant::now();
+        engine.highlight(1, grammar, edited.clone());
+        eprintln!("  Inkrementell, Zeichen {}: {:.1} ms", i + 1, t.elapsed().as_secs_f64() * 1000.0);
     }
 }

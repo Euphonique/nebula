@@ -15,8 +15,12 @@ pub const MAX_WRAP_CHARS: usize = 8_000_000;
 
 /// Indentation of a line in columns, or `None` for blank lines.
 fn indent_of(doc: &Document, line: usize, tab: usize) -> Option<usize> {
+    indent_of_text(doc.rope.line(line), tab)
+}
+
+fn indent_of_text(text: ropey::RopeSlice, tab: usize) -> Option<usize> {
     let mut col = 0;
-    for ch in doc.rope.line(line).chars() {
+    for ch in text.chars() {
         match ch {
             ' ' => col += 1,
             '\t' => col = (col / tab + 1) * tab,
@@ -572,7 +576,10 @@ pub fn rows(doc: &mut Document, tab: usize, wrap: Option<usize>) -> Rows {
     let mut hidden_until = None::<usize>;
     let mut map = Vec::with_capacity(lines);
     let mut folded = ranges.iter().filter(|r| doc.view.folds.contains(&r.0)).peekable();
+    // Walking the lines in order is much faster than looking each one up.
+    let mut texts = doc.rope.lines();
     for line in 0..lines {
+        let text = texts.next();
         if let Some(end) = hidden_until {
             if line <= end {
                 continue;
@@ -580,7 +587,7 @@ pub fn rows(doc: &mut Document, tab: usize, wrap: Option<usize>) -> Rows {
             hidden_until = None;
         }
         match wrap {
-            Some(w) => wrap_line(doc, line, w, tab, &mut map),
+            Some(w) => wrap_line(text.unwrap_or_else(|| doc.rope.line(line)), line, w, tab, &mut map),
             None => map.push(Row { line, start: 0, byte: 0, col: 0, pad: 0 }),
         }
         while let Some(&&(s, e)) = folded.peek() {
@@ -603,10 +610,15 @@ pub fn rows(doc: &mut Document, tab: usize, wrap: Option<usize>) -> Rows {
 
 /// Splits a line into rows of at most `width` columns, preferably after
 /// spaces. Continuation rows are indented like the line.
-fn wrap_line(doc: &Document, line: usize, width: usize, tab: usize, out: &mut Vec<Row>) {
+fn wrap_line(text: ropey::RopeSlice, line: usize, width: usize, tab: usize, out: &mut Vec<Row>) {
     out.push(Row { line, start: 0, byte: 0, col: 0, pad: 0 });
-    let text = doc.rope.line(line);
-    let indent = indent_of(doc, line, tab).unwrap_or(0);
+    // Most lines fit: short enough even if every char were a tab, or
+    // short enough without tabs.
+    let len = text.len_chars();
+    if len * tab <= width || (len <= width && text.chunks().all(|c| !c.contains('\t'))) {
+        return;
+    }
+    let indent = indent_of_text(text, tab).unwrap_or(0);
     let pad = if indent <= width / 2 { indent } else { 0 };
     let mut row_col = 0;
     let mut avail = width;

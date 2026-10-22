@@ -1,7 +1,7 @@
 //! Context-aware completions for HTML and CSS, with document words as fallback.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, RwLock};
 
 use super::commands::is_word_char;
 use super::document::{Change, Document, EditKind, Selection};
@@ -470,6 +470,15 @@ fn parse_user(line: &str) -> Option<Item> {
 
 /// Computes completions for the primary cursor, if any apply: the built-in
 /// ones plus items from extensions for the word being typed.
+/// Documents up to this size are searched completely for word suggestions.
+const WORD_SCAN_CHARS: usize = 1_000_000;
+
+/// Whether `word` starts with `lower` (already lowercase), without allocating.
+fn starts_with_ignore_case(word: &str, lower: &str) -> bool {
+    let mut w = word.chars().flat_map(char::to_lowercase);
+    lower.chars().all(|c| w.next() == Some(c))
+}
+
 pub fn compute(doc: &mut Document) -> Option<Completion> {
     let builtin = compute_builtin(doc);
     let Some((anchor, ext)) = doc.view.ext_items.clone() else { return builtin };
@@ -598,8 +607,14 @@ fn compute_builtin(doc: &mut Document) -> Option<Completion> {
     }
 
     // Document words complement every context.
-    if lower.chars().count() >= 2 && doc.len_chars() < 4_000_000 {
-        let text = doc.text();
+    if lower.chars().count() >= 2 {
+        // Large files: only the surroundings of the cursor (copying and
+        // scanning megabytes on every keystroke makes typing lag).
+        let text = if doc.len_chars() <= WORD_SCAN_CHARS {
+            doc.text()
+        } else {
+            Arc::new(doc.slice(start.saturating_sub(WORD_SCAN_CHARS / 2)..start + WORD_SCAN_CHARS / 2))
+        };
         let mut seen: HashSet<&str> = HashSet::new();
         let known: HashSet<String> = items.iter().map(|i| i.label.to_lowercase()).collect();
         let mut words = Vec::new();
@@ -608,7 +623,7 @@ fn compute_builtin(doc: &mut Document) -> Option<Completion> {
                 && word.len() >= 3
                 && word != prefix
                 && word != current
-                && word.to_lowercase().starts_with(&lower)
+                && starts_with_ignore_case(word, &lower)
                 && !known.contains(&word.to_lowercase())
                 && seen.insert(word)
             {

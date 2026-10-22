@@ -84,3 +84,12 @@ unftp-sbe-fs = "0.4.0"
 [build-dependencies]
 png = "0.18"
 winresource = "0.1.34"
+
+# Optimized but quick to build, for performance measurements:
+# cargo test --profile perf bench_file -- --ignored --nocapture
+[profile.perf]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+panic = "unwind"

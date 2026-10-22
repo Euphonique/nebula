@@ -14,12 +14,26 @@ use crate::ui::icons;
 /// Header with the tab buttons; same height as the sidebar's mode row.
 const HEADER_H: f32 = 40.0;
 
+/// Documents with more characters get their symbols on a background thread
+/// (collecting them takes a noticeable moment on every change).
+const BACKGROUND_SYMBOLS: usize = 200_000;
+
 #[derive(Default)]
 pub(super) struct RightPanelState {
     /// Symbols for (document id, version).
     symbols: Option<((u64, u64), Arc<Vec<Symbol>>)>,
+    /// Symbols of a large document being collected in the background.
+    symbols_job: Option<((u64, u64), std::sync::mpsc::Receiver<Vec<Symbol>>)>,
+    /// To repaint when background symbols are ready.
+    ctx: Option<egui::Context>,
     filter: String,
     pub(super) snippets: super::snippets_panel::SnippetsState,
+}
+
+impl RightPanelState {
+    pub(super) fn new(ctx: &egui::Context) -> Self {
+        Self { ctx: Some(ctx.clone()), ..Default::default() }
+    }
 }
 
 impl NebulaApp {
@@ -259,12 +273,38 @@ impl NebulaApp {
     /// Symbols of a document, cached per version.
     pub(super) fn doc_symbols(&mut self, i: usize) -> Arc<Vec<Symbol>> {
         let key = (self.docs[i].id, self.docs[i].version);
-        if self.right_state.symbols.as_ref().is_none_or(|(k, _)| *k != key) {
+        let state = &mut self.right_state;
+        if let Some((k, rx)) = &state.symbols_job
+            && let Ok(list) = rx.try_recv()
+        {
+            state.symbols = Some((*k, Arc::new(list)));
+            state.symbols_job = None;
+        }
+        if state.symbols.as_ref().is_none_or(|(k, _)| *k != key) {
             let doc = &mut self.docs[i];
             let text = doc.text();
-            self.right_state.symbols = Some((key, Arc::new(symbols::symbols(&text, doc.language))));
+            let language = doc.language;
+            if doc.len_chars() <= BACKGROUND_SYMBOLS {
+                state.symbols = Some((key, Arc::new(symbols::symbols(&text, language))));
+            } else if state.symbols_job.is_none() {
+                // One job at a time; a newer version starts once it is done.
+                let (tx, rx) = std::sync::mpsc::channel();
+                let ctx = state.ctx.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(symbols::symbols(&text, language));
+                    if let Some(ctx) = ctx {
+                        ctx.request_repaint();
+                    }
+                });
+                state.symbols_job = Some((key, rx));
+            }
         }
-        self.right_state.symbols.as_ref().map(|(_, s)| s.clone()).unwrap_or_default()
+        // While new ones are collected, the previous symbols of the same
+        // document are shown.
+        match &state.symbols {
+            Some(((id, _), s)) if *id == key.0 => s.clone(),
+            _ => Arc::default(),
+        }
     }
 
     /// Cursor to the first non-blank character of `line`, centered.
