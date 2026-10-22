@@ -174,6 +174,48 @@ impl NebulaApp {
         });
     }
 
+    /// Inline suggestions while typing: on/off, which built-in agent and model.
+    fn inline_info(&mut self, ui: &mut Ui) {
+        let theme = self.theme.clone();
+        let agents = self.inline_agents();
+        egui::Frame::new().fill(theme.hover.gamma_multiply(0.6)).corner_radius(8.0).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            let s = &mut self.settings.inline_ai;
+            let mut changed = ui.add_enabled(!agents.is_empty(), egui::Checkbox::new(&mut s.enabled, RichText::new(t!("Inline-Vorschläge beim Tippen")).strong())).changed();
+            ui.label(
+                RichText::new(t!("Nach einer kurzen Pause am Zeilenende schlägt die KI vor, wie es weitergeht (grau); Tab übernimmt, Esc verwirft. Jede Pause ist eine Anfrage beim Anbieter und kostet – daher ein kleines, schnelles Modell wählen."))
+                    .size(11.5)
+                    .color(theme.text_muted),
+            );
+            if agents.is_empty() {
+                ui.label(RichText::new(t!("Dafür zuerst einen eingebauten Agenten hinzufügen (API-Schlüssel oder Ollama).")).size(12.0).color(theme.modified));
+                return;
+            }
+            if !agents.contains(&s.agent) {
+                s.agent = agents[0].clone();
+            }
+            ui.add_space(4.0);
+            egui::Grid::new("inline-ai").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                ui.label(t!("Agent"));
+                egui::ComboBox::from_id_salt("inline-agent").selected_text(s.agent.clone()).width(260.0).show_ui(ui, |ui| {
+                    for a in &agents {
+                        changed |= ui.selectable_value(&mut s.agent, a.clone(), a).changed();
+                    }
+                });
+                ui.end_row();
+                ui.label(t!("Modell"));
+                changed |= ui.add(egui::TextEdit::singleline(&mut s.model).hint_text(t!("leer: automatisch (klein, schnell)")).desired_width(260.0)).lost_focus();
+                ui.end_row();
+                ui.label(t!("Pause"));
+                changed |= ui.add(egui::DragValue::new(&mut s.delay_ms).range(200..=5000).speed(10).suffix(" ms")).changed();
+                ui.end_row();
+            });
+            if changed {
+                let _ = self.settings.save();
+            }
+        });
+    }
+
     /// Nebula as MCP server: on/off, address and how to connect other agents.
     fn mcp_info(&mut self, ui: &mut Ui) {
         let theme = self.theme.clone();
@@ -243,6 +285,8 @@ impl NebulaApp {
         self.runtime_info(ui, state);
         ui.add_space(8.0);
         self.mcp_info(ui);
+        ui.add_space(8.0);
+        self.inline_info(ui);
         ui.add_space(8.0);
 
         if let Some(edit) = &mut state.edit {

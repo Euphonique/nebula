@@ -885,6 +885,22 @@ fn handle_key(
         Some(_) => move_visual(doc, delta, shift, tab, wrap),
         None => cmd::move_vertical(doc, delta, shift, tab),
     };
+    // An AI suggestion: Tab takes it, Esc drops it.
+    if let Some(g) = doc.live_ghost() {
+        match key {
+            Key::Tab if !shift && !ctrl && !alt => {
+                let text = g.text.clone();
+                doc.view.ghost = None;
+                cmd::paste(doc, &text);
+                return;
+            }
+            Key::Escape => {
+                doc.view.ghost = None;
+                return;
+            }
+            _ => {}
+        }
+    }
     match key {
         Key::Enter if ctrl => {
             // Insert a new line below without splitting the current one.
@@ -1337,6 +1353,30 @@ fn paint_doc(
         let until_toggle = if blink_on { 0.62 - time % 1.06 } else { 1.06 - time % 1.06 };
         ui.ctx()
             .request_repaint_after(Duration::from_secs_f64(until_toggle.max(0.01)));
+    }
+
+    // AI suggestion: the first line after the cursor, more lines on a backdrop below.
+    if let Some(ghost) = doc.live_ghost().cloned()
+        && focused
+        && shown(doc.char_to_line(ghost.at))
+    {
+        let at = g.at(doc, ghost.at);
+        let color = theme.text_faint;
+        let mut lines = ghost.text.split('\n');
+        let first = lines.next().unwrap_or("");
+        painter.text(pos2(at.x, at.y + m.row_h / 2.0), egui::Align2::LEFT_CENTER, first, m.font.clone(), color);
+        let rest: Vec<&str> = lines.collect();
+        if !rest.is_empty() {
+            let left = g.at(doc, doc.line_to_char(doc.char_to_line(ghost.at))).x;
+            let top = at.y + m.row_h;
+            let backdrop = Rect::from_min_max(pos2(left - 4.0, top), pos2(visible.right(), top + m.row_h * rest.len() as f32));
+            painter.rect_filled(backdrop, 3.0, theme.background);
+            painter.line_segment([backdrop.left_top(), backdrop.left_bottom()], Stroke::new(2.0, theme.accent.gamma_multiply(0.5)));
+            for (n, line) in rest.iter().enumerate() {
+                let y = top + m.row_h * n as f32 + m.row_h / 2.0;
+                painter.text(pos2(left, y), egui::Align2::LEFT_CENTER, line, m.font.clone(), color);
+            }
+        }
     }
 
     // Gutter, drawn last so horizontally scrolled text slides under it.

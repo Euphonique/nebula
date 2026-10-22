@@ -230,6 +230,24 @@ impl Change {
     }
 }
 
+/// An inline suggestion: valid only while the text (`version`) and the
+/// cursor (`at`) are unchanged.
+#[derive(Clone, Debug)]
+pub struct Ghost {
+    pub at: usize,
+    pub version: u64,
+    pub text: String,
+}
+
+impl Document {
+    /// The suggestion if it still fits the text and the single, empty cursor.
+    pub fn live_ghost(&self) -> Option<&Ghost> {
+        let g = self.view.ghost.as_ref()?;
+        let s = self.primary_selection();
+        (g.version == self.version && self.selections.len() == 1 && s.is_empty() && s.head == g.at && self.view.completion.is_none()).then_some(g)
+    }
+}
+
 /// Per-document view state kept between frames.
 #[derive(Clone, Debug, Default)]
 pub struct ViewState {
@@ -244,6 +262,8 @@ pub struct ViewState {
     pub find_scope: Option<Range<usize>>,
     /// Bookmarked lines (Strg+F2).
     pub bookmarks: std::collections::BTreeSet<usize>,
+    /// AI suggestion shown in gray at the cursor (Tab takes it).
+    pub ghost: Option<Ghost>,
     /// Bumped whenever `folds` changes.
     pub fold_gen: u64,
     pub fold_ranges: Option<(u64, Arc<Vec<(usize, usize)>>)>,

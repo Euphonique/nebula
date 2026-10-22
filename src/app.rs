@@ -54,6 +54,7 @@ mod folder_pick;
 mod ai_commands;
 mod commit_msg;
 mod mcp_tools;
+mod inline_ai;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -227,6 +228,8 @@ pub struct NebulaApp {
     nav: nav::NavHistory,
     /// Nebula as MCP server (if turned on).
     mcp: Option<crate::mcp::McpServer>,
+    /// Inline AI suggestions while typing.
+    inline: inline_ai::InlineState,
 }
 
 impl NebulaApp {
@@ -298,6 +301,7 @@ impl NebulaApp {
             commit_msg: None,
             nav: Default::default(),
             mcp: None,
+            inline: Default::default(),
             settings,
         };
         // The preview used to be a setting of its own; it now lives in the right panel.
@@ -3097,6 +3101,7 @@ impl eframe::App for NebulaApp {
         self.poll_agent();
         self.poll_commit_message();
         self.poll_mcp();
+        self.poll_inline_ai(&ctx);
         self.poll_printing();
         self.serve_preview();
         self.sync_extensions(&ctx);

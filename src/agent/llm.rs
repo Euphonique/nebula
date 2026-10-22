@@ -182,10 +182,36 @@ impl Llm {
         on_text: &mut dyn FnMut(&str),
         cancel: &AtomicBool,
     ) -> Result<Turn, String> {
-        let body = match self.provider {
-            Provider::Anthropic => anthropic_body(model, system, messages, tools),
+        self.request_turn(model, system, messages, tools, MAX_TOKENS, on_text, cancel)
+    }
+
+    /// One short answer without tools (e.g. a completion at the cursor).
+    pub fn quick(&self, model: &str, system: &str, text: &str, max_tokens: u32, cancel: &AtomicBool) -> Result<String, String> {
+        let messages = [Msg { user: true, parts: vec![Part::Text(text.to_string())] }];
+        self.request_turn(model, system, &messages, &[], max_tokens, &mut |_| {}, cancel).map(|t| t.text)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn request_turn(
+        &self,
+        model: &str,
+        system: &str,
+        messages: &[Msg],
+        tools: &[ToolDef],
+        max_tokens: u32,
+        on_text: &mut dyn FnMut(&str),
+        cancel: &AtomicBool,
+    ) -> Result<Turn, String> {
+        let mut body = match self.provider {
+            Provider::Anthropic => anthropic_body(model, system, messages, tools, max_tokens),
             Provider::OpenAi => openai_body(model, system, messages, tools),
         };
+        // Some servers refuse an empty tool list.
+        if tools.is_empty()
+            && let Some(o) = body.as_object_mut()
+        {
+            o.remove("tools");
+        }
         let path = match self.provider {
             Provider::Anthropic => "messages",
             Provider::OpenAi => "chat/completions",
@@ -200,7 +226,7 @@ impl Llm {
     }
 }
 
-fn anthropic_body(model: &str, system: &str, messages: &[Msg], tools: &[ToolDef]) -> Value {
+fn anthropic_body(model: &str, system: &str, messages: &[Msg], tools: &[ToolDef], max_tokens: u32) -> Value {
     let messages: Vec<Value> = messages
         .iter()
         .map(|m| {
@@ -217,7 +243,7 @@ fn anthropic_body(model: &str, system: &str, messages: &[Msg], tools: &[ToolDef]
         })
         .collect();
     let tools: Vec<Value> = tools.iter().map(|t| json!({ "name": t.name, "description": t.description, "input_schema": t.schema })).collect();
-    json!({ "model": model, "max_tokens": MAX_TOKENS, "system": system, "messages": messages, "tools": tools, "stream": true })
+    json!({ "model": model, "max_tokens": max_tokens, "system": system, "messages": messages, "tools": tools, "stream": true })
 }
 
 fn openai_body(model: &str, system: &str, messages: &[Msg], tools: &[ToolDef]) -> Value {

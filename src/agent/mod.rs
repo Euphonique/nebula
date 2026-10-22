@@ -56,14 +56,16 @@ pub fn base_url(cfg: &AgentConfig) -> String {
 
 /// Starts the agent; it reads JSON-RPC messages from the returned sender and
 /// answers into `events`.
+/// The model API of a built-in agent.
+pub fn llm(cfg: &AgentConfig) -> Llm {
+    let (id, _, _, _) = *provider_of(cfg);
+    Llm { provider: if id == "anthropic" { Provider::Anthropic } else { Provider::OpenAi }, base: base_url(cfg), key: cfg.api_key() }
+}
+
 pub fn start(cfg: AgentConfig, events: Sender<Event>, wake: Arc<dyn Fn() + Send + Sync>) -> Sender<Value> {
     let (tx, rx) = crossbeam_channel::unbounded();
     let (id, _, _, _) = *provider_of(&cfg);
-    let llm = Llm {
-        provider: if id == "anthropic" { Provider::Anthropic } else { Provider::OpenAi },
-        base: base_url(&cfg),
-        key: cfg.api_key(),
-    };
+    let llm = llm(&cfg);
     // The providers' own servers need a key; other addresses may not.
     let needs_key = provider_of(&cfg).3 && llm.base == provider_of(&cfg).2 && llm.key.is_none();
     let out = Out { events, wake };

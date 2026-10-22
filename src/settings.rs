@@ -154,6 +154,27 @@ pub struct AppSettings {
     pub agent: String,
     /// Nebula as MCP server for agents (local only, with token).
     pub mcp: crate::mcp::McpSettings,
+    /// Gray AI suggestions while typing.
+    pub inline_ai: InlineAi,
+}
+
+/// AI suggestions at the cursor while typing (off by default: each pause is a paid request).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InlineAi {
+    pub enabled: bool,
+    /// Built-in agent (by name) whose API is used.
+    pub agent: String,
+    /// Model; empty: a small, fast one of the provider.
+    pub model: String,
+    /// Pause after typing before asking (milliseconds).
+    pub delay_ms: u64,
+}
+
+impl Default for InlineAi {
+    fn default() -> Self {
+        Self { enabled: false, agent: String::new(), model: String::new(), delay_ms: 700 }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -288,6 +309,7 @@ impl Default for AppSettings {
             agents: crate::acp::default_agents(),
             agent: "Claude Code".into(),
             mcp: Default::default(),
+            inline_ai: Default::default(),
         }
     }
 }

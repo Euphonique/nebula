@@ -40,7 +40,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 Agenten über ACP und der eigene Agent (API-Schlüssel, Ollama) sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
 
-- **C** Inline-Vorschläge beim Tippen (graue Vervollständigung, Tab übernimmt) – unbedingt ein-/ausschaltbar (Kosten).
 - **C** Angehängte Serverdateien direkt bearbeitbar machen (virtueller Pfad, Lesen/Schreiben über die Serververbindung); bisher nur lesend bzw. über ein lokales Projekt mit „Beim Speichern hochladen“.
 - **C** Limits-Anzeige auch für Codex (ChatGPT-Abo), sobald der Adapter sie meldet.
 
@@ -74,7 +73,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
 Runde 3 ist damit komplett.
 
-KI: eigener Agent, KI-Befehle und Commit-Nachricht erledigt; als Nächstes MCP-Server und Inline-Vorschläge (siehe oben).
+KI: eigener Agent, KI-Befehle, Commit-Nachricht, MCP-Server und Inline-Vorschläge erledigt; offen: Serverdateien für Agenten bearbeitbar, Codex-Limits.
 
 ## Erledigt
 
@@ -133,3 +132,5 @@ KI-Befehle (22.10.): Rechtsklick im Editor › „KI“ (und Befehlspalette): Er
 Commit-Nachricht per KI (22.10.): ✦ im Nachrichtenfeld des Git-Tabs – der Agent des Panels schreibt die Nachricht aus dem Diff (vorgemerkte Änderungen, sonst alle samt neuer Dateien) in einer eigenen, unsichtbaren Sitzung; Sprache und Stil wie die letzten Commits; darf Dateien lesen, nichts ändern; nochmal klicken bricht ab.
 
 Nebula als MCP-Server (22.10.): lokaler MCP-Server (HTTP, nur 127.0.0.1, Schlüssel in der Adresse) mit get_open_files, get_active_editor (Cursor, Auswahl), get_diagnostics, get_file_text (ungespeicherter Stand) und open_file; Agenten im Panel bekommen ihn automatisch, für Claude Code im Terminal gibt es den Befehl zum Kopieren (Einstellungen › KI-Agenten), dort auch Aus und „Neuer Schlüssel“.
+
+Inline-Vorschläge (22.10.): nach einer Tipp-Pause am Zeilenende fragt Nebula einen eingebauten Agenten (eigenes, sonst automatisch kleines Modell wie Haiku/mini); Vorschlag grau am Cursor, weitere Zeilen auf Hintergrund darunter; Tab übernimmt, Esc verwirft, Weitertippen/Cursor bewegen lässt ihn verschwinden. Standardmäßig aus (Einstellungen › KI-Agenten), Pause einstellbar.
