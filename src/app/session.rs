@@ -20,6 +20,30 @@ impl NebulaApp {
         }
         self.settings.session = entries;
         self.settings.session_active = active;
+        // A further window keeps its tabs with its project (the session is the main window's).
+        if crate::settings::is_secondary()
+            && let Some(root) = self.sidebar.root.clone()
+        {
+            let tabs = self.project_tabs(&root);
+            self.settings.project_tabs.insert(root.to_string_lossy().into_owned(), tabs);
+        }
+    }
+
+    /// The open tabs of files in `root`, for reopening the project later.
+    fn project_tabs(&self, root: &std::path::Path) -> ProjectTabs {
+        let mut tabs = ProjectTabs::default();
+        for (i, d) in self.docs.iter().enumerate() {
+            if !matches!(&d.source, DocSource::Local(p) if p.starts_with(root)) {
+                continue;
+            }
+            if self.active == Some(i) {
+                tabs.active = Some(tabs.entries.len());
+            }
+            if let Some(entry) = session_entry(d) {
+                tabs.entries.push(entry);
+            }
+        }
+        tabs
     }
 
     pub(super) fn restore_session(&mut self) {
@@ -98,15 +122,7 @@ impl NebulaApp {
         }
         if let Some(old) = self.sidebar.root.clone() {
             let in_old = |d: &crate::editor::Document| matches!(&d.source, DocSource::Local(p) if p.starts_with(&old));
-            let mut tabs = ProjectTabs::default();
-            for (i, d) in self.docs.iter().enumerate().filter(|(_, d)| in_old(d)) {
-                if self.active == Some(i) {
-                    tabs.active = Some(tabs.entries.len());
-                }
-                if let Some(entry) = session_entry(d) {
-                    tabs.entries.push(entry);
-                }
-            }
+            let tabs = self.project_tabs(&old);
             self.settings.project_tabs.insert(old.to_string_lossy().into_owned(), tabs);
             let active_id = self.active.map(|i| self.docs[i].id);
             self.docs.retain(|d| !in_old(d) || d.is_dirty());

@@ -55,6 +55,7 @@ mod ai_commands;
 mod commit_msg;
 mod mcp_tools;
 mod inline_ai;
+mod windows;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -230,6 +231,8 @@ pub struct NebulaApp {
     mcp: Option<crate::mcp::McpServer>,
     /// Inline AI suggestions while typing.
     inline: inline_ai::InlineState,
+    /// Last look for settings/servers changed by other windows.
+    shared_check: Instant,
 }
 
 impl NebulaApp {
@@ -241,7 +244,8 @@ impl NebulaApp {
         let theme = Theme::for_settings(&settings);
         theme.apply(&cc.egui_ctx);
         crate::fonts::apply(&cc.egui_ctx, &settings.editor.font_family);
-        let root = settings.last_folder.clone().filter(|p| p.is_dir());
+        // A further window starts empty (or with the folder it was opened for).
+        let root = settings.last_folder.clone().filter(|p| p.is_dir() && !crate::settings::is_secondary());
         let mut app = Self {
             sidebar: Sidebar::new(root),
             sites: Sites::load(),
@@ -302,6 +306,7 @@ impl NebulaApp {
             nav: Default::default(),
             mcp: None,
             inline: Default::default(),
+            shared_check: Instant::now(),
             settings,
         };
         // The preview used to be a setting of its own; it now lives in the right panel.
@@ -310,7 +315,9 @@ impl NebulaApp {
             app.settings.right_tab = crate::settings::RightTab::Preview;
         }
         app.start_mcp(&cc.egui_ctx);
-        app.restore_session();
+        if !crate::settings::is_secondary() {
+            app.restore_session();
+        }
         if let Some(root) = app.sidebar.root.clone() {
             app.remember_folder(&root);
         }
@@ -1030,6 +1037,8 @@ impl NebulaApp {
         match action {
             SidebarAction::OpenLocal(p) => self.open_local(&p),
             SidebarAction::OpenFolder => self.pick_and_open_folder(),
+            SidebarAction::NewWindow(folder) => self.open_new_window(folder),
+            SidebarAction::NewWindowPick => self.open_folder_in_new_window(),
             SidebarAction::SwitchFolder(path) => {
                 if path.is_dir() {
                     self.open_folder(path);
@@ -1375,6 +1384,16 @@ impl NebulaApp {
                     ui.close();
                     self.pick_and_open_folder();
                 }
+                ui.separator();
+                if ui.add(egui::Button::new(t!("Neues Fenster")).shortcut_text(self.shortcut_label(palette::Command::NewWindow))).clicked() {
+                    ui.close();
+                    self.open_new_window(None);
+                }
+                if ui.button(t!("Ordner in neuem Fenster öffnen…")).clicked() {
+                    ui.close();
+                    self.open_folder_in_new_window();
+                }
+                ui.separator();
                 if ui.add(egui::Button::new(t!("Schnell öffnen…")).shortcut_text(self.shortcut_label(palette::Command::QuickOpen))).clicked() {
                     ui.close();
                     self.open_quick_open();
@@ -1383,9 +1402,14 @@ impl NebulaApp {
                 ui.add_enabled_ui(!folders.is_empty(), |ui| {
                     ui.menu_button(t!("Zuletzt geöffnete Projekte"), |ui| {
                         for p in folders {
-                            if ui.button(p.display().to_string()).clicked() {
+                            let resp = ui.button(p.display().to_string()).on_hover_text(t!("Strg+Klick: in neuem Fenster öffnen"));
+                            if resp.clicked() {
                                 ui.close();
-                                self.handle_sidebar_action(ui.ctx(), SidebarAction::SwitchFolder(p));
+                                if ui.input(|i| i.modifiers.command) {
+                                    self.open_new_window(Some(p));
+                                } else {
+                                    self.handle_sidebar_action(ui.ctx(), SidebarAction::SwitchFolder(p));
+                                }
                             }
                         }
                         ui.separator();
@@ -3060,19 +3084,21 @@ impl NebulaApp {
     }
 
     fn update_title(&mut self, ctx: &egui::Context) {
+        // The project tells several windows apart (also in the taskbar).
+        let project = self.sidebar.root.as_ref().and_then(|r| r.file_name()).map(|n| format!("{} – ", n.to_string_lossy())).unwrap_or_default();
         let title = match self.active.and_then(|i| self.docs.get(i)) {
             Some(doc) => {
                 let dirty = if doc.is_dirty() { "● " } else { "" };
                 match &doc.source {
                     DocSource::Remote { site_id, .. } => format!(
-                        "{dirty}{} – {} – {APP_NAME}",
+                        "{dirty}{} – {} – {project}{APP_NAME}",
                         doc.title(),
                         self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_default()
                     ),
-                    _ => format!("{dirty}{} – {APP_NAME}", doc.title()),
+                    _ => format!("{dirty}{} – {project}{APP_NAME}", doc.title()),
                 }
             }
-            None => APP_NAME.to_string(),
+            None => format!("{project}{APP_NAME}"),
         };
         if title != self.last_title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
@@ -3102,6 +3128,7 @@ impl eframe::App for NebulaApp {
         self.poll_commit_message();
         self.poll_mcp();
         self.poll_inline_ai(&ctx);
+        self.poll_shared_files(&ctx);
         self.poll_printing();
         self.serve_preview();
         self.sync_extensions(&ctx);

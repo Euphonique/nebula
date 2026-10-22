@@ -24,7 +24,9 @@ impl NebulaApp {
             let _ = self.settings.save();
         }
         let ctx = ctx.clone();
-        match crate::mcp::start(self.settings.mcp.port, self.settings.mcp.token.clone(), move || ctx.request_repaint()) {
+        // The fixed port belongs to the main window (that is where Claude Code is pointed).
+        let port = if crate::settings::is_secondary() { 0 } else { self.settings.mcp.port };
+        match crate::mcp::start(port, self.settings.mcp.token.clone(), move || ctx.request_repaint()) {
             Ok(server) => self.mcp = Some(server),
             Err(e) => self.error(t!("MCP-Server konnte nicht starten: {e}", e = e)),
         }

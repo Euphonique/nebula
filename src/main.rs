@@ -27,6 +27,7 @@ mod snippet_io;
 mod sync;
 mod settings;
 mod safe_write;
+mod shared_json;
 mod settings_io;
 mod theme;
 mod theme_import;
@@ -75,8 +76,13 @@ fn main() -> eframe::Result {
         return Ok(());
     }
     let open_paths: Vec<PathBuf> = args.iter().filter(|a| !a.to_string_lossy().starts_with("--")).map(PathBuf::from).collect();
+    // "Neues Fenster": a further window with a project of its own.
+    let window = args.iter().any(|a| a == "--window");
+    if window {
+        settings::set_secondary();
+    }
     // A second start hands its files to the running window ("Mit Nebula öffnen").
-    let forwarded = !args.iter().any(|a| a == "--new-instance") && win32::forward_to_running(&open_paths);
+    let forwarded = !window && !args.iter().any(|a| a == "--new-instance") && win32::forward_to_running(&open_paths);
     if forwarded {
         return Ok(());
     }
@@ -94,7 +100,9 @@ fn main() -> eframe::Result {
             .with_transparent(true)
             .with_icon(icon)
             .with_drag_and_drop(true),
-        persist_window: true,
+        // Further windows open where Windows puts new windows (slightly
+        // offset), not exactly on top of the main window.
+        persist_window: !window,
         wgpu_options: wgpu_options(),
         ..Default::default()
     };

@@ -42,7 +42,6 @@ Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über 
 
 ## Oberfläche und Allgemein
 
-- **B** Mehrere Fenster/Projekte gleichzeitig.
 - **C** Update-Hinweis (braucht eine Adresse, unter der neue Versionen veröffentlicht werden).
 - **C** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
 
@@ -135,3 +134,5 @@ Inline-Vorschläge (22.10.): nach einer Tipp-Pause am Zeilenende fragt Nebula ei
 Serverdateien für Agenten bearbeitbar (22.10.): Server-Dateien bekommen für den Agenten einen Pfad `\\nebula\<Server-ID>\pfad`; Lesen liefert den offenen Tab oder holt die Datei vom Server, Schreiben geht in den offenen Tab (Speichern = Hochladen) oder direkt auf den Server; angehängte Serverdateien nennen dem Agenten diesen Pfad; KI-Befehle zum Ändern gehen jetzt auch für Serverdateien; Klick auf solche Dateien im Panel öffnet die Serverdatei.
 
 Codex-Limits (22.10.): verbleibende Limits des ChatGPT-Abos (5 Stunden, Woche) unter der Eingabe wie bei Claude – über `/status` des Codex-Adapters in einer unsichtbaren Sitzung, ohne Modellaufruf; Reset-Zeit in Ortszeit, Datum unabhängig von der Systemsprache.
+
+Mehrere Fenster (22.10.): „Neues Fenster“ (Strg+Umschalt+N), „Ordner in neuem Fenster öffnen…“ (Menü Datei, Projekt-Umschalter, Befehlspalette), Strg+Klick auf zuletzt geöffnete Projekte; jedes Fenster ist ein eigener Prozess mit eigenem Projekt. settings.json und sites.json werden beim Speichern dreiseitig zusammengeführt (jedes Fenster schreibt nur, was es selbst geändert hat) und von den anderen Fenstern binnen einer Sekunde neu eingelesen; Sitzung und letzter Ordner gehören dem Hauptfenster, weitere Fenster merken sich ihre Tabs pro Projekt. Fenstertitel nennt das Projekt.

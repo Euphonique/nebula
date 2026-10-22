@@ -320,12 +320,21 @@ impl AppSettings {
     }
 
     pub fn load() -> Self {
-        let mut s: Self = std::fs::read(Self::path())
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        let mut s: Self = crate::shared_json::load(&Self::path()).unwrap_or_default();
         s.migrate_theme();
         s
+    }
+
+    /// Takes over what another Nebula window saved meanwhile (this window's
+    /// unsaved changes stay); true if anything came in.
+    pub fn reload_if_changed(&mut self) -> bool {
+        match crate::shared_json::reload(&Self::path(), self) {
+            Some(fresh) => {
+                *self = fresh;
+                true
+            }
+            None => false,
+        }
     }
 
     /// Settings from before light/dark themes: keep the chosen design and theme.
@@ -356,9 +365,24 @@ impl AppSettings {
         if self.is_dark() { &self.theme_dark } else { &self.theme_light }
     }
 
+    /// Saves, keeping what other Nebula windows changed meanwhile. A further
+    /// window never writes the session (open tabs) and last folder: those
+    /// belong to the main window; it remembers its tabs per project.
     pub fn save(&self) -> Result<()> {
-        write_json(&Self::path(), self)
+        let keep: &[&str] = if is_secondary() { &["session", "session_active", "last_folder"] } else { &[] };
+        crate::shared_json::save(&Self::path(), self, keep)
     }
+}
+
+static SECONDARY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// This process is a further window ("Neues Fenster"), not the main one.
+pub fn set_secondary() {
+    SECONDARY.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn is_secondary() -> bool {
+    SECONDARY.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -521,14 +545,23 @@ impl Sites {
     }
 
     pub fn load() -> Self {
-        std::fs::read(Self::path())
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+        crate::shared_json::load(&Self::path()).unwrap_or_default()
     }
 
+    /// Saves, keeping servers other Nebula windows changed meanwhile.
     pub fn save(&self) -> Result<()> {
-        write_json(&Self::path(), self)
+        crate::shared_json::save(&Self::path(), self, &[])
+    }
+
+    /// Takes over servers another window saved meanwhile; true if any changed.
+    pub fn reload_if_changed(&mut self) -> bool {
+        match crate::shared_json::reload(&Self::path(), self) {
+            Some(fresh) => {
+                *self = fresh;
+                true
+            }
+            None => false,
+        }
     }
 
     pub fn get(&self, id: &str) -> Option<&Site> {
@@ -544,15 +577,6 @@ impl Sites {
     }
 }
 
-fn write_json(path: &PathBuf, value: &impl Serialize) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(value)?)?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
-}
 
 impl AppSettings {
     /// Editor settings with the per-language indentation applied.

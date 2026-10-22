@@ -109,6 +109,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Einstellungen exportieren und importieren (Menü Einstellungen oder Befehlspalette), z. B. für einen neuen Rechner: Editor und Darstellung, eigene Themes, Sprachen und Snippets, Tastenkürzel, Server, KI-Agenten und Erweiterungen, einzeln wählbar, als eine JSON-Datei. Passwörter und API-Schlüssel kommen nicht mit; Server, Snippets und Agenten werden beim Import ergänzt, fehlende Erweiterungen aus der Bibliothek nachinstalliert
 - Eigene Titelleiste mit Tabs; Tabs scrollen, lassen sich per Drag sortieren und haben ein Kontextmenü (Speichern, Duplizieren, Drucken, Schließen, andere/rechts/alle schließen, Pfad kopieren, im Explorer zeigen)
 - Neue Datei mit Sprache: Rechtsklick (oder Umschalt+Klick) auf das „+“ in der Tableiste wählt Sprache und Dateiendung (z. B. „Ohne Titel 1.css“); „Speichern unter“ schlägt die Endung der eingestellten Sprache vor
+- Mehrere Fenster: „Neues Fenster“ (Strg+Umschalt+N) oder „Ordner in neuem Fenster öffnen…“ (Menü Datei, Projekt-Umschalter; Strg+Klick auf ein zuletzt geöffnetes Projekt). Jedes Fenster hat sein eigenes Projekt; Einstellungen und Server sind gemeinsam – was ein Fenster ändert, übernehmen die anderen sofort, ohne dass sich Fenster gegenseitig etwas überschreiben
 - Tabs anheften (Kontextmenü oder Befehlspalette): angeheftete Tabs stehen links, zeigen eine Nadel statt des Schließen-Knopfs (Klick löst sie) und bleiben bei „Andere schließen“, „Rechts davon schließen“, „Alle schließen“ und Mittelklick erhalten; der Zustand wird mit der Sitzung gespeichert
 - Windows-11-Andocklayouts am Maximieren-Knopf, Mica-Hintergrund in der Seitenleiste, native Schatten und abgerundete Ecken
 - Seitenleiste mit Dateien, Servern und Projektsuche; Git-Status (Branch, geänderte und neue Dateien)
@@ -126,6 +127,7 @@ Alle Kürzel lassen sich unter Einstellungen → Tastenkürzel ändern. Standard
 |---|---|
 | Befehlspalette | Strg+Umschalt+P |
 | Neu / Öffnen / Ordner öffnen / Schnell öffnen | Strg+N / Strg+O / Strg+Umschalt+O / Strg+P |
+| Neues Fenster | Strg+Umschalt+N |
 | Speichern / Speichern unter / Alle speichern | Strg+S / Strg+Umschalt+S / Strg+Alt+S |
 | Tab schließen / Tab wechseln | Strg+W / Strg+Tab |
 | Suchen / Ersetzen / Weitersuchen | Strg+F / Strg+H / F3, Umschalt+F3 |

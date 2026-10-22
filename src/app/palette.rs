@@ -18,6 +18,8 @@ pub enum Command {
     FontReset,
     OpenFile,
     OpenFolder,
+    NewWindow,
+    OpenFolderNewWindow,
     QuickOpen,
     Save,
     SaveAs,
@@ -118,6 +120,8 @@ impl Command {
             (NewFile, t!("Datei: Neu")),
             (OpenFile, t!("Datei: Öffnen…")),
             (OpenFolder, t!("Datei: Ordner öffnen…")),
+            (NewWindow, t!("Fenster: Neues Fenster")),
+            (OpenFolderNewWindow, t!("Fenster: Ordner in neuem Fenster öffnen…")),
             (QuickOpen, t!("Datei: Schnell öffnen…")),
             (CommandPalette, t!("Befehlspalette…")),
             (NextTab, t!("Tabs: Nächster Tab")),
@@ -335,6 +339,8 @@ impl NebulaApp {
             Command::NewFile => self.new_document(),
             Command::OpenFile => self.pick_and_open_file(),
             Command::OpenFolder => self.pick_and_open_folder(),
+            Command::NewWindow => self.open_new_window(None),
+            Command::OpenFolderNewWindow => self.open_folder_in_new_window(),
             Command::QuickOpen => self.open_quick_open(),
             Command::Save => {
                 if let Some(i) = self.active {

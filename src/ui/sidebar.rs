@@ -159,6 +159,10 @@ pub enum SidebarAction {
     OpenFolder,
     /// Switch to a recently used project folder.
     SwitchFolder(PathBuf),
+    /// Open a further window (with this folder).
+    NewWindow(Option<PathBuf>),
+    /// Choose a folder and open it in a further window.
+    NewWindowPick,
     OpenRemote { site_id: String, path: String },
     Connect(String),
     Disconnect(String),
@@ -986,8 +990,13 @@ impl Sidebar {
                 let dir = if chars.len() > 40 { format!("…{}", chars[chars.len() - 39..].iter().collect::<String>()) } else { dir };
                 let mut job = egui::text::LayoutJob::simple_singleline(name, FontId::proportional(13.0), ui.visuals().text_color());
                 job.append(&format!("   {dir}"), 0.0, egui::TextFormat::simple(FontId::proportional(11.0), rc.theme.text_faint));
-                if ui.button(job).on_hover_text(p.display().to_string()).clicked() {
-                    actions.push(SidebarAction::SwitchFolder(p.clone()));
+                let tip = format!("{}\n{}", p.display(), t!("Strg+Klick: in neuem Fenster öffnen"));
+                if ui.button(job).on_hover_text(tip).clicked() {
+                    actions.push(if ui.input(|i| i.modifiers.command) {
+                        SidebarAction::NewWindow(Some(p.clone()))
+                    } else {
+                        SidebarAction::SwitchFolder(p.clone())
+                    });
                 }
             }
             if self.recent_folders.len() > 1 {
@@ -995,6 +1004,9 @@ impl Sidebar {
             }
             if ui.button(t!("Ordner öffnen…")).clicked() {
                 actions.push(SidebarAction::OpenFolder);
+            }
+            if ui.button(t!("Ordner in neuem Fenster öffnen…")).clicked() {
+                actions.push(SidebarAction::NewWindowPick);
             }
         });
         let filter = self.filter.trim().to_lowercase();

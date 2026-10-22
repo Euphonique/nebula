@@ -12,15 +12,22 @@ public static class W {
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, int x, int y, int d, IntPtr e);
     [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, IntPtr e);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 }
 "@
 [void][W]::SetProcessDPIAware()
 
-# Main window of the debug build (never touches the user's release instance).
+# Window of the debug build (never touches the user's release instance). With
+# several debug windows: the one in the foreground, else the first.
 function Get-NebulaWindow {
-    $p = Get-Process nebula -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -like '*target\debug*' -and $_.MainWindowHandle -ne 0 } |
-        Select-Object -First 1
+    $debug = Get-Process nebula -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -like '*target\debug*' -and $_.MainWindowHandle -ne 0 }
+    $fg = [W]::GetForegroundWindow()
+    $fgPid = 0
+    [void][W]::GetWindowThreadProcessId($fg, [ref]$fgPid)
+    $front = $debug | Where-Object { $_.Id -eq $fgPid } | Select-Object -First 1
+    if ($front) { return $fg }
+    $p = $debug | Select-Object -First 1
     if ($p) { $p.MainWindowHandle } else { [IntPtr]::Zero }
 }
 

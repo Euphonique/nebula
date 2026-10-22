@@ -24,6 +24,7 @@ pub(super) fn defaults(c: Command) -> Vec<KeyboardShortcut> {
         NewFile => vec![ks(CTRL, Key::N)],
         OpenFile => vec![ks(CTRL, Key::O)],
         OpenFolder => vec![ks(CTRL | shift, Key::O)],
+        NewWindow => vec![ks(CTRL | shift, Key::N)],
         QuickOpen => vec![ks(CTRL, Key::P)],
         CommandPalette => vec![ks(CTRL | shift, Key::P)],
         Save => vec![ks(CTRL, Key::S)],
