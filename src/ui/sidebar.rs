@@ -541,7 +541,7 @@ impl Sidebar {
                         }
                     }
                     SidebarTab::Servers => {
-                        let more = icons::icon_button(ui, theme, small, false, |p, c, col| icons::menu(p, c, col))
+                        let more = icons::icon_button(ui, theme, small, false, |p, c, col| icons::more(p, c, col))
                             .on_hover_text("Importieren und exportieren");
                         egui::Popup::menu(&more).show(|ui| server_list_menu(ui, actions));
                         if icons::icon_button(ui, theme, small, false, |p, c, col| icons::plus(p, c, col))

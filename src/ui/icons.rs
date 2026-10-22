@@ -309,6 +309,13 @@ pub fn menu(painter: &Painter, c: Pos2, color: Color32) {
     }
 }
 
+/// Three dots ("more actions").
+pub fn more(painter: &Painter, c: Pos2, color: Color32) {
+    for dx in [-5.0, 0.0, 5.0] {
+        painter.circle_filled(c + vec2(dx, 0.0), 1.5, color);
+    }
+}
+
 pub fn new_file(painter: &Painter, c: Pos2, color: Color32) {
     let r = Rect::from_center_size(c, vec2(12.0, 15.0));
     painter.rect_stroke(r, 2.0, Stroke::new(1.3, color), eframe::egui::StrokeKind::Inside);
