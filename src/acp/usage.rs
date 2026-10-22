@@ -27,7 +27,7 @@ pub struct Reset {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Limits {
-    /// Plan name ("pro", "max" …) if given.
+    /// Plan with provider ("Claude pro", "ChatGPT plus" …) if given.
     pub plan: Option<String>,
     pub windows: Vec<Window>,
     /// When the numbers were read (unix seconds).
@@ -53,9 +53,62 @@ pub fn now() -> i64 {
 pub fn parse(markdown: &str, now: i64) -> Option<Limits> {
     let plan = markdown
         .lines()
-        .find_map(|l| l.trim().strip_prefix("> Claude ")?.strip_suffix(" subscription usage").map(str::to_string));
+        .find_map(|l| l.trim().strip_prefix("> Claude ")?.strip_suffix(" subscription usage").map(|p| format!("Claude {p}")));
     let windows: Vec<Window> = markdown.lines().filter_map(|l| window(l.trim(), now)).collect();
     (!windows.is_empty()).then_some(Limits { plan, windows, fetched: now })
+}
+
+/// Reads Codex's `/status` answer (also local, no tokens), with lines like
+/// `**codex 5h limit:** 73% left (resets 14:20)` and
+/// `**codex Weekly limit:** 90% left (resets 09:00 on 25 Oct)` – times in
+/// local time, the date in the system's language (only the day is used).
+/// `offset_min`: minutes local time is ahead of UTC.
+pub fn parse_codex(markdown: &str, now: i64, offset_min: i64) -> Option<Limits> {
+    let mut plan = None;
+    let mut windows = Vec::new();
+    for line in markdown.lines().map(str::trim) {
+        let Some(rest) = line.strip_prefix("**") else { continue };
+        let Some((label, rest)) = rest.split_once(":**") else { continue };
+        if label == "Account" {
+            plan = rest.trim().strip_prefix("ChatGPT ").and_then(|r| r.split_whitespace().next()).map(|p| format!("ChatGPT {p}"));
+            continue;
+        }
+        let lower = label.to_lowercase();
+        if !lower.ends_with("limit") || lower.contains("spend") {
+            continue;
+        }
+        let Some((left, rest)) = rest.trim().split_once("% left") else { continue };
+        let Ok(left) = left.trim().parse::<f32>() else { continue };
+        // Same names as Claude's, so the panel shows both alike.
+        let label = if lower.contains("5h") {
+            "5-hour limit".to_string()
+        } else if lower.contains("weekly") || lower.contains("7d") {
+            "Weekly limit".to_string()
+        } else {
+            label.to_string()
+        };
+        let reset = rest.split_once("(resets ").and_then(|(_, r)| codex_reset(r.trim_end_matches(')').trim(), now, offset_min));
+        windows.push(Window { label, used: (100.0 - left).clamp(0.0, 100.0), reset });
+    }
+    (!windows.is_empty()).then_some(Limits { plan, windows, fetched: now })
+}
+
+/// `14:20` (today) or `09:00 on 25 Oct` / `09:00 on 25. Okt.` (the next 25th).
+fn codex_reset(s: &str, now: i64, offset_min: i64) -> Option<Reset> {
+    let (time, date) = s.split_once(" on ").map_or((s, None), |(t, d)| (t, Some(d)));
+    let (h, m) = time.trim().split_once(':')?;
+    let (hour, minute): (u32, u32) = (h.trim().parse().ok()?, m.trim().get(..2)?.parse().ok()?);
+    let local_days = (now + offset_min * 60).div_euclid(86_400);
+    let days = match date {
+        None => local_days,
+        Some(d) => {
+            let day: u32 = d.split(|c: char| !c.is_ascii_digit()).find(|p| !p.is_empty())?.parse().ok()?;
+            (local_days..local_days + 32).find(|&n| civil_from_days(n).2 == day)?
+        }
+    };
+    let (_, month, day) = civil_from_days(days);
+    let at = days * 86_400 + hour as i64 * 3600 + minute as i64 * 60 - offset_min * 60;
+    Some(Reset { month, day, hour, minute, at })
 }
 
 /// `**Label** — **12%** · Resets Oct 19, 10:10 PM GMT+2`
@@ -158,7 +211,7 @@ mod tests {
         // 2026-10-19 18:00 UTC
         let now = days_from_civil(2026, 10, 19) * 86_400 + 18 * 3600;
         let l = parse(SAMPLE, now).unwrap();
-        assert_eq!(l.plan.as_deref(), Some("pro"));
+        assert_eq!(l.plan.as_deref(), Some("Claude pro"));
         let five = l.five_hour().unwrap();
         assert_eq!(five.used, 12.0);
         let r = five.reset.as_ref().unwrap();
@@ -170,6 +223,26 @@ mod tests {
         assert_eq!(week.used, 88.0);
         assert_eq!(week.reset.as_ref().unwrap().hour, 3);
         assert!(parse("Hallo", now).is_none());
+    }
+
+    #[test]
+    fn reads_the_codex_status() {
+        let status = "**Model:** gpt-5.5  \n**Account:** ChatGPT plus (a@b.de)  \n\n**Token usage:** 1.2K total  \n\
+                      **codex 5h limit:** 73% left (resets 14:20)  \n**codex Weekly limit:** 90% left (resets 09:00 on 25. Okt.)";
+        // 2026-10-22 10:00 local time at UTC+2 = 08:00 UTC.
+        let now = days_from_civil(2026, 10, 22) * 86_400 + 8 * 3600;
+        let l = parse_codex(status, now, 120).unwrap();
+        assert_eq!(l.plan.as_deref(), Some("ChatGPT plus"));
+        let five = l.five_hour().unwrap();
+        assert_eq!(five.used, 27.0);
+        let r = five.reset.as_ref().unwrap();
+        assert_eq!((r.day, r.hour, r.minute), (22, 14, 20));
+        assert_eq!(r.at - now, 4 * 3600 + 20 * 60);
+        let week = l.weekly().unwrap();
+        assert_eq!(week.used, 10.0);
+        let w = week.reset.as_ref().unwrap();
+        assert_eq!((w.month, w.day, w.hour), (10, 25, 9));
+        assert!(parse_codex("**Limits:** data not available yet", now, 120).is_none());
     }
 
     #[test]

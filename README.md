@@ -90,7 +90,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Der Agent arbeitet im geöffneten Projekt: Antworten als Markdown, Gedanken, Plan, Werkzeugaufrufe mit Diffs; vor Änderungen und Befehlen fragt er nach (Erlauben / Immer erlauben / Ablehnen). Änderungen landen rückgängig machbar im offenen Tab und werden gespeichert; mit „Beim Speichern hochladen“ gehen sie auch auf den Server
 - Eingabe mit Werkzeugleiste: Agent, Modell, Aufwand und weitere Einstellungen des Agenten (Modell und Aufwand werden pro Agent gemerkt), Modus darunter; Stopp per ■ oder Esc
 - Dateien anhängen: Büroklammer (aktuelle Datei, Dateiauswahl) oder Rechtsklick in der Seitenleiste „An KI-Agent anhängen“, auch für Serverdateien; Serverdateien kann der Agent auch ändern (über einen Pfad `\\nebula\…`, Nebula lädt die Änderung hoch)
-- Verbleibendes 5-Stunden- und Wochenlimit des Claude-Abos unter der Eingabe (ohne Tokenverbrauch)
+- Verbleibendes 5-Stunden- und Wochenlimit des Claude- oder ChatGPT-Abos (Codex) unter der Eingabe (ohne Tokenverbrauch)
 - Einstellungen → KI-Agenten: Status prüfen, Anmelden mit den Methoden des Anbieters (Browser-Login mit Claude-, ChatGPT- oder Google-Konto, oder API-Schlüssel in der Windows-Anmeldeinformationsverwaltung), Abmelden
 - Node.js: ein installiertes Node wird genutzt, sonst lädt Nebula auf Wunsch die aktuelle LTS-Version (SHA-256-geprüft) nach `%APPDATA%\nebula\runtime`; die Agenten liegen in `%APPDATA%\nebula\agents`
 

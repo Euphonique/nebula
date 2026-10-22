@@ -38,9 +38,7 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## KI-Unterstützung (wie in VS Code)
 
-Agenten über ACP und der eigene Agent (API-Schlüssel, Ollama) sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
-
-- **C** Limits-Anzeige auch für Codex (ChatGPT-Abo), sobald der Adapter sie meldet.
+Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über ACP, eigener Agent, KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge, bearbeitbare Serverdateien, Codex-Limits.
 
 ## Oberfläche und Allgemein
 
@@ -72,7 +70,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
 Runde 3 ist damit komplett.
 
-KI: eigener Agent, KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge und bearbeitbare Serverdateien erledigt; offen: Codex-Limits.
+KI: alle abgestimmten Punkte erledigt (siehe oben).
 
 ## Erledigt
 
@@ -135,3 +133,5 @@ Nebula als MCP-Server (22.10.): lokaler MCP-Server (HTTP, nur 127.0.0.1, Schlüs
 Inline-Vorschläge (22.10.): nach einer Tipp-Pause am Zeilenende fragt Nebula einen eingebauten Agenten (eigenes, sonst automatisch kleines Modell wie Haiku/mini); Vorschlag grau am Cursor, weitere Zeilen auf Hintergrund darunter; Tab übernimmt, Esc verwirft, Weitertippen/Cursor bewegen lässt ihn verschwinden. Standardmäßig aus (Einstellungen › KI-Agenten), Pause einstellbar.
 
 Serverdateien für Agenten bearbeitbar (22.10.): Server-Dateien bekommen für den Agenten einen Pfad `\\nebula\<Server-ID>\pfad`; Lesen liefert den offenen Tab oder holt die Datei vom Server, Schreiben geht in den offenen Tab (Speichern = Hochladen) oder direkt auf den Server; angehängte Serverdateien nennen dem Agenten diesen Pfad; KI-Befehle zum Ändern gehen jetzt auch für Serverdateien; Klick auf solche Dateien im Panel öffnet die Serverdatei.
+
+Codex-Limits (22.10.): verbleibende Limits des ChatGPT-Abos (5 Stunden, Woche) unter der Eingabe wie bei Claude – über `/status` des Codex-Adapters in einer unsichtbaren Sitzung, ohne Modellaufruf; Reset-Zeit in Ortszeit, Datum unabhängig von der Systemsprache.

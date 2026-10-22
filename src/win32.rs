@@ -565,6 +565,23 @@ pub fn local_time(unix_ms: u64) -> LocalTime {
     LocalTime { year: t.wYear, month: t.wMonth, day: t.wDay, hour: t.wHour, minute: t.wMinute }
 }
 
+/// Minutes local time is ahead of UTC right now (summer time included).
+pub fn utc_offset_minutes() -> i64 {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::Storage::FileSystem::FileTimeToLocalFileTime;
+    // FILETIME counts 100 ns steps since 1601.
+    let utc = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64 + 11_644_473_600;
+    let ticks = (utc * 10_000_000) as u64;
+    let ft = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
+    let mut local = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+    // SAFETY: both pointers refer to valid FILETIME values on the stack.
+    if unsafe { FileTimeToLocalFileTime(&ft, &mut local) } == 0 {
+        return 0;
+    }
+    let local_ticks = ((local.dwHighDateTime as u64) << 32 | local.dwLowDateTime as u64) as i64;
+    (local_ticks - ticks as i64) / 600_000_000
+}
+
 /// Console output as text: UTF-8 if it is valid (git, node …), else in the
 /// OEM code page that cmd and older tools write (umlauts as in "dir").
 pub fn console_text(bytes: &[u8]) -> String {

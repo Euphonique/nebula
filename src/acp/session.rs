@@ -238,7 +238,8 @@ pub struct AgentSession {
     pub log: VecDeque<String>,
     /// Plan limits (5 hours, week) if the agent reports them.
     pub limits: Option<super::usage::Limits>,
-    has_usage: bool,
+    /// Command the agent answers locally with its limits (/usage for Claude, /status for Codex).
+    usage_command: Option<&'static str>,
     usage_session: Option<String>,
     usage_text: String,
 }
@@ -264,7 +265,7 @@ impl AgentSession {
             pending: HashMap::new(),
             log: VecDeque::new(),
             limits: None,
-            has_usage: false,
+            usage_command: None,
             usage_session: None,
             usage_text: String::new(),
         };
@@ -413,8 +414,14 @@ impl AgentSession {
                 let resp: Option<InitializeResponse> = serde_json::from_value(result).ok();
                 if let Some(info) = resp.as_ref().and_then(|r| r.agent_info.as_ref()) {
                     self.agent_info = Some(format!("{} {}", info.title.as_deref().unwrap_or(&info.name), info.version));
-                    // Only Claude's adapter answers `/usage` locally; elsewhere it would be a real prompt.
-                    self.has_usage = info.name.contains("claude-agent-acp");
+                    // Only these adapters answer locally (no tokens); elsewhere it would be a real prompt.
+                    self.usage_command = if info.name.contains("claude-agent-acp") {
+                        Some("/usage")
+                    } else if info.name.contains("codex") {
+                        Some("/status")
+                    } else {
+                        None
+                    };
                 }
                 self.embedded_context = resp.as_ref().is_some_and(|r| r.agent_capabilities.prompt_capabilities.embedded_context);
                 self.mcp_http = resp.as_ref().is_some_and(|r| r.agent_capabilities.mcp_capabilities.http);
@@ -463,7 +470,13 @@ impl AgentSession {
                 }
             }
             Pending::UsagePrompt => {
-                if let Some(l) = super::usage::parse(&self.usage_text, super::usage::now()) {
+                let now = super::usage::now();
+                let limits = if self.usage_command == Some("/status") {
+                    super::usage::parse_codex(&self.usage_text, now, crate::win32::utc_offset_minutes())
+                } else {
+                    super::usage::parse(&self.usage_text, now)
+                };
+                if let Some(l) = limits {
                     self.limits = Some(l);
                 }
                 self.usage_text.clear();
@@ -537,7 +550,7 @@ impl AgentSession {
     /// Reads the plan limits again (Claude only, costs no tokens).
     pub fn refresh_limits(&mut self) {
         let busy = self.pending.values().any(|p| matches!(p, Pending::UsageSession | Pending::UsagePrompt));
-        if !self.has_usage || busy || self.session_id.is_none() {
+        if self.usage_command.is_none() || busy || self.session_id.is_none() {
             return;
         }
         match self.usage_session {
@@ -552,7 +565,8 @@ impl AgentSession {
     fn ask_usage(&mut self) {
         let Some(id) = self.usage_session.clone() else { return };
         self.usage_text.clear();
-        self.send("session/prompt", Pending::UsagePrompt, json!({ "sessionId": id, "prompt": [{ "type": "text", "text": "/usage" }] }));
+        let command = self.usage_command.unwrap_or("/usage");
+        self.send("session/prompt", Pending::UsagePrompt, json!({ "sessionId": id, "prompt": [{ "type": "text", "text": command }] }));
     }
 
 

@@ -988,7 +988,7 @@ fn limits_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, l: &crate::acp::usa
     let mut job = egui::text::LayoutJob::default();
     let mut tip = String::new();
     let names = if compact { [t!("5 h"), t!("Wo.")] } else { [t!("5 Std."), t!("Woche")] };
-    for (name, long, w) in [(names[0], "5-Stunden-Limit", l.five_hour()), (names[1], t!("Wochenlimit"), l.weekly())] {
+    for (name, long, w) in [(names[0], t!("5-Stunden-Limit"), l.five_hour()), (names[1], t!("Wochenlimit"), l.weekly())] {
         let Some(w) = w else { continue };
         let free = (100.0 - w.used).max(0.0);
         if !job.sections.is_empty() {
@@ -1003,7 +1003,7 @@ fn limits_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, l: &crate::acp::usa
         tip.push('\n');
     }
     if let Some(plan) = &l.plan {
-        tip.push_str(&t!("Abo: Claude {plan}\n", plan = plan));
+        tip.push_str(&t!("Abo: {plan}\n", plan = plan));
     }
     if let Some(info) = info {
         tip.push_str(info);
