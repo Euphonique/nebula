@@ -135,6 +135,16 @@ impl NebulaApp {
             if old == now && !came_back {
                 continue;
             }
+            // Hex view: show the new content without reading a possibly huge file here.
+            if doc.hex.is_some() {
+                doc.disk_stamp = Some(now);
+                let len = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                doc.hex = Some(std::sync::Arc::new(match len > MAX_OPEN_BYTES as u64 {
+                    true => crate::hex_view::HexData::file(path.clone(), len),
+                    false => crate::hex_view::HexData::memory(std::fs::read(&path).unwrap_or_default()),
+                }));
+                continue;
+            }
             let Ok(bytes) = std::fs::read(&path) else { continue };
             let doc = &mut self.docs[i];
             // An image changed on disk: show the new picture.

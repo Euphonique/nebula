@@ -478,7 +478,7 @@ impl NebulaApp {
 
     /// An open tab as attachment, with its unsaved changes.
     fn doc_attachment(&mut self, i: usize) -> Option<Attachment> {
-        if self.docs[i].image.is_some() {
+        if self.docs[i].image.is_some() || self.docs[i].hex.is_some() {
             return None;
         }
         let text = self.docs[i].text().to_string();

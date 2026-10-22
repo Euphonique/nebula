@@ -48,7 +48,6 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 ## Oberfläche und Allgemein
 
 - **B** Mehrere Fenster/Projekte gleichzeitig.
-- **B** Große Dateien (> 64 MB) schreibgeschützt öffnen statt ablehnen; Hex-Ansicht für Binärdateien.
 - **B** Update-Hinweis, Installer und Eintrag „Mit Nebula öffnen“ im Explorer-Kontextmenü, Dateizuordnungen.
 - **C** Oberfläche auch auf Englisch (Texte in Übersetzungsdateien auslagern).
 - **C** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
@@ -56,6 +55,7 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 ## Qualität und Technik
 
 - **B** Performance mit sehr großen Dateien (10–50 MB, minifiziertes JS in einer Zeile) und vielen Tabs prüfen; Highlighting inkrementell statt komplett neu.
+- **C** Große Textdateien im Hintergrund laden (bei ~70 MB blockiert das Öffnen die Oberfläche kurz); Hex-Ansicht mit „Gehe zu Offset“ und Suche.
 - **C** Absturzbericht auch für harte Abstürze in nativem Code (Zugriffsverletzung in WebView/wgpu), z. B. per `SetUnhandledExceptionFilter` – bisher nur Rust-Panics.
 - **C** Automatisierte UI-Tests für die wichtigsten Abläufe (Öffnen, Bearbeiten, Speichern lokal/Server).
 
@@ -71,7 +71,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 4. ~~Vorschau in Gerätebreiten~~ (erledigt; kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
 5. ~~Eigene Snippets pro Sprache~~ (erledigt, als Panel „{ }“).
 6. ~~Tabs anheften; Einstellungen exportieren/importieren~~ (erledigt).
-7. Große Dateien schreibgeschützt öffnen, Hex-Ansicht.
+7. ~~Große Dateien schreibgeschützt öffnen, Hex-Ansicht~~ (erledigt).
 8. Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“.
 
 KI: als Nächstes der eigene Agent für API-Schlüssel und Ollama, danach KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
@@ -101,3 +101,5 @@ Snippets (22.10.): Tab-Sprünge durch Platzhalter mit Mehrfachbearbeitung gleich
 Einstellungen exportieren/importieren (22.10.): alle Bereiche einzeln wählbar in einer JSON-Datei, ohne Passwörter und API-Schlüssel; Import ergänzt Server/Snippets/Agenten und installiert fehlende Erweiterungen aus der Bibliothek nach.
 
 Tabs anheften (22.10.): angeheftete Tabs stehen links mit Nadel statt Schließen-Knopf, bleiben bei „Andere/Rechts/Alle schließen“ und Mittelklick stehen und werden in Sitzung und Projekt-Tabs gemerkt.
+
+Große Dateien und Hex-Ansicht (22.10.): Binärdateien öffnen als schreibgeschützte Hex-Ansicht (große lokale Dateien werden stückweise gelesen, „Als Text öffnen“ bei Fehlerkennung), Textdateien über 64 MB schreibgeschützt bis 512 MB, darüber als Hex.

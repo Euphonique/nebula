@@ -53,6 +53,8 @@ use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
 
 const MAX_OPEN_BYTES: usize = 64 * 1024 * 1024;
+/// Larger text files open as hex instead (the text would need too much memory).
+const MAX_READ_ONLY_BYTES: usize = 512 * 1024 * 1024;
 /// Width of the text column in zen mode.
 const ZEN_WIDTH: f32 = 960.0;
 
@@ -364,6 +366,33 @@ impl NebulaApp {
         }
     }
 
+    fn open_hex(&mut self, source: DocSource, data: crate::hex_view::HexData) {
+        let mut doc = Document::new(source, "");
+        doc.read_only = true;
+        doc.hex = Some(Arc::new(data));
+        self.add_doc(doc);
+    }
+
+    /// A binary-looking file shown as text after all ("Als Text öffnen").
+    fn reopen_as_text(&mut self, index: usize) {
+        let Some(hex) = self.docs.get(index).and_then(|d| d.hex.clone()) else { return };
+        let bytes = match &hex.source {
+            crate::hex_view::Source::Memory(b) => b.as_ref().clone(),
+            crate::hex_view::Source::File { path, .. } => match std::fs::read(path) {
+                Ok(b) => b,
+                Err(e) => return self.error(format!("{}: {e}", path.display())),
+            },
+        };
+        let old = &self.docs[index];
+        let mut doc = Document::from_bytes(old.source.clone(), &bytes);
+        doc.id = old.id;
+        doc.pinned = old.pinned;
+        doc.disk_stamp = old.disk_stamp;
+        doc.remote_stamp = old.remote_stamp.clone();
+        doc.read_only = bytes.len() > MAX_OPEN_BYTES;
+        self.docs[index] = doc;
+    }
+
     fn open_local(&mut self, path: &Path) {
         let path = crate::ui::sidebar::normalize_path(path);
         if let Some(i) = self
@@ -374,6 +403,17 @@ impl NebulaApp {
             self.activate(i);
             return;
         }
+        // Big files: look at the start first instead of reading everything.
+        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        if size > MAX_OPEN_BYTES as u64 && !crate::image_view::is_image_name(&path.to_string_lossy()) {
+            let mut head = vec![0u8; 8192];
+            let n = std::fs::File::open(&path).and_then(|mut f| std::io::Read::read(&mut f, &mut head)).unwrap_or(0);
+            head.truncate(n);
+            if is_binary(&head) || size > MAX_READ_ONLY_BYTES as u64 {
+                self.open_hex(DocSource::Local(path.clone()), crate::hex_view::HexData::file(path.clone(), size));
+                return;
+            }
+        }
         match std::fs::read(&path) {
             Ok(bytes) if crate::image_view::is_image_name(&path.to_string_lossy()) => {
                 self.open_image(DocSource::Local(path.clone()), &bytes);
@@ -381,9 +421,19 @@ impl NebulaApp {
                     self.docs[i].disk_stamp = DiskStamp::of(&path);
                 }
             }
-            Ok(bytes) if bytes.len() > MAX_OPEN_BYTES => self.error(format!("{} ist zu groß.", path.display())),
             Ok(bytes) if is_binary(&bytes) => {
-                self.error(format!("{} ist keine Textdatei.", path.display()));
+                self.open_hex(DocSource::Local(path.clone()), crate::hex_view::HexData::memory(bytes));
+                if let Some(i) = self.active {
+                    self.docs[i].disk_stamp = DiskStamp::of(&path);
+                }
+            }
+            Ok(bytes) if bytes.len() > MAX_OPEN_BYTES => {
+                // Large text: viewable, but editing would be too slow.
+                let mut doc = Document::from_bytes(DocSource::Local(path.clone()), &bytes);
+                doc.read_only = true;
+                doc.disk_stamp = DiskStamp::of(&path);
+                self.add_doc(doc);
+                self.info(format!("{} ist sehr groß ({} MB) und wurde schreibgeschützt geöffnet.", path.display(), bytes.len() / 1024 / 1024));
             }
             Ok(bytes) => {
                 self.record_history(&DocSource::Local(path.clone()), &bytes, crate::history::Kind::Opened);
@@ -447,7 +497,7 @@ impl NebulaApp {
     /// `force` overwrites the server file even if it changed in the meantime.
     fn save_doc_with(&mut self, index: usize, close_after: bool, force: bool) -> bool {
         // An image tab has no text: saving would overwrite the picture.
-        if self.docs.get(index).is_some_and(|d| d.image.is_some()) {
+        if self.docs.get(index).is_some_and(|d| d.image.is_some() || d.hex.is_some()) {
             if close_after {
                 self.docs.remove(index);
                 self.fix_active_after_remove(index);
@@ -671,7 +721,11 @@ impl NebulaApp {
                         continue;
                     }
                     if is_binary(&data) {
-                        self.error(format!("{path} ist keine Textdatei."));
+                        let mut doc = Document::new(DocSource::Remote { site_id, path }, "");
+                        doc.read_only = true;
+                        doc.remote_stamp = stamp;
+                        doc.hex = Some(Arc::new(crate::hex_view::HexData::memory(data.to_vec())));
+                        self.add_doc(doc);
                         continue;
                     }
                     let source = DocSource::Remote { site_id, path };
@@ -1864,7 +1918,7 @@ impl NebulaApp {
             }
             let Some(i) = self.active else { return };
             // Cursor, encoding and language mean nothing for a picture.
-            if self.docs[i].image.is_some() {
+            if self.docs[i].image.is_some() || self.docs[i].hex.is_some() {
                 return;
             }
             let e = self.settings.editor_for_doc(&self.docs[i]);

@@ -147,6 +147,19 @@ impl NebulaApp {
             });
             return EditorOutput::default();
         }
+        if let Some(hex) = doc.hex.clone() {
+            let id = egui::Id::unique(("hex-pane", doc.id, pane));
+            let can_text = hex.len() <= super::MAX_READ_ONLY_BYTES as u64;
+            let action = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", pane)), |ui| {
+                    crate::hex_view::show(ui, rect, &hex, &self.theme, id, can_text)
+                })
+                .inner;
+            if let crate::hex_view::Action::OpenAsText = action {
+                self.reopen_as_text(index);
+            }
+            return EditorOutput::default();
+        }
         ui.scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", pane)), |ui| {
             EditorView { doc, settings: &settings, theme: &self.theme, matches, current_match, pane, follow }.show(ui)
         })
