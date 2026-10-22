@@ -250,6 +250,7 @@ impl Backend for SftpBackend {
                     is_dir,
                     size: meta.len(),
                     mode: meta.permissions.map(|p| p & 0o7777),
+                    mtime: meta.mtime.map(i64::from),
                 });
             }
             Ok(out)

@@ -48,6 +48,7 @@ mod quick_open;
 mod crash_ui;
 mod snippets_panel;
 mod settings_transfer;
+mod sync_ui;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -82,6 +83,8 @@ enum Dialog {
     ImportSites(Box<servers::ImportForm>),
     ImportSnippets(Box<snippets_panel::SnippetImport>),
     SettingsExport(Box<settings_transfer::ExportForm>),
+    /// Synchronizing the project with its server folder (state in `sync`).
+    Sync,
     SettingsImport(Box<settings_transfer::ImportForm>),
     /// The report of the last crash.
     CrashReport(Box<crate::crash::Report>),
@@ -182,6 +185,8 @@ pub struct NebulaApp {
     ext: extensions::ExtUi,
     /// Extensions being reinstalled after importing settings.
     reinstall: Option<settings_transfer::Reinstall>,
+    /// Synchronization in progress (preview or transfers).
+    sync: Option<sync_ui::SyncRun>,
     /// Print job running in the background; yields the number of pages.
     printing: Option<std::thread::JoinHandle<Result<usize, String>>>,
     /// SSH terminals in the bottom panel.
@@ -254,6 +259,7 @@ impl NebulaApp {
             preview_state: Default::default(),
             ext: extensions::ExtUi::new(&cc.egui_ctx, &settings.disabled_extensions),
             reinstall: None,
+            sync: None,
             printing: None,
             terminals: Default::default(),
             disk: Default::default(),
@@ -823,11 +829,20 @@ impl NebulaApp {
                     let name = path.rsplit('/').next().unwrap_or(&path).to_string();
                     self.info(format!("{name} auf {site_name} gespeichert ({})", human_bytes(bytes)));
                 }
+                Reply::Scanned { files, truncated } => {
+                    self.sync_scanned(ev.tag, files, truncated);
+                }
+                Reply::Synced { done, failed } => {
+                    self.sync_done(ev.tag, done, failed);
+                }
                 Reply::Changed { dir, message } => {
                     self.info(message);
                     self.remote_request(&ev.site_id, Request::List(dir));
                 }
                 Reply::Failed { request, message } => {
+                    if self.sync_failed(ev.tag, &message) {
+                        continue;
+                    }
                     if self.preview_state.pending.contains_key(&ev.tag) {
                         let p = if let Request::Read(p) = &request { p.clone() } else { String::new() };
                         self.preview_read_done(ev.tag, &p, None);
@@ -1009,6 +1024,7 @@ impl NebulaApp {
             }
             SidebarAction::Publish => self.publish(),
             SidebarAction::PublishSetup => self.open_publish_setup(),
+            SidebarAction::Sync => self.start_sync(),
             SidebarAction::Search(crate::ui::search::SearchAction::Open { file, line, column }) => {
                 self.open_file_at(file, line, column);
                 self.sidebar.focused = false;
@@ -2644,9 +2660,13 @@ impl NebulaApp {
                         ui.label("");
                         ui.checkbox(&mut target.upload_on_save, "Beim Speichern automatisch hochladen");
                         ui.end_row();
+                        ui.label("Ausschließen");
+                        ui.add(egui::TextEdit::singleline(&mut target.exclude).hint_text(".git, node_modules, .env").desired_width(300.0))
+                            .on_hover_text("Datei- und Ordnernamen, die beim Synchronisieren übersprungen werden (durch Komma getrennt)");
+                        ui.end_row();
                     });
                     ui.add_space(4.0);
-                    ui.label(RichText::new("„Veröffentlichen“ lädt alle seit dem letzten Mal geänderten Dateien hoch.").small().color(self.theme.text_faint));
+                    ui.label(RichText::new("„Veröffentlichen“ lädt alle seit dem letzten Mal geänderten Dateien hoch. „Synchronisieren“ gleicht in beide Richtungen ab, mit Vorschau.").small().color(self.theme.text_faint));
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         if ui.add_enabled(!target.site_id.is_empty(), primary_button("Sichern", accent)).clicked() {
@@ -2669,6 +2689,7 @@ impl NebulaApp {
                         && old.remote_path == target.remote_path
                     {
                         target.uploaded = old.uploaded.clone();
+                        target.synced = old.synced.clone();
                     }
                     self.settings.publish.insert(key, target.clone());
                     let _ = self.settings.save();
@@ -2794,6 +2815,10 @@ impl NebulaApp {
                     }
                 }
                 Dialog::Permissions { items, mode, octal, recurse }
+            }
+            Dialog::Sync => {
+                keep = self.sync_dialog(ctx);
+                Dialog::Sync
             }
             Dialog::SettingsExport(mut form) => {
                 keep = self.settings_export_dialog(ctx, &mut form);

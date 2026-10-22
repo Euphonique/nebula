@@ -19,6 +19,7 @@ mod crash;
 mod remote;
 mod server_import;
 mod snippet_io;
+mod sync;
 mod settings;
 mod settings_io;
 mod theme;

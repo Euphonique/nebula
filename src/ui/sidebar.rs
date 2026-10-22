@@ -146,6 +146,8 @@ pub enum SidebarAction {
     OpenTerminal(String),
     Publish,
     PublishSetup,
+    /// Two-way synchronization of the project with its server folder.
+    Sync,
     Search(super::search::SearchAction),
     /// Project search limited to a folder (local or on a server).
     SearchIn(DirRef),
@@ -521,6 +523,10 @@ impl Sidebar {
                                 actions.push(SidebarAction::Publish);
                             }
                             resp.context_menu(|ui| {
+                                if ui.button("Synchronisieren…").on_hover_text("In beide Richtungen abgleichen, mit Vorschau").clicked() {
+                                    actions.push(SidebarAction::Sync);
+                                    ui.close();
+                                }
                                 if ui.button("Veröffentlichen einrichten…").clicked() {
                                     actions.push(SidebarAction::PublishSetup);
                                     ui.close();

@@ -1,3 +1,13 @@
+# Ergänzungen und Bugs:
+
+- Server per DragnDrop in die Gruppen sortieren.
+- Falls noch nicht eingebaut: Servergruppen auch bei Import/Export beachten.
+- Dateien/Ordner von einem Server auf den anderen kopieren (Standard) bzw. verschieben (per Kontextmenü und per DragnDrop)
+- Toggle in der Serverliste für: Alle Server anzeigen/ Gruppen anzeigen
+- Snippets: Ebenfalls in Gruppen sortierbar machen. Gruppen auch bei Import und Export beachten.
+
+
+
 # Nebula – offene Ideen
 
 Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, **C** = nice to have.
@@ -23,7 +33,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Server und Veröffentlichen
 
-- **B** Synchronisieren in beide Richtungen mit Vorschau (neu/geändert/gelöscht) und Ausschlussliste (`.git`, `node_modules`, `.env`).
 - **C** Implizites FTPS (Port 990) – wird beim FileZilla-Import bisher als explizites FTPS übernommen.
 - **C** Suche im Terminal-Verlauf (Strg+F im Terminal, Treffer im Scrollback hervorheben).
 - **C** Datenbank light: MySQL über SSH-Tunnel, Tabellen ansehen, Abfragen ausführen.
@@ -72,7 +81,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 5. ~~Eigene Snippets pro Sprache~~ (erledigt, als Panel „{ }“).
 6. ~~Tabs anheften; Einstellungen exportieren/importieren~~ (erledigt).
 7. ~~Große Dateien schreibgeschützt öffnen, Hex-Ansicht~~ (erledigt).
-8. Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“.
+8. ~~Synchronisieren mit Vorschau~~ (erledigt); Installer/„Mit Nebula öffnen“.
 
 KI: als Nächstes der eigene Agent für API-Schlüssel und Ollama, danach KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
 
@@ -103,3 +112,5 @@ Einstellungen exportieren/importieren (22.10.): alle Bereiche einzeln wählbar i
 Tabs anheften (22.10.): angeheftete Tabs stehen links mit Nadel statt Schließen-Knopf, bleiben bei „Andere/Rechts/Alle schließen“ und Mittelklick stehen und werden in Sitzung und Projekt-Tabs gemerkt.
 
 Große Dateien und Hex-Editor (22.10.): Binärdateien öffnen im Hex-Editor (Überschreiben, Rückgängig, Speichern nur der geänderten Bytes) (große lokale Dateien werden stückweise gelesen, „Als Text öffnen“ bei Fehlerkennung), Textdateien über 64 MB schreibgeschützt bis 512 MB, darüber als Hex.
+
+Synchronisieren (22.10.): Projekt und Serverordner in beide Richtungen abgleichen – Vorschau mit Hochladen/Herunterladen/Löschen/Konflikten, Stand der letzten Synchronisierung wird gemerkt, Löschungen nicht vorausgewählt (lokal in den Papierkorb), Ausschlussliste pro Projekt.

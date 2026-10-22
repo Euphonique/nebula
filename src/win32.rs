@@ -536,3 +536,24 @@ pub fn local_time(unix_ms: u64) -> LocalTime {
     let t = if ok { local } else { utc };
     LocalTime { year: t.wYear, month: t.wMonth, day: t.wDay, hour: t.wHour, minute: t.wMinute }
 }
+
+/// Moves a file or folder to the recycle bin (without asking). False on failure.
+pub fn move_to_recycle_bin(path: &std::path::Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::{FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, SHFILEOPSTRUCTW, SHFileOperationW};
+    // The list of paths ends with two zeros.
+    let mut from: Vec<u16> = path.as_os_str().encode_wide().collect();
+    from.extend([0, 0]);
+    let mut op = SHFILEOPSTRUCTW {
+        hwnd: std::ptr::null_mut(),
+        wFunc: FO_DELETE,
+        pFrom: from.as_ptr(),
+        pTo: std::ptr::null(),
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT) as u16,
+        fAnyOperationsAborted: 0,
+        hNameMappings: std::ptr::null_mut(),
+        lpszProgressTitle: std::ptr::null(),
+    };
+    // SAFETY: `from` is a double-zero-terminated wide string that outlives the call.
+    unsafe { SHFileOperationW(&mut op) == 0 && op.fAnyOperationsAborted == 0 }
+}

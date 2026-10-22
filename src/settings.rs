@@ -179,7 +179,7 @@ impl Appearance {
 }
 
 /// Where a local project is published to (like Nova's project publishing).
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PublishTarget {
     pub site_id: String,
@@ -188,6 +188,30 @@ pub struct PublishTarget {
     pub upload_on_save: bool,
     /// Modification time (seconds) of each file when it was last uploaded, by relative path.
     pub uploaded: std::collections::BTreeMap<String, u64>,
+    /// Names skipped when synchronizing, comma separated.
+    pub exclude: String,
+    /// Both sides of every file after the last synchronization.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub synced: std::collections::BTreeMap<String, crate::sync::SyncedState>,
+}
+
+impl Default for PublishTarget {
+    fn default() -> Self {
+        Self {
+            site_id: String::new(),
+            remote_path: String::new(),
+            upload_on_save: false,
+            uploaded: Default::default(),
+            exclude: crate::sync::DEFAULT_EXCLUDE.join(", "),
+            synced: Default::default(),
+        }
+    }
+}
+
+impl PublishTarget {
+    pub fn exclude_list(&self) -> Vec<String> {
+        self.exclude.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

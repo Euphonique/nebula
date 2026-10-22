@@ -35,6 +35,8 @@ pub struct RemoteEntry {
     pub size: u64,
     /// Unix permission bits (`0o755`), if the server reports them.
     pub mode: Option<u32>,
+    /// Modification time (seconds since the Unix epoch), if reported.
+    pub mtime: Option<i64>,
 }
 
 /// Operations every protocol backend supports. Paths are absolute and `/`-separated.
@@ -93,7 +95,30 @@ pub enum Request {
     Copy { from: String, to: String, is_dir: bool },
     /// Change permissions; for folders optionally of everything inside too.
     Chmod { path: String, mode: u32, is_dir: bool, recurse: Option<Recurse> },
+    /// All files below `root` (recursively), skipping names in `exclude`.
+    Scan { root: String, exclude: Vec<String> },
+    /// Synchronizing: uploads, downloads and deletions one after another.
+    Sync(Vec<SyncOp>),
 }
+
+/// One step of a synchronization.
+#[derive(Clone, Debug)]
+pub enum SyncOp {
+    Upload { local: std::path::PathBuf, remote: String },
+    Download { remote: String, local: std::path::PathBuf },
+    Delete(String),
+}
+
+/// A file found by [`Request::Scan`], relative to the scanned folder.
+#[derive(Clone, Debug)]
+pub struct ScannedFile {
+    pub rel: String,
+    pub size: u64,
+    pub mtime: Option<i64>,
+}
+
+/// Most files a scan collects (protects against scanning a whole server).
+const SCAN_LIMIT: usize = 50_000;
 
 /// What a recursive permission change applies to below a folder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,6 +142,8 @@ impl Request {
             Request::Download { remote, .. } => format!("Herunterladen von {remote}"),
             Request::Copy { from, .. } => format!("Kopieren von {from}"),
             Request::Chmod { path, .. } => format!("Ändern der Berechtigungen von {path}"),
+            Request::Scan { root, .. } => format!("Einlesen von {root}"),
+            Request::Sync(ops) => format!("Synchronisieren ({} Schritte)", ops.len()),
         }
     }
 }
@@ -132,6 +159,10 @@ pub enum Reply {
     Transferred { message: String, remote_dir: Option<String>, local_dir: Option<std::path::PathBuf> },
     /// A create/mkdir/delete/rename finished; `dir` is the directory to refresh.
     Changed { dir: String, message: String },
+    /// Result of [`Request::Scan`]; `truncated` when the limit was reached.
+    Scanned { files: Vec<ScannedFile>, truncated: bool },
+    /// A [`Request::Sync`] finished; `failed` lists steps that went wrong.
+    Synced { done: usize, failed: Vec<String> },
     Failed { request: Request, message: String },
     ConnectFailed { message: String },
     Disconnected,
@@ -186,6 +217,10 @@ impl Progress<'_> {
             anyhow::bail!("Abgebrochen");
         }
         Ok(())
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn finished_file(&mut self) {
@@ -547,8 +582,57 @@ impl Worker {
                 let what = if n == 1 { path.clone() } else { format!("{n} Objekte") };
                 Reply::Changed { dir: parent(path), message: format!("Berechtigungen von {what} auf {} gesetzt", mode_string(*mode)) }
             }
+            Request::Scan { root, exclude } => {
+                let mut files = Vec::new();
+                let truncated = scan_recursive(b.as_mut(), root, "", exclude, &mut files)?;
+                Reply::Scanned { files, truncated }
+            }
+            Request::Sync(ops) => {
+                // Every step on its own: one failure doesn't stop the others.
+                let (mut done, mut failed) = (0, Vec::new());
+                for op in ops {
+                    let result = match op {
+                        SyncOp::Upload { local, remote } => upload_recursive(b.as_mut(), local, remote, progress).map(|_| ()),
+                        SyncOp::Download { remote, local } => download_recursive(b.as_mut(), remote, local, false, progress).map(|_| ()),
+                        SyncOp::Delete(path) => b.remove_file(path),
+                    };
+                    match result {
+                        Ok(()) => done += 1,
+                        // A cancelled transfer stops everything.
+                        Err(e) if progress.cancelled() => return Err(e),
+                        Err(e) => {
+                            let what = match op {
+                                SyncOp::Upload { remote, .. } | SyncOp::Download { remote, .. } | SyncOp::Delete(remote) => remote,
+                            };
+                            failed.push(format!("{what}: {e:#}"));
+                        }
+                    }
+                }
+                Reply::Synced { done, failed }
+            }
         })
     }
+}
+
+/// Collects files below `dir`; returns true when [`SCAN_LIMIT`] was reached.
+fn scan_recursive(b: &mut dyn Backend, dir: &str, rel: &str, exclude: &[String], out: &mut Vec<ScannedFile>) -> Result<bool> {
+    for e in b.list(dir)? {
+        if exclude.iter().any(|x| x == &e.name) {
+            continue;
+        }
+        let rel = if rel.is_empty() { e.name.clone() } else { format!("{rel}/{}", e.name) };
+        if e.is_dir {
+            if scan_recursive(b, &e.path, &rel, exclude, out)? {
+                return Ok(true);
+            }
+        } else {
+            out.push(ScannedFile { rel, size: e.size, mtime: e.mtime });
+            if out.len() >= SCAN_LIMIT {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str, p: &mut Progress) -> Result<usize> {
@@ -590,6 +674,9 @@ fn download_recursive(b: &mut dyn Backend, remote: &str, local: &std::path::Path
     } else {
         p.file()?;
         let data = b.read(remote)?;
+        if let Some(dir) = local.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
         std::fs::write(local, data)?;
         p.finished_file();
         Ok(1)

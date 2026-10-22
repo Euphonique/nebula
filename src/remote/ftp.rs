@@ -107,6 +107,7 @@ impl Backend for FtpBackend {
                 // link without extension as one.
                 is_dir: f.is_directory() || (f.is_symlink() && !f.name().contains('.')),
                 size: f.size() as u64,
+                mtime: f.modified().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs() as i64),
             })
             .collect())
     }
