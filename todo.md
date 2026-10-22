@@ -52,7 +52,7 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 ## Oberfläche und Allgemein
 
 - **B** Mehrere Fenster/Projekte gleichzeitig.
-- **B** Update-Hinweis, Installer und Eintrag „Mit Nebula öffnen“ im Explorer-Kontextmenü, Dateizuordnungen.
+- **C** Update-Hinweis (braucht eine Adresse, unter der neue Versionen veröffentlicht werden).
 - **C** Oberfläche auch auf Englisch (Texte in Übersetzungsdateien auslagern).
 - **C** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
 
@@ -76,7 +76,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 5. ~~Eigene Snippets pro Sprache~~ (erledigt, als Panel „{ }“).
 6. ~~Tabs anheften; Einstellungen exportieren/importieren~~ (erledigt).
 7. ~~Große Dateien schreibgeschützt öffnen, Hex-Ansicht~~ (erledigt).
-8. ~~Synchronisieren mit Vorschau~~ (erledigt); Installer/„Mit Nebula öffnen“.
+8. ~~Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“~~ (erledigt).
 
 KI: als Nächstes der eigene Agent für API-Schlüssel und Ollama, danach KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
 
@@ -115,3 +115,5 @@ Kopieren zwischen Servern (22.10.): Ziehen zwischen verschiedenen Orten kopiert 
 Serverliste (22.10.): Server per Drag \& Drop in Gruppen sortieren, Umschalter zwischen Gruppen und flacher Liste.
 
 Snippet-Gruppen (22.10.): eigene Snippets in einklappbaren Gruppen (Feld „Gruppe“, Drag \& Drop), Gruppen in Export\/Import und Einstellungs-Export; VS-Code-Sammlungen (`*.code-snippets`) werden zu einer Gruppe.
+
+Windows-Integration (22.10.): Installieren pro Benutzer ohne Fremdwerkzeug (Programmordner, Startmenü, Eintrag unter „Apps“), „Mit Nebula öffnen“ im Explorer, „Öffnen mit“ für 44 Text-/Code-Dateitypen, zweiter Start öffnet Dateien im laufenden Fenster.
