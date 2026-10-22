@@ -80,30 +80,34 @@ impl Item {
 }
 
 /// Files of a local folder, skipping excluded names (folders and files).
-pub fn scan_local(root: &Path, exclude: &[String], limit: usize) -> Vec<LocalFile> {
+/// Fails if something can't be read or there are more than `limit` files:
+/// a missing file would look deleted (or new on the other side) and lead
+/// to wrong deletions or overwrites.
+pub fn scan_local(root: &Path, exclude: &[String], limit: usize) -> Result<Vec<LocalFile>, String> {
     let mut out = Vec::new();
     let mut stack = vec![(root.to_path_buf(), String::new())];
     while let Some((dir, rel)) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-        for e in rd.flatten() {
+        let unreadable = |e: std::io::Error| t!("{path} konnte nicht gelesen werden: {e}", path = dir.display(), e = e);
+        for e in std::fs::read_dir(&dir).map_err(unreadable)? {
+            let e = e.map_err(unreadable)?;
             let name = e.file_name().to_string_lossy().into_owned();
             if exclude.iter().any(|x| *x == name) {
                 continue;
             }
             let rel = if rel.is_empty() { name } else { format!("{rel}/{name}") };
-            let Ok(meta) = e.metadata() else { continue };
+            let meta = e.metadata().map_err(unreadable)?;
             if meta.is_dir() {
                 stack.push((e.path(), rel));
             } else {
                 let mtime = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
                 out.push(LocalFile { rel, size: meta.len(), mtime });
-                if out.len() >= limit {
-                    return out;
+                if out.len() > limit {
+                    return Err(t!("Das Projekt enthält mehr als {limit} Dateien – große Ordner (z. B. vendor) in die Ausschlussliste aufnehmen.", limit = limit));
                 }
             }
         }
     }
-    out
+    Ok(out)
 }
 
 /// Compares both sides with the last synchronization and lists what to do.
@@ -248,7 +252,9 @@ mod tests {
         std::fs::write(tmp.path().join("css/s.css"), "abc").unwrap();
         std::fs::write(tmp.path().join(".env"), "SECRET=1").unwrap();
         let exclude: Vec<String> = DEFAULT_EXCLUDE.iter().map(|s| s.to_string()).collect();
-        let files = scan_local(tmp.path(), &exclude, 100);
+        let files = scan_local(tmp.path(), &exclude, 100).unwrap();
         assert_eq!(files.iter().map(|f| (f.rel.as_str(), f.size)).collect::<Vec<_>>(), [("css/s.css", 3)]);
+        // Too many files: refused instead of a partial list.
+        assert!(scan_local(tmp.path(), &[], 1).is_err());
     }
 }

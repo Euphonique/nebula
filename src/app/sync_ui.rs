@@ -23,7 +23,7 @@ pub(super) struct SyncRun {
 enum Stage {
     /// Waiting for the server listing.
     Scanning { tag: u64, local: Vec<LocalFile> },
-    Preview { items: Vec<Item>, truncated: bool },
+    Preview { items: Vec<Item> },
     /// Transfers running on the server connection.
     Running { tag: u64, transferred: HashSet<String> },
     /// Reading both sides again to remember the new state.
@@ -41,7 +41,13 @@ impl NebulaApp {
             self.open_publish_setup();
             return;
         };
-        let local = sync::scan_local(&root, &target.exclude_list(), LOCAL_LIMIT);
+        let local = match sync::scan_local(&root, &target.exclude_list(), LOCAL_LIMIT) {
+            Ok(local) => local,
+            Err(e) => {
+                self.error(t!("Synchronisieren nicht möglich: {e}", e = e));
+                return;
+            }
+        };
         let request = Request::Scan { root: remote::normalize(&target.remote_path), exclude: target.exclude_list() };
         let Some(tag) = self.send_remote(&target.site_id, request) else {
             self.error(t!("Der verknüpfte Server existiert nicht mehr."));
@@ -54,7 +60,16 @@ impl NebulaApp {
     /// True if the reply belonged to the synchronization.
     pub(super) fn sync_scanned(&mut self, tag: u64, files: Vec<ScannedFile>, truncated: bool) -> bool {
         let Some(run) = &mut self.sync else { return false };
-        match std::mem::replace(&mut run.stage, Stage::Preview { items: Vec::new(), truncated }) {
+        match std::mem::replace(&mut run.stage, Stage::Preview { items: Vec::new() }) {
+            Stage::Scanning { tag: t, .. } | Stage::Rescanning { tag: t, .. } if t == tag && truncated => {
+                // Files beyond the limit would look deleted or new.
+                self.sync = None;
+                if matches!(self.dialog, Some(Dialog::Sync)) {
+                    self.dialog = None;
+                }
+                self.error(t!("Synchronisieren nicht möglich: Der Serverordner enthält sehr viele Dateien – große Ordner (z. B. vendor) in die Ausschlussliste aufnehmen."));
+                true
+            }
             Stage::Scanning { tag: t, local } if t == tag => {
                 let mut items = sync::plan(&local, &files, &run.target.synced);
                 // Decided conflicts show the newer side first.
@@ -70,7 +85,7 @@ impl NebulaApp {
                     }
                     self.info(t!("Alles synchron – keine Unterschiede."));
                 } else {
-                    run.stage = Stage::Preview { items, truncated };
+                    run.stage = Stage::Preview { items };
                 }
                 true
             }
@@ -117,7 +132,12 @@ impl NebulaApp {
         } else {
             self.error(t!("Synchronisiert mit Fehlern ({done} erledigt):\n{failed}", done = done, failed = failed.join("\n")));
         }
-        let local = sync::scan_local(&root, &target.exclude_list(), LOCAL_LIMIT);
+        // Without a complete local list the old state is kept; files then show
+        // up as conflicts next time instead of being remembered wrongly.
+        let Ok(local) = sync::scan_local(&root, &target.exclude_list(), LOCAL_LIMIT) else {
+            self.sync = None;
+            return true;
+        };
         let request = Request::Scan { root: remote::normalize(&target.remote_path), exclude: target.exclude_list() };
         match self.send_remote(&target.site_id, request) {
             Some(tag) => {
@@ -185,10 +205,7 @@ impl NebulaApp {
                         keep = false;
                     }
                 }
-                Stage::Preview { items, truncated } => {
-                    if *truncated {
-                        ui.label(RichText::new(t!("Der Serverordner enthält sehr viele Dateien – nur die ersten 50 000 wurden verglichen.")).small().color(theme.modified));
-                    }
+                Stage::Preview { items } => {
                     egui::ScrollArea::vertical().max_height(420.0).auto_shrink([false, true]).show(ui, |ui| {
                         for kind in [Kind::Conflict, Kind::Upload, Kind::Download, Kind::DeleteRemote, Kind::DeleteLocal] {
                             let group: Vec<usize> = items.iter().enumerate().filter(|(_, i)| i.kind == kind).map(|(n, _)| n).collect();

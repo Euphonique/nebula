@@ -550,6 +550,10 @@ impl Worker {
                 }
             }
             Request::CreateFile(path) => {
+                // Writing would empty an existing file.
+                if name_taken(b.as_mut(), path)? {
+                    anyhow::bail!(t!("{path} existiert bereits.", path = path));
+                }
                 b.write(path, &[])?;
                 Reply::Changed { dir: parent(path), message: t!("{path} angelegt", path = path) }
             }
@@ -566,6 +570,10 @@ impl Worker {
                 Reply::Changed { dir: parent(path), message: t!("{path} gelöscht", path = path) }
             }
             Request::Rename { from, to } => {
+                // FTP servers usually replace an existing target silently.
+                if from != to && name_taken(b.as_mut(), to)? {
+                    anyhow::bail!(t!("{path} existiert bereits.", path = to));
+                }
                 b.rename(from, to)?;
                 Reply::Changed { dir: parent(to), message: format!("{from} → {to}") }
             }
@@ -724,6 +732,13 @@ pub fn mode_string(mode: u32) -> String {
         s.push(if bits & 1 != 0 { 'x' } else { '-' });
     }
     format!("{s} ({:03o})", mode & 0o777)
+}
+
+/// Whether the folder of `path` already has an entry with its name
+/// (exact spelling, so changing only the case stays possible).
+fn name_taken(b: &mut dyn Backend, path: &str) -> Result<bool> {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    Ok(b.list(&parent(path))?.iter().any(|e| e.name == name))
 }
 
 fn remove_recursive(b: &mut dyn Backend, path: &str) -> Result<()> {

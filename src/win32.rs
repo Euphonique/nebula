@@ -565,6 +565,21 @@ pub fn local_time(unix_ms: u64) -> LocalTime {
     LocalTime { year: t.wYear, month: t.wMonth, day: t.wDay, hour: t.wHour, minute: t.wMinute }
 }
 
+/// Whether deleting on this drive goes to the recycle bin: only local hard
+/// disks have one (not network drives, UNC paths or USB sticks).
+pub fn has_recycle_bin(path: &std::path::Path) -> bool {
+    use std::path::Component;
+    use windows_sys::Win32::Storage::FileSystem::GetDriveTypeW;
+    const DRIVE_FIXED: u32 = 3;
+    let Some(Component::Prefix(prefix)) = path.components().next() else { return false };
+    if !matches!(prefix.kind(), std::path::Prefix::Disk(_) | std::path::Prefix::VerbatimDisk(_)) {
+        return false;
+    }
+    let root: Vec<u16> = format!("{}\\", prefix.as_os_str().to_string_lossy().trim_start_matches(r"\\?\")).encode_utf16().chain([0]).collect();
+    // SAFETY: `root` is a zero-terminated wide string like "C:\".
+    unsafe { GetDriveTypeW(root.as_ptr()) == DRIVE_FIXED }
+}
+
 /// Moves a file or folder to the recycle bin (without asking). False on failure.
 pub fn move_to_recycle_bin(path: &std::path::Path) -> bool {
     use std::os::windows::ffi::OsStrExt;
@@ -715,4 +730,14 @@ pub fn message_box(title: &str, text: &str) {
     let (t, m) = (wide(title), wide(text));
     // SAFETY: both strings are zero-terminated and outlive the call.
     unsafe { MessageBoxW(std::ptr::null_mut(), m.as_ptr(), t.as_ptr(), MB_OK | MB_ICONINFORMATION) };
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn recycle_bin_only_on_local_disks() {
+        assert!(super::has_recycle_bin(std::path::Path::new(r"C:\Windows")));
+        assert!(!super::has_recycle_bin(std::path::Path::new(r"\server\share\a.txt")));
+        assert!(!super::has_recycle_bin(std::path::Path::new("relative.txt")));
+    }
 }

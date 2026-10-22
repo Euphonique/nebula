@@ -116,6 +116,8 @@ enum Dialog {
 /// Work that depends on a transfer finishing first.
 enum FollowUp {
     DeleteRemote { site_id: String, path: String, is_dir: bool },
+    /// A move done as copy: open tabs follow, then the source is removed.
+    MovedRemote { site_id: String, from: String, to: String, is_dir: bool },
     DeleteLocal(PathBuf),
     Upload { site_id: String, local: PathBuf, remote: String, then: Option<Box<FollowUp>> },
 }
@@ -899,6 +901,10 @@ impl NebulaApp {
                             self.pending_followups.remove(&ev.tag);
                             self.pending_publish.remove(&ev.tag);
                         }
+                        Request::Rename { from, to } => {
+                            // Tabs followed the rename already; send them back.
+                            self.retarget_remote_docs(&ev.site_id, to, from);
+                        }
                         Request::Write { .. } => {
                             if let Some(save) = self.pending_saves.remove(&ev.tag)
                                 && let Some(i) = self.doc_index(save.doc_id)
@@ -923,6 +929,10 @@ impl NebulaApp {
         match follow {
             FollowUp::DeleteRemote { site_id, path, is_dir } => {
                 self.remote_request(&site_id, Request::Delete { path, is_dir });
+            }
+            FollowUp::MovedRemote { site_id, from, to, is_dir } => {
+                self.retarget_remote_docs(&site_id, &from, &to);
+                self.remote_request(&site_id, Request::Delete { path: from, is_dir });
             }
             FollowUp::Upload { site_id, local, remote, then } => {
                 if let Some(tag) = self.send_remote(&site_id, Request::Upload { local, remote })
@@ -1144,23 +1154,34 @@ impl NebulaApp {
         match action {
             NameAction::NewRemoteFile { site_id, dir } => {
                 let path = remote::join(&dir, &name);
+                if self.remote_name_taken(&site_id, &dir, &name) {
+                    self.error(t!("{path} existiert bereits.", path = path));
+                    return;
+                }
+                // The server refuses existing names too (listing may be old).
                 self.remote_request(&site_id, Request::CreateFile(path.clone()));
                 // Open it right away; the empty file exists once the request ran.
                 self.open_remote(&site_id, &path);
             }
             NameAction::NewRemoteFolder { site_id, dir } => {
+                if self.remote_name_taken(&site_id, &dir, &name) {
+                    self.error(t!("{path} existiert bereits.", path = remote::join(&dir, &name)));
+                    return;
+                }
                 self.remote_request(&site_id, Request::Mkdir(remote::join(&dir, &name)));
             }
             NameAction::RenameRemote { site_id, path } => {
-                let to = remote::join(&remote::parent(&path), &name);
-                for d in &mut self.docs {
-                    if let DocSource::Remote { site_id: s, path: p } = &mut d.source
-                        && *s == site_id
-                        && *p == path
-                    {
-                        *p = to.clone();
-                    }
+                let dir = remote::parent(&path);
+                let to = remote::join(&dir, &name);
+                if to == path {
+                    return;
                 }
+                if self.remote_name_taken(&site_id, &dir, &name) {
+                    self.error(t!("{path} existiert bereits.", path = to));
+                    return;
+                }
+                // Tabs inside a renamed folder follow too (undone if it fails).
+                self.retarget_remote_docs(&site_id, &path, &to);
                 self.remote_request(&site_id, Request::Rename { from: path, to });
             }
             NameAction::NewLocalFile { dir } => {
@@ -1183,13 +1204,19 @@ impl NebulaApp {
             },
             NameAction::RenameLocal { path } => {
                 let to = path.with_file_name(&name);
+                if to == path {
+                    return;
+                }
+                // Windows replaces an existing file when renaming; only a
+                // change of case (same file) may hit an existing name.
+                let case_only = path.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase() == name.to_lowercase());
+                if to.exists() && !case_only {
+                    self.error(t!("{path} existiert bereits.", path = to.display()));
+                    return;
+                }
                 match std::fs::rename(&path, &to) {
                     Ok(()) => {
-                        for d in &mut self.docs {
-                            if d.source == DocSource::Local(path.clone()) {
-                                d.source = DocSource::Local(to.clone());
-                            }
-                        }
+                        self.retarget_local_docs(&path, &to);
                         self.sidebar.refresh_local(path.parent());
                     }
                     Err(e) => self.error(t!("Umbenennen fehlgeschlagen: {e}", e = e)),
@@ -2510,10 +2537,13 @@ impl NebulaApp {
                 let remote = items.iter().any(|i| matches!(i.file, FileRef::Remote { .. }));
                 let what = if items.len() == 1 { format!("„{}“", items[0].name()) } else { t!("{items_count} Objekte", items_count = items.len()) };
                 let folders = if items.iter().any(|i| i.is_dir) { t!("\nOrdner werden mit allen Inhalten gelöscht.") } else { "" };
+                let recycle = items.iter().all(|i| matches!(&i.file, FileRef::Local(p) if crate::win32::has_recycle_bin(p)));
                 let text = if remote {
                     t!("{what} wirklich vom Server löschen?{folders}", what = what, folders = folders)
+                } else if recycle {
+                    t!("{what} in den Papierkorb verschieben?", what = what)
                 } else {
-                    t!("{what} wirklich löschen?{folders}", what = what, folders = folders)
+                    t!("{what} endgültig löschen? Dieses Laufwerk hat keinen Papierkorb.{folders}", what = what, folders = folders)
                 };
                 confirm(ctx, t!("Löschen?"), &text, t!("Löschen"), &mut yes, &mut keep);
                 if yes {

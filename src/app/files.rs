@@ -170,6 +170,11 @@ impl NebulaApp {
         self.run_transfers(queue);
     }
 
+    /// Whether a listed server folder already has `name` (unknown: no).
+    pub(super) fn remote_name_taken(&self, site_id: &str, dir: &str, name: &str) -> bool {
+        self.sidebar.remote_names(site_id, dir).is_some_and(|names| names.iter().any(|n| n == name))
+    }
+
     fn target_has(&self, target: &DirRef, name: &str) -> bool {
         match target {
             DirRef::Local(dir) => dir.join(name).exists(),
@@ -245,6 +250,14 @@ impl NebulaApp {
                 let to = remote::join(dir, dest_name);
                 if copy {
                     self.send_remote(from_site, Request::Copy { from: path.clone(), to, is_dir: item.is_dir });
+                } else if self.target_has(target, dest_name) {
+                    // Replacing: renaming refuses existing targets, so copy
+                    // over them and remove the source afterwards.
+                    let request = Request::Copy { from: path.clone(), to: to.clone(), is_dir: item.is_dir };
+                    if let Some(tag) = self.send_remote(from_site, request) {
+                        let follow = FollowUp::MovedRemote { site_id: from_site.clone(), from: path.clone(), to, is_dir: item.is_dir };
+                        self.pending_followups.insert(tag, follow);
+                    }
                 } else {
                     self.retarget_remote_docs(from_site, path, &to);
                     self.send_remote(from_site, Request::Rename { from: path.clone(), to });
@@ -284,10 +297,14 @@ impl NebulaApp {
     pub(super) fn delete_items(&mut self, items: Vec<Item>) {
         for item in items {
             match &item.file {
-                FileRef::Local(p) => match remove_local(p) {
-                    Ok(()) => self.sidebar.refresh_local(p.parent()),
-                    Err(e) => self.error(t!("{p} konnte nicht gelöscht werden: {e}", p = p.display(), e = e)),
-                },
+                // Into the recycle bin, like Explorer (network drives have none).
+                FileRef::Local(p) => {
+                    if win32::move_to_recycle_bin(p) {
+                        self.sidebar.refresh_local(p.parent());
+                    } else {
+                        self.error(t!("{p} konnte nicht gelöscht werden: {e}", p = p.display(), e = t!("Windows hat das Löschen abgelehnt (Datei in Benutzung?)")));
+                    }
+                }
                 FileRef::Remote { site_id, path } => {
                     self.send_remote(site_id, Request::Delete { path: path.clone(), is_dir: item.is_dir });
                 }
@@ -335,7 +352,7 @@ impl NebulaApp {
         }
     }
 
-    fn retarget_local_docs(&mut self, from: &Path, to: &Path) {
+    pub(super) fn retarget_local_docs(&mut self, from: &Path, to: &Path) {
         for d in &mut self.docs {
             if let DocSource::Local(p) = &mut d.source
                 && let Ok(rest) = p.strip_prefix(from)
