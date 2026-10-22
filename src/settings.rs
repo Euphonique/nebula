@@ -352,6 +352,8 @@ pub struct Site {
     pub web_url: String,
     /// Commands run in the SSH terminal with one click (cache, deploy, …).
     pub commands: Vec<ServerCommand>,
+    /// Group in the server list; empty = none.
+    pub group: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -376,6 +378,7 @@ impl Default for Site {
             accept_invalid_certs: false,
             web_url: String::new(),
             commands: Vec::new(),
+            group: String::new(),
         }
     }
 }
@@ -418,18 +421,29 @@ impl Site {
     }
 }
 
-fn new_id() -> String {
+pub fn new_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+    // Strictly increasing, so ids created in quick succession (import) stay unique.
+    static LAST: AtomicU64 = AtomicU64::new(0);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
+        .map(|d| d.as_nanos() as u64)
         .unwrap_or_default();
-    format!("{nanos:x}")
+    let id = match LAST.try_update(Ordering::Relaxed, Ordering::Relaxed, |last| Some(nanos.max(last + 1))) {
+        Ok(last) => nanos.max(last + 1),
+        Err(_) => nanos,
+    };
+    format!("{id:x}")
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Sites {
     pub sites: Vec<Site>,
+    /// Groups folded in the sidebar.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub collapsed_groups: Vec<String>,
 }
 
 impl Sites {
@@ -450,6 +464,14 @@ impl Sites {
 
     pub fn get(&self, id: &str) -> Option<&Site> {
         self.sites.iter().find(|s| s.id == id)
+    }
+
+    /// Names of all groups, sorted.
+    pub fn groups(&self) -> Vec<String> {
+        let mut g: Vec<String> = self.sites.iter().map(|s| s.group.clone()).filter(|g| !g.is_empty()).collect();
+        g.sort_by_key(|n| n.to_lowercase());
+        g.dedup();
+        g
     }
 }
 

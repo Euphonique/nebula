@@ -11,7 +11,7 @@ use eframe::egui::{
 
 use super::icons;
 use crate::remote::{RemoteEntry, Request};
-use crate::settings::Sites;
+use crate::settings::{Site, Sites};
 use crate::theme::{Theme, bold_family};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -99,6 +99,9 @@ pub enum NameAction {
     NewLocalFile { dir: PathBuf },
     NewLocalFolder { dir: PathBuf },
     RenameLocal { path: PathBuf },
+    /// Put a server into a new group.
+    NewGroup { site_id: String },
+    RenameGroup { old: String },
 }
 
 /// Something the user asked for in the sidebar; handled by the app.
@@ -114,7 +117,19 @@ pub enum SidebarAction {
     AskName { title: String, initial: String, action: NameAction },
     ConfirmDelete(Vec<Item>),
     EditSite(Option<String>),
+    /// New server, preset to a group.
+    AddSiteToGroup(String),
+    DuplicateSite(String),
     RemoveSite(String),
+    /// Move a server into a group (empty = none).
+    SetSiteGroup { site_id: String, group: String },
+    /// Fold or unfold a group of servers.
+    ToggleGroup(String),
+    /// Remove the group, keeping its servers.
+    DissolveGroup(String),
+    ImportSites,
+    ImportFileZilla,
+    ExportSites,
     OpenUrl(String),
     CopyText(String),
     /// Put items on the clipboard (`cut` moves them on paste).
@@ -526,6 +541,9 @@ impl Sidebar {
                         }
                     }
                     SidebarTab::Servers => {
+                        let more = icons::icon_button(ui, theme, small, false, |p, c, col| icons::menu(p, c, col))
+                            .on_hover_text("Importieren und exportieren");
+                        egui::Popup::menu(&more).show(|ui| server_list_menu(ui, actions));
                         if icons::icon_button(ui, theme, small, false, |p, c, col| icons::plus(p, c, col))
                             .on_hover_text("Server hinzufügen…")
                             .clicked()
@@ -929,113 +947,190 @@ impl Sidebar {
     fn show_servers(&mut self, ui: &mut Ui, sites: &Sites, rc: &RowCtx, actions: &mut Vec<SidebarAction>) {
         let theme = rc.theme;
         if sites.sites.is_empty() {
-            empty_state(ui, theme, "Noch keine Server", "Server hinzufügen…", || {
-                actions.push(SidebarAction::EditSite(None))
+            ui.add_space(36.0);
+            ui.vertical_centered(|ui| {
+                ui.label(RichText::new("Noch keine Server").color(theme.text_faint));
+                ui.add_space(10.0);
+                if ui.button("Server hinzufügen…").clicked() {
+                    actions.push(SidebarAction::EditSite(None));
+                }
+                if crate::server_import::filezilla_path().is_some() && ui.button("Aus FileZilla importieren…").clicked() {
+                    actions.push(SidebarAction::ImportFileZilla);
+                }
+                if ui.link("Aus Datei importieren…").clicked() {
+                    actions.push(SidebarAction::ImportSites);
+                }
             });
             return;
         }
-        section_header(ui, theme, "Server");
+        let groups = sites.groups();
         let filter = self.filter.to_lowercase();
-        for site in &sites.sites {
-            let open = self.expanded_sites.contains(&site.id);
-            let tree = self.remote.get(&site.id);
-            let status_color = match tree.map(|t| &t.status) {
-                Some(RemoteStatus::Connected) => theme.success,
-                Some(RemoteStatus::Connecting) => theme.modified,
-                Some(RemoteStatus::Failed(_)) => theme.danger,
-                None => theme.gutter_fg,
-            };
-            let resp = site_row(ui, theme, open, &site.display_name(), site.protocol.label(), status_color);
-            // Dropping onto a server uploads into its start folder.
-            if let Some(home) = tree.and_then(|t| t.home.clone()) {
-                let target = DirRef::Remote { site_id: site.id.clone(), path: home };
-                self.drop_targets.push((resp.rect, target.clone()));
-                if let Some(payload) = resp.dnd_release_payload::<DragItems>() {
-                    actions.push(SidebarAction::Transfer { items: payload.0.clone(), target, copy: true });
-                }
+        let ungrouped: Vec<&Site> = sites.sites.iter().filter(|s| s.group.is_empty()).collect();
+        if !ungrouped.is_empty() {
+            section_header(ui, theme, "Server").context_menu(|ui| server_list_menu(ui, actions));
+            for site in ungrouped {
+                self.show_site(ui, site, rc, &groups, &filter, actions);
             }
+        }
+        for group in &groups {
+            let open = !sites.collapsed_groups.contains(group);
+            let members: Vec<&Site> = sites.sites.iter().filter(|s| &s.group == group).collect();
+            let resp = group_header(ui, theme, group, open, members.len());
             if resp.clicked() {
-                if open {
-                    self.expanded_sites.remove(&site.id);
-                } else {
-                    self.expanded_sites.insert(site.id.clone());
-                    actions.push(SidebarAction::Connect(site.id.clone()));
-                }
+                actions.push(SidebarAction::ToggleGroup(group.clone()));
             }
-            let connected = tree.is_some();
-            let home = tree.and_then(|t| t.home.clone());
             resp.context_menu(|ui| {
-                if connected {
-                    if ui.button("Trennen").clicked() {
-                        actions.push(SidebarAction::Disconnect(site.id.clone()));
-                        ui.close();
-                    }
-                    if let Some(home) = &home
-                        && ui.button("Aktualisieren").clicked()
-                    {
-                        actions.push(SidebarAction::Remote { site_id: site.id.clone(), request: Request::List(home.clone()) });
-                        ui.close();
-                    }
-                } else if ui.button("Verbinden").clicked() {
-                    self.expanded_sites.insert(site.id.clone());
-                    actions.push(SidebarAction::Connect(site.id.clone()));
+                if ui.button("Server hinzufügen…").clicked() {
+                    actions.push(SidebarAction::AddSiteToGroup(group.clone()));
                     ui.close();
                 }
-                if ui.button("SSH-Terminal öffnen").clicked() {
-                    actions.push(SidebarAction::OpenTerminal(site.id.clone()));
-                    ui.close();
-                }
-                if !site.commands.is_empty() {
-                    ui.menu_button("Befehl ausführen", |ui| {
-                        for c in &site.commands {
-                            if ui.button(&c.name).on_hover_text(&c.command).clicked() {
-                                actions.push(SidebarAction::RunCommand { site_id: site.id.clone(), command: c.command.clone() });
-                                ui.close();
-                            }
-                        }
+                if ui.button("Umbenennen…").clicked() {
+                    actions.push(SidebarAction::AskName {
+                        title: "Gruppe umbenennen".into(),
+                        initial: group.clone(),
+                        action: NameAction::RenameGroup { old: group.clone() },
                     });
-                }
-                if ui.button("Auf dem Server suchen…").clicked() {
-                    let path = home.clone().unwrap_or_else(|| site.root_path.trim().to_string());
-                    actions.push(SidebarAction::SearchIn(DirRef::Remote { site_id: site.id.clone(), path }));
                     ui.close();
                 }
-                ui.separator();
-                if ui.button("Bearbeiten…").clicked() {
-                    actions.push(SidebarAction::EditSite(Some(site.id.clone())));
-                    ui.close();
-                }
-                if ui.button("Entfernen…").clicked() {
-                    actions.push(SidebarAction::RemoveSite(site.id.clone()));
+                if ui.button("Gruppe auflösen").on_hover_text("Die Server bleiben erhalten").clicked() {
+                    actions.push(SidebarAction::DissolveGroup(group.clone()));
                     ui.close();
                 }
             });
-            if !open {
-                continue;
-            }
-            let Some(tree) = self.remote.get(&site.id) else { continue };
-            match &tree.status {
-                RemoteStatus::Connecting if tree.home.is_none() => {
-                    indent_label(ui, 1, "Verbinde…", theme.gutter_fg);
+            if open {
+                for site in members {
+                    self.show_site(ui, site, rc, &groups, &filter, actions);
                 }
-                RemoteStatus::Failed(msg) => {
-                    let msg = msg.clone();
-                    indent_label(ui, 1, &msg, theme.danger);
-                    ui.horizontal(|ui| {
-                        ui.add_space(28.0);
-                        if ui.small_button("Erneut versuchen").clicked() {
-                            actions.push(SidebarAction::Connect(site.id.clone()));
+            }
+        }
+    }
+
+    fn show_site(&mut self, ui: &mut Ui, site: &Site, rc: &RowCtx, groups: &[String], filter: &str, actions: &mut Vec<SidebarAction>) {
+        let theme = rc.theme;
+        let open = self.expanded_sites.contains(&site.id);
+        let tree = self.remote.get(&site.id);
+        let status_color = match tree.map(|t| &t.status) {
+            Some(RemoteStatus::Connected) => theme.success,
+            Some(RemoteStatus::Connecting) => theme.modified,
+            Some(RemoteStatus::Failed(_)) => theme.danger,
+            None => theme.gutter_fg,
+        };
+        let resp = site_row(ui, theme, open, &site.display_name(), site.protocol.label(), status_color);
+        // Dropping onto a server uploads into its start folder.
+        if let Some(home) = tree.and_then(|t| t.home.clone()) {
+            let target = DirRef::Remote { site_id: site.id.clone(), path: home };
+            self.drop_targets.push((resp.rect, target.clone()));
+            if let Some(payload) = resp.dnd_release_payload::<DragItems>() {
+                actions.push(SidebarAction::Transfer { items: payload.0.clone(), target, copy: true });
+            }
+        }
+        if resp.clicked() {
+            if open {
+                self.expanded_sites.remove(&site.id);
+            } else {
+                self.expanded_sites.insert(site.id.clone());
+                actions.push(SidebarAction::Connect(site.id.clone()));
+            }
+        }
+        let connected = tree.is_some();
+        let home = tree.and_then(|t| t.home.clone());
+        resp.context_menu(|ui| {
+            if connected {
+                if ui.button("Trennen").clicked() {
+                    actions.push(SidebarAction::Disconnect(site.id.clone()));
+                    ui.close();
+                }
+                if let Some(home) = &home
+                    && ui.button("Aktualisieren").clicked()
+                {
+                    actions.push(SidebarAction::Remote { site_id: site.id.clone(), request: Request::List(home.clone()) });
+                    ui.close();
+                }
+            } else if ui.button("Verbinden").clicked() {
+                self.expanded_sites.insert(site.id.clone());
+                actions.push(SidebarAction::Connect(site.id.clone()));
+                ui.close();
+            }
+            if ui.button("SSH-Terminal öffnen").clicked() {
+                actions.push(SidebarAction::OpenTerminal(site.id.clone()));
+                ui.close();
+            }
+            if !site.commands.is_empty() {
+                ui.menu_button("Befehl ausführen", |ui| {
+                    for c in &site.commands {
+                        if ui.button(&c.name).on_hover_text(&c.command).clicked() {
+                            actions.push(SidebarAction::RunCommand { site_id: site.id.clone(), command: c.command.clone() });
+                            ui.close();
                         }
-                    });
+                    }
+                });
+            }
+            if ui.button("Auf dem Server suchen…").clicked() {
+                let path = home.clone().unwrap_or_else(|| site.root_path.trim().to_string());
+                actions.push(SidebarAction::SearchIn(DirRef::Remote { site_id: site.id.clone(), path }));
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Bearbeiten…").clicked() {
+                actions.push(SidebarAction::EditSite(Some(site.id.clone())));
+                ui.close();
+            }
+            if ui.button("Duplizieren…").clicked() {
+                actions.push(SidebarAction::DuplicateSite(site.id.clone()));
+                ui.close();
+            }
+            ui.menu_button("Gruppe", |ui| {
+                let set = |group: &str| SidebarAction::SetSiteGroup { site_id: site.id.clone(), group: group.to_string() };
+                if menu_radio(ui, site.group.is_empty(), "Ohne Gruppe") {
+                    actions.push(set(""));
+                    ui.close();
                 }
-                _ => {}
+                for g in groups {
+                    if menu_radio(ui, &site.group == g, g) {
+                        actions.push(set(g));
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                if ui.button("Neue Gruppe…").clicked() {
+                    actions.push(SidebarAction::AskName {
+                        title: "Neue Gruppe".into(),
+                        initial: String::new(),
+                        action: NameAction::NewGroup { site_id: site.id.clone() },
+                    });
+                    ui.close();
+                }
+            });
+            if ui.button("Entfernen…").clicked() {
+                actions.push(SidebarAction::RemoveSite(site.id.clone()));
+                ui.close();
             }
-            if let Some(home) = tree.home.clone() {
-                let web_url = site.web_url.trim().trim_end_matches('/').to_string();
-                let root = Item::remote(&site.id, &home, true);
-                self.item_row(ui, rc, &root, 1, Some(true), &home, None, actions);
-                self.show_remote_dir(ui, rc, &site.id, &home, &home, &web_url, 2, &filter, actions);
+        });
+        if !open {
+            return;
+        }
+        let Some(tree) = self.remote.get(&site.id) else { return };
+        match &tree.status {
+            RemoteStatus::Connecting if tree.home.is_none() => {
+                indent_label(ui, 1, "Verbinde…", theme.gutter_fg);
             }
+            RemoteStatus::Failed(msg) => {
+                let msg = msg.clone();
+                indent_label(ui, 1, &msg, theme.danger);
+                ui.horizontal(|ui| {
+                    ui.add_space(28.0);
+                    if ui.small_button("Erneut versuchen").clicked() {
+                        actions.push(SidebarAction::Connect(site.id.clone()));
+                    }
+                });
+            }
+            _ => {}
+        }
+        if let Some(home) = tree.home.clone() {
+            let web_url = site.web_url.trim().trim_end_matches('/').to_string();
+            let root = Item::remote(&site.id, &home, true);
+            self.item_row(ui, rc, &root, 1, Some(true), &home, None, actions);
+            self.show_remote_dir(ui, rc, &site.id, &home, &home, &web_url, 2, filter, actions);
         }
     }
 
@@ -1342,6 +1437,57 @@ fn section_header(ui: &mut Ui, theme: &Theme, title: &str) -> egui::Response {
         theme.text_faint,
     );
     resp
+}
+
+/// Foldable header of a server group.
+fn group_header(ui: &mut Ui, theme: &Theme, title: &str, open: bool, count: usize) -> egui::Response {
+    ui.add_space(6.0);
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
+    let painter = ui.painter();
+    if resp.hovered() {
+        painter.rect_filled(rect, 6.0, theme.hover);
+    }
+    let cy = rect.center().y;
+    icons::chevron(painter, pos2(rect.left() + 11.0, cy), open, theme.text_faint);
+    let galley = painter.layout_no_wrap(title.to_uppercase(), FontId::new(10.5, bold_family()), theme.text_faint);
+    let width = galley.size().x;
+    painter.galley(pos2(rect.left() + 22.0, cy - galley.size().y / 2.0), galley, theme.text_faint);
+    painter.text(
+        pos2(rect.left() + 28.0 + width, cy),
+        Align2::LEFT_CENTER,
+        count.to_string(),
+        FontId::new(10.0, bold_family()),
+        theme.gutter_fg,
+    );
+    resp
+}
+
+/// Radio button in a menu, with a frame so the empty circle stays visible.
+fn menu_radio(ui: &mut Ui, selected: bool, label: &str) -> bool {
+    ui.scope(|ui| {
+        let w = &mut ui.visuals_mut().widgets;
+        let border = w.noninteractive.fg_stroke.color.gamma_multiply(0.6);
+        w.inactive.bg_stroke = Stroke::new(1.0, border);
+        w.hovered.bg_stroke = Stroke::new(1.0, border);
+        ui.radio(selected, label).clicked()
+    })
+    .inner
+}
+
+/// Import and export entries for the server list.
+fn server_list_menu(ui: &mut Ui, actions: &mut Vec<SidebarAction>) {
+    if crate::server_import::filezilla_path().is_some() && ui.button("Aus FileZilla importieren…").clicked() {
+        actions.push(SidebarAction::ImportFileZilla);
+        ui.close();
+    }
+    if ui.button("Aus Datei importieren…").on_hover_text("Nebula-Export (.json) oder FileZilla (sitemanager.xml)").clicked() {
+        actions.push(SidebarAction::ImportSites);
+        ui.close();
+    }
+    if ui.button("Exportieren…").on_hover_text("Ohne Passwörter").clicked() {
+        actions.push(SidebarAction::ExportSites);
+        ui.close();
+    }
 }
 
 fn empty_state(ui: &mut Ui, theme: &Theme, text: &str, button: &str, on_click: impl FnOnce()) {

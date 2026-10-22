@@ -15,6 +15,7 @@ mod lang;
 mod preview;
 mod print;
 mod remote;
+mod server_import;
 mod settings;
 mod theme;
 mod theme_import;

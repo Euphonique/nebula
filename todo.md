@@ -26,7 +26,7 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 ## Server und Veröffentlichen
 
 - **B** Synchronisieren in beide Richtungen mit Vorschau (neu/geändert/gelöscht) und Ausschlussliste (`.git`, `node_modules`, `.env`).
-- **B** Server in Ordnern gruppieren, Server duplizieren, Import aus FileZilla (`sitemanager.xml`).
+- **C** Implizites FTPS (Port 990) – wird beim FileZilla-Import bisher als explizites FTPS übernommen.
 - **C** Suche im Terminal-Verlauf (Strg+F im Terminal, Treffer im Scrollback hervorheben).
 - **C** Datenbank light: MySQL über SSH-Tunnel, Tabellen ansehen, Abfragen ausführen.
 - **C** Serverdateien zwischenspeichern, damit sie offline lesbar bleiben.
@@ -34,7 +34,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 ## Live-Vorschau und Web
 
 - **B** Vorschau in verschiedenen Gerätebreiten (Handy/Tablet/Desktop) umschaltbar.
-- **B** Lokaler PHP-Server für die Vorschau (wenn `php.exe` vorhanden), statt nur Live-URL.
 
 ## KI-Unterstützung (wie in VS Code)
 
@@ -52,7 +51,7 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 
 - **B** Tabs anheften; mehrere Fenster/Projekte gleichzeitig.
 - **B** Große Dateien (> 64 MB) schreibgeschützt öffnen statt ablehnen; Hex-Ansicht für Binärdateien.
-- **B** Einstellungen exportieren/importieren (Server ohne Passwörter, Themes, Tastenkürzel).
+- **B** Einstellungen exportieren/importieren (Themes, Tastenkürzel; die Serverliste lässt sich schon exportieren).
 - **B** Update-Hinweis, Installer und Eintrag „Mit Nebula öffnen“ im Explorer-Kontextmenü, Dateizuordnungen.
 - **C** Oberfläche auch auf Englisch (Texte in Übersetzungsdateien auslagern).
 - **C** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
@@ -71,8 +70,8 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
 1. „Schnell öffnen“ (Strg+P) für Serverdateien und mit `:Zeile`.
 2. Absturzbericht (Panics in Logdatei, beim nächsten Start anbieten).
-3. Server duplizieren, in Ordnern gruppieren, Import aus FileZilla.
-4. Vorschau in Gerätebreiten; lokaler PHP-Server für die Vorschau.
+3. ~~Server duplizieren, gruppieren, Import/Export~~ (erledigt).
+4. Vorschau in Gerätebreiten (kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
 5. Eigene Snippets pro Sprache.
 6. Tabs anheften; Einstellungen exportieren/importieren.
 7. Große Dateien schreibgeschützt öffnen, Hex-Ansicht.
@@ -91,3 +90,5 @@ Bugrunde vom 19.10.: Rechtsklick auf den Projektordner, Startseite (Karte wächs
 KI-Agenten (19.10.): Claude Code, Codex (ChatGPT) und Gemini CLI über ACP im rechten Panel (Reiter „KI“): Verlauf mit Markdown, Plänen, Werkzeugaufrufen und Diffs, Rückfragen, Stop; Modell, Aufwand und Modus wählbar (pro Agent gemerkt); Dateien anhängen (Büroklammer, Rechtsklick in der Seitenleiste, auch vom Server); 5-Stunden- und Wochenlimit von Claude; Einstellungsseite „KI-Agenten“ mit Anmeldung über die Anbieter, API-Schlüsseln und Node.js-Verwaltung (Node wird bei Bedarf nach `%APPDATA%\nebula\runtime` geladen, Agenten liegen in `%APPDATA%\nebula\agents`); Änderungen des Agenten werden bei „Beim Speichern hochladen“ auf den Server übertragen. Außerdem: Reiter im rechten Panel jetzt Gliederung, KI, Vorschau.
 
 Bugrunde vom 20.10.: Theme je für helles und dunkles Design mit Umschalter Hell/Dunkel/Automatisch (Einstellungen, Menü „Ansicht“, Knopf in der Titelleiste), Menüeintrag „KI-Agenten…“, Terminal-Knopf in der Titelleiste, geteilte Ansicht als Knopf in der (jetzt so hohen wie die Panel-Reiter) Pfadleiste, ID-Kollisionsmeldungen in den Einstellungen von Erweiterungen (z. B. Rust), Knopf für die Minimap neben dem für die geteilte Ansicht.
+
+Serververwaltung (22.10.): Server in einklappbaren Gruppen, duplizieren, Import aus FileZilla (`sitemanager.xml`, Ordner als Gruppen, Passwörter auf Wunsch) und aus Nebula-Exporten, Export als JSON ohne Passwörter; Dubletten werden erkannt.

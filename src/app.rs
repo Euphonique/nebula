@@ -43,6 +43,7 @@ mod jumpbar;
 mod history;
 mod difftab;
 mod transfers_ui;
+mod servers;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -72,6 +73,7 @@ struct SiteForm {
 
 enum Dialog {
     EditSite(Box<SiteForm>),
+    ImportSites(Box<servers::ImportForm>),
     AskName { title: String, value: String, action: NameAction, focus: bool },
     ConfirmDelete(Vec<Item>),
     /// A pasted/dropped item exists in the target folder.
@@ -952,6 +954,14 @@ impl NebulaApp {
                 self.replace_in_files(files, regex, replacement, ctx);
             }
             SidebarAction::EditSite(id) => self.open_site_form(id),
+            SidebarAction::AddSiteToGroup(group) => self.add_site_to_group(group),
+            SidebarAction::DuplicateSite(id) => self.duplicate_site(&id),
+            SidebarAction::SetSiteGroup { site_id, group } => self.set_site_group(&site_id, &group),
+            SidebarAction::ToggleGroup(group) => self.toggle_group(group),
+            SidebarAction::DissolveGroup(group) => self.dissolve_group(&group),
+            SidebarAction::ImportSites => self.import_sites(None),
+            SidebarAction::ImportFileZilla => self.import_sites(crate::server_import::filezilla_path()),
+            SidebarAction::ExportSites => self.export_sites(),
             SidebarAction::RemoveSite(id) => self.dialog = Some(Dialog::ConfirmRemoveSite(id)),
             SidebarAction::OpenUrl(url) => {
                 if !crate::win32::open_url(&url) {
@@ -986,6 +996,11 @@ impl NebulaApp {
 
     fn apply_name_action(&mut self, action: NameAction, name: String) {
         let name = name.trim().to_string();
+        match &action {
+            NameAction::NewGroup { site_id } if !name.is_empty() => return self.set_site_group(site_id, &name),
+            NameAction::RenameGroup { old } if !name.is_empty() => return self.rename_group(old, &name),
+            _ => {}
+        }
         if name.is_empty() || name.contains(['/', '\\']) {
             self.error("Ungültiger Name.");
             return;
@@ -1044,6 +1059,8 @@ impl NebulaApp {
                     Err(e) => self.error(format!("Umbenennen fehlgeschlagen: {e}")),
                 }
             }
+            // Handled above.
+            NameAction::NewGroup { .. } | NameAction::RenameGroup { .. } => {}
         }
     }
 
@@ -1390,6 +1407,19 @@ impl NebulaApp {
             ui.menu_button("Server", |ui| {
                 if ui.button("Server hinzufügen…").clicked() {
                     self.open_site_form(None);
+                    ui.close();
+                }
+                let filezilla = crate::server_import::filezilla_path();
+                if filezilla.is_some() && ui.button("Aus FileZilla importieren…").clicked() {
+                    self.import_sites(filezilla);
+                    ui.close();
+                }
+                if ui.button("Aus Datei importieren…").clicked() {
+                    self.import_sites(None);
+                    ui.close();
+                }
+                if ui.add_enabled(!self.sites.sites.is_empty(), egui::Button::new("Exportieren…")).clicked() {
+                    self.export_sites();
                     ui.close();
                 }
                 ui.separator();
@@ -2133,6 +2163,7 @@ impl NebulaApp {
                     form.password_loaded = true;
                 }
                 let mut save = false;
+                let groups = self.sites.groups();
                 modal(ctx, egui::Id::unique("site")).show(ctx, |ui| {
                     ui.set_width(440.0);
                     ui.heading(if form.is_new { "Server hinzufügen" } else { "Server bearbeiten" });
@@ -2141,6 +2172,22 @@ impl NebulaApp {
                         let s = &mut form.site;
                         ui.label("Name");
                         ui.add(egui::TextEdit::singleline(&mut s.name).hint_text("Meine Website").desired_width(280.0));
+                        ui.end_row();
+                        ui.label("Gruppe");
+                        ui.horizontal(|ui| {
+                            ui.add(egui::TextEdit::singleline(&mut s.group).hint_text("keine").desired_width(240.0));
+                            if !groups.is_empty() {
+                                let pick = ui.button("▾").on_hover_text("Vorhandene Gruppe wählen");
+                                egui::Popup::menu(&pick).show(|ui| {
+                                    for g in &groups {
+                                        if ui.selectable_label(&s.group == g, g).clicked() {
+                                            s.group = g.clone();
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                            }
+                        });
                         ui.end_row();
                         ui.label("Protokoll");
                         let before = s.protocol;
@@ -2230,6 +2277,7 @@ impl NebulaApp {
                     let mut site = form.site.clone();
                     site.host = site.host.trim().to_string();
                     site.user = site.user.trim().to_string();
+                    site.group = site.group.trim().to_string();
                     if let Err(e) = site.set_password(&form.password) {
                         self.error(format!("{e:#}"));
                     }
@@ -2702,6 +2750,10 @@ impl NebulaApp {
             Dialog::CommandPalette(mut state) => {
                 keep = self.command_palette(ctx, &mut state);
                 Dialog::CommandPalette(state)
+            }
+            Dialog::ImportSites(mut form) => {
+                keep = self.import_dialog(ctx, &mut form);
+                Dialog::ImportSites(form)
             }
             Dialog::GotoSymbol(mut state) => {
                 keep = self.goto_symbol_dialog(ctx, &mut state);

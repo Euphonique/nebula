@@ -18,6 +18,8 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 
 **Server und Dateien**
 - Server-Verwaltung für SFTP, FTP und FTPS (explizites TLS über Windows SChannel)
+- Server in einklappbaren Gruppen ordnen (Feld „Gruppe“ im Serverdialog oder Rechtsklick → „Gruppe“; Gruppen per Rechtsklick umbenennen oder auflösen), Server duplizieren
+- Import aus FileZilla (`sitemanager.xml`, Ordner werden zu Gruppen, Passwörter auf Wunsch) und aus Nebula-Exporten; Export der Serverliste als JSON ohne Passwörter. Bereits vorhandene Server werden erkannt und nicht doppelt angelegt (≡-Menü im Reiter „Server“, Menü „Server“ oder Befehlspalette)
 - Terminal im Panel unter dem Editor (Strg+Ö oder Knopf in der Titelleiste): lokale Shells (PowerShell, Windows PowerShell, Git Bash, Eingabeaufforderung) im Projektordner, z. B. für Claude Code oder npm; Standard-Shell in den Einstellungen wählbar. SSH-Terminals über das +-Menü, das Kontextmenü eines Servers oder die Befehlspalette: mehrere Sitzungen als Tabs, 256 Farben, Scrollback per Mausrad, Markieren und Kopieren, Einfügen, Neuverbinden mit Enter. Nutzt Zugangsdaten und Host-Key-Prüfung der Server (bei FTP-Servern Port 22) und wechselt in den Startpfad.
 - Gespeicherte Serverbefehle (z. B. Cache leeren, Deploy): im SSH-Terminal über „Befehle ▾“ anlegen und ausführen, außerdem per Rechtsklick auf den Server („Befehl ausführen“) und in der Befehlspalette; öffnet bei Bedarf ein Terminal und führt den Befehl im Startordner aus
 - Berechtigungen (chmod) für Dateien und Ordner auf dem Server, auf Wunsch rekursiv (nur Dateien, nur Ordner oder alles); die aktuellen Rechte stehen im Tooltip
