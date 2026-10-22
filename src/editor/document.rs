@@ -273,6 +273,8 @@ pub struct ViewState {
     pub color_edit: Option<(Range<usize>, eframe::egui::Pos2)>,
     /// Scroll position requested by the minimap, applied next frame.
     pub scroll_request: Option<f32>,
+    /// Tab stops of the snippet being filled in.
+    pub snippet: Option<super::snippet::Session>,
 }
 
 /// A problem shown in the editor (squiggle and gutter marker).
@@ -665,6 +667,11 @@ impl Document {
             self.rope.remove(start..end);
             self.rope.insert(start, &change.text);
             let inserted_len = change.text.chars().count();
+            if let Some(s) = &mut self.view.snippet
+                && !s.map(start, end, inserted_len)
+            {
+                self.view.snippet = None;
+            }
             map.push((change.range.start, change.range.end, start + inserted_len));
             self.touched_lines
                 .push((self.rope.char_to_line(start), self.rope.char_to_line(start + inserted_len)));
@@ -747,6 +754,7 @@ impl Document {
 
     pub fn undo(&mut self) {
         let Some(tx) = self.undo.pop() else { return };
+        self.view.snippet = None;
         self.view.folds.clear();
         for c in tx.changes.iter().rev() {
             let n = c.inserted.chars().count();
@@ -763,6 +771,7 @@ impl Document {
 
     pub fn redo(&mut self) {
         let Some(tx) = self.redo.pop() else { return };
+        self.view.snippet = None;
         self.view.folds.clear();
         for c in &tx.changes {
             let n = c.removed.chars().count();
@@ -775,6 +784,49 @@ impl Document {
         self.undo.push(tx);
         self.version += 1;
         self.view.scroll_to_cursor = true;
+    }
+
+    /// Replaces `range` with an expanded snippet and selects its first tab stop;
+    /// further stops are reached with Tab (see `snippet_step`).
+    pub fn insert_snippet(&mut self, range: Range<usize>, snippet: super::snippet::Expanded) {
+        let base = range.start;
+        let stops: Vec<Vec<Range<usize>>> = snippet
+            .stops
+            .into_iter()
+            .map(|g| g.into_iter().map(|r| base + r.start..base + r.end).collect())
+            .collect();
+        let first = stops.first().cloned().unwrap_or_default();
+        let selections = first.iter().map(|r| Selection::new(r.start, r.end)).collect();
+        self.view.snippet = None;
+        self.apply(vec![Change::new(range, snippet.text)], Some(selections), EditKind::Other);
+        // Only worth a session if there is somewhere to go.
+        self.view.snippet = (stops.len() > 1).then_some(super::snippet::Session { stops, current: 0 });
+        self.break_undo_group();
+    }
+
+    /// Moves to the next (or previous) tab stop of the active snippet. Returns
+    /// false (and ends the session) when the cursor has left the current stop.
+    pub fn snippet_step(&mut self, forward: bool) -> bool {
+        let Some(session) = &self.view.snippet else { return false };
+        let head = self.primary_selection().head;
+        let inside = session.stops[session.current].iter().any(|r| r.start <= head && head <= r.end);
+        if !inside {
+            self.view.snippet = None;
+            return false;
+        }
+        let last = session.stops.len() - 1;
+        let next = if forward { (session.current + 1).min(last) } else { session.current.saturating_sub(1) };
+        let selections = session.stops[next].iter().map(|r| Selection::new(r.start, r.end)).collect();
+        self.selections = selections;
+        self.normalize_selections();
+        self.view.scroll_to_cursor = true;
+        match &mut self.view.snippet {
+            // The final stop ($0) ends the snippet.
+            Some(_) if next == last => self.view.snippet = None,
+            Some(s) => s.current = next,
+            None => {}
+        }
+        true
     }
 
     /// Applies changes one after another, each in the coordinates left by the

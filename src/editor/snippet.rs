@@ -8,6 +8,39 @@ pub struct Expanded {
     pub text: String,
     /// Char range to select after inserting (empty for a cursor).
     pub select: Range<usize>,
+    /// Tab stops in the order Tab visits them ($1, $2, …, $0 or the end);
+    /// each with all places of that number.
+    pub stops: Vec<Vec<Range<usize>>>,
+}
+
+/// Tab stops of an inserted snippet, in document positions; Tab moves on.
+#[derive(Clone, Debug)]
+pub struct Session {
+    pub stops: Vec<Vec<Range<usize>>>,
+    pub current: usize,
+}
+
+impl Session {
+    /// Follows an edit at `start..end` (old positions) that inserted `inserted` chars.
+    /// Returns false when the edit cut across a tab stop (the session ends).
+    pub fn map(&mut self, start: usize, end: usize, inserted: usize) -> bool {
+        let delta = inserted as isize - (end - start) as isize;
+        let shift = |p: usize| (p as isize + delta).max(0) as usize;
+        for range in self.stops.iter_mut().flatten() {
+            if end < range.start || (end == range.start && start < end) {
+                // Before the stop.
+                *range = shift(range.start)..shift(range.end);
+            } else if start >= range.start && end <= range.end {
+                // Inside (typing in the placeholder, also at its edges).
+                range.end = shift(range.end);
+            } else if start > range.end || (start == range.end && end > start) {
+                // After the stop.
+            } else {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 /// Values for snippet variables.
@@ -68,7 +101,18 @@ pub fn expand(snippet: &str, vars: &Vars) -> Expanded {
         .min_by_key(|s| (s.0, s.1))
         .or_else(|| stops.iter().find(|s| s.0 == 0))
         .map_or(out_len..out_len, |s| s.1..s.2);
-    Expanded { text: out, select: first }
+    let mut numbers: Vec<u32> = stops.iter().map(|s| s.0).filter(|&n| n > 0).collect();
+    numbers.sort_unstable();
+    numbers.dedup();
+    let group = |n: u32| -> Vec<Range<usize>> {
+        let mut g: Vec<Range<usize>> = stops.iter().filter(|s| s.0 == n).map(|s| s.1..s.2).collect();
+        g.sort_by_key(|r| r.start);
+        g
+    };
+    let mut groups: Vec<Vec<Range<usize>>> = numbers.into_iter().map(group).collect();
+    let last = group(0);
+    groups.push(if last.is_empty() { vec![out_len..out_len] } else { last });
+    Expanded { text: out, select: first, stops: groups }
 }
 
 fn push(out: &mut String, len: &mut usize, c: char) {
@@ -103,7 +147,15 @@ fn parse(chars: &[char], i: &mut usize, out: &mut String, len: &mut usize, stops
                     n = n * 10 + chars[j].to_digit(10).unwrap();
                     j += 1;
                 }
-                stops.push((n, *len, *len));
+                // A repeated stop mirrors the default text of the first one.
+                let start = *len;
+                if let Some(&(_, s, e)) = stops.iter().find(|s| s.0 == n && s.2 > s.1) {
+                    let text: String = out.chars().skip(s).take(e - s).collect();
+                    for c in text.chars() {
+                        push(out, len, c);
+                    }
+                }
+                stops.push((n, start, *len));
                 *i = j;
             }
             Some('{') => {
@@ -233,4 +285,45 @@ mod tests {
         assert_eq!(e.text, "a.html def none");
     }
 
+    #[test]
+    fn stop_groups_and_mirrors() {
+        let e = expand("<${1:div} class=\"$2\">$0</$1>", &Vars::default());
+        assert_eq!(e.text, "<div class=\"\"></div>");
+        assert_eq!(e.stops, vec![vec![1..4, 16..19], vec![12..12], vec![14..14]]);
+        // Without $0 the end is the last stop; unknown variables stay as text.
+        let e = expand("$this->${1:x}", &Vars::default());
+        assert_eq!(e.text, "$this->x");
+        assert_eq!(e.stops, vec![vec![7..8], vec![8..8]]);
+    }
+
+    #[test]
+    fn session_follows_edits() {
+        let mut s = Session { stops: vec![vec![1..4], vec![10..10]], current: 0 };
+        // Typing over the placeholder: 3 chars become 5.
+        assert!(s.map(1, 4, 5));
+        assert_eq!(s.stops, vec![vec![1..6], vec![12..12]]);
+        // Inserting at the start of the document shifts everything.
+        assert!(s.map(0, 0, 2));
+        assert_eq!(s.stops, vec![vec![3..8], vec![14..14]]);
+        // An edit across a placeholder ends the session.
+        assert!(!s.map(6, 10, 0));
+    }
+
+    #[test]
+    fn tab_through_placeholders() {
+        use crate::editor::document::{DocSource, Document};
+        let mut doc = Document::new(DocSource::Untitled(1), "x");
+        doc.insert_snippet(1..1, expand("<${1:div}>$2</$1>$0", &Vars::default()));
+        assert_eq!(doc.rope.to_string(), "x<div></div>");
+        // Both "div" are selected; typing replaces both.
+        assert_eq!(doc.selections.len(), 2);
+        doc.replace_selections(crate::editor::document::EditKind::Other, |_| "section".into());
+        assert_eq!(doc.rope.to_string(), "x<section></section>");
+        assert!(doc.snippet_step(true));
+        assert_eq!(doc.primary_selection().head, 10);
+        assert!(doc.snippet_step(true));
+        // The final stop ends the snippet.
+        assert_eq!(doc.primary_selection().head, doc.len_chars());
+        assert!(doc.view.snippet.is_none());
+    }
 }

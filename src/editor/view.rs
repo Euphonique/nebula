@@ -842,6 +842,8 @@ fn handle_key(
             cmd::type_text(doc, "\n", settings);
         }
         Key::Enter => cmd::type_text(doc, "\n", settings),
+        // Inside a snippet, Tab moves between its placeholders.
+        Key::Tab if doc.view.snippet.is_some() && doc.snippet_step(!shift) => {}
         Key::Tab if shift => cmd::outdent(doc, settings),
         Key::Tab => {
             if !(settings.emmet && cmd::expand_emmet(doc, settings)) {
@@ -879,7 +881,10 @@ fn handle_key(
         Key::L if ctrl => cmd::select_line(doc),
         Key::Slash if ctrl => cmd::toggle_comment(doc),
         Key::Escape => {
-            cmd::collapse_selections(doc);
+            // First Esc leaves the snippet, keeping the selection.
+            if doc.view.snippet.take().is_none() {
+                cmd::collapse_selections(doc);
+            }
         }
         _ => {}
     }
@@ -1056,6 +1061,25 @@ fn paint_doc(
     let last_char = doc.line_to_char(last);
     if let Some(scope) = &doc.view.find_scope {
         paint_range(scope.clone(), theme.selection_inactive.gamma_multiply(0.6), true);
+    }
+    // Placeholders of the snippet being filled in, outlined.
+    if let Some(session) = &doc.view.snippet {
+        let stroke = Stroke::new(1.0, theme.accent.gamma_multiply(0.7));
+        for (i, group) in session.stops.iter().enumerate() {
+            for range in group {
+                if range.end < first_char || range.start > last_char {
+                    continue;
+                }
+                for (r, x0, x1, _) in g.spans(doc, range.clone()) {
+                    let y = g.row_y(r);
+                    let rect = Rect::from_min_max(pos2(x0 - 1.0, y + 1.0), pos2(x1.max(x0) + 1.0, y + m.row_h - 1.0));
+                    if i == session.current {
+                        painter.rect_filled(rect, 2.0, theme.accent.gamma_multiply(0.08));
+                    }
+                    painter.rect_stroke(rect, 2.0, stroke, egui::StrokeKind::Inside);
+                }
+            }
+        }
     }
     let start_idx = matches.partition_point(|r| r.end < first_char);
     for (i, r) in matches.iter().enumerate().skip(start_idx) {

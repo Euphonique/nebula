@@ -622,6 +622,12 @@ pub fn accept(doc: &mut Document, completion: &Completion) {
     let line_text = doc.line_text(line);
     let indent: String = line_text.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
     let text = item.insert.replace('\n', &format!("\n{indent}"));
+    if item.kind == Kind::Snippet {
+        doc.view.ext_items = None;
+        let vars = super::snippet::Vars { filename: doc.title(), ..Default::default() };
+        doc.insert_snippet(start..end, super::snippet::expand(&text, &vars));
+        return;
+    }
     let (text, cursor) = match text.find("$0") {
         Some(i) => (text.replacen("$0", "", 1), start + text[..i].chars().count()),
         None => {
