@@ -172,12 +172,18 @@ pub enum Event {
     Exit,
 }
 
-/// The running agent process.
+/// The running agent: a process, or Nebula's own agent in a thread.
 pub struct Connection {
-    child: Child,
-    stdin: Arc<Mutex<ChildStdin>>,
+    child: Option<Child>,
+    sink: Sink,
     pub rx: Receiver<Event>,
     next_id: i64,
+}
+
+/// Where messages to the agent go.
+enum Sink {
+    Pipe(Arc<Mutex<ChildStdin>>),
+    Thread(Sender<Value>),
 }
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -186,6 +192,11 @@ impl Connection {
     /// Starts the agent in `cwd`; `wake` is called whenever something arrives.
     pub fn spawn(cfg: &AgentConfig, cwd: &Path, wake: impl Fn() + Send + Sync + 'static) -> Result<Self, String> {
         use std::os::windows::process::CommandExt;
+        if crate::agent::is_builtin(cfg) {
+            let (tx, rx) = crossbeam_channel::unbounded();
+            let input = crate::agent::start(cfg.clone(), tx, Arc::new(wake));
+            return Ok(Self { child: None, sink: Sink::Thread(input), rx, next_id: 1 });
+        }
         let (program, env) = node::prepare(&cfg.command, cfg.process_env())?;
         let mut child = Command::new(&program)
             .args(&cfg.args)
@@ -204,15 +215,22 @@ impl Connection {
         let wake = Arc::new(wake);
         spawn_reader(stdout, tx.clone(), wake.clone(), false);
         spawn_reader(stderr, tx, wake, true);
-        Ok(Self { child, stdin: Arc::new(Mutex::new(stdin)), rx, next_id: 1 })
+        Ok(Self { child: Some(child), sink: Sink::Pipe(Arc::new(Mutex::new(stdin))), rx, next_id: 1 })
     }
 
     fn send(&self, msg: &Value) {
-        let mut line = msg.to_string();
-        line.push('\n');
-        if let Ok(mut stdin) = self.stdin.lock() {
-            let _ = stdin.write_all(line.as_bytes());
-            let _ = stdin.flush();
+        match &self.sink {
+            Sink::Pipe(stdin) => {
+                let mut line = msg.to_string();
+                line.push('\n');
+                if let Ok(mut stdin) = stdin.lock() {
+                    let _ = stdin.write_all(line.as_bytes());
+                    let _ = stdin.flush();
+                }
+            }
+            Sink::Thread(tx) => {
+                let _ = tx.send(msg.clone());
+            }
         }
     }
 
@@ -244,9 +262,12 @@ impl Connection {
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        // npx starts node as a child: end the whole tree.
-        crate::ext::process::kill(self.child.id());
-        let _ = self.child.wait();
+        // npx starts node as a child: end the whole tree. (The built-in
+        // agent's thread ends when its input is dropped.)
+        if let Some(child) = &mut self.child {
+            crate::ext::process::kill(child.id());
+            let _ = child.wait();
+        }
     }
 }
 

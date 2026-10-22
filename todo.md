@@ -38,9 +38,8 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## KI-Unterstützung (wie in VS Code)
 
-Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
+Agenten über ACP und der eigene Agent (API-Schlüssel, Ollama) sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
 
-- **B** Eigener KI-Agent ohne Node für API-Schlüssel und lokale Modelle: Anthropic, OpenAI (auch kompatible Basis-URL), Ollama; Werkzeuge Datei lesen, Ändern als Diff, Suchen, Befehl mit Rückfrage. (Abo-Logins gehen nur über die Agenten der Anbieter – Anthropic sperrt fremde OAuth-Nutzung, nur Haiku erreichbar.)
 - **B** KI-Befehle auf der Auswahl: Erklären, Kommentieren, Umschreiben/Refaktorisieren, Fehler beheben – Ergebnis als Diff zum Übernehmen.
 - **B** Commit-Nachricht aus dem Diff (Knopf im Git-Tab).
 - **C** Nebula als MCP-Server: externe Agenten sehen offene Dateien, Auswahl und Fehler und können Dateien im Editor öffnen.
@@ -78,7 +77,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
 Runde 3 ist damit komplett.
 
-KI: als Nächstes der eigene Agent für API-Schlüssel und Ollama, danach KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
+KI: eigener Agent erledigt; als Nächstes KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
 
 ## Erledigt
 
@@ -129,3 +128,5 @@ Fehlersuche Datenverlust (22.10.): Neue Datei auf dem Server mit vorhandenem Nam
 Sicheres Speichern und Inhaltsvergleich (22.10.): Lokales Speichern (auch „In Dateien ersetzen“ und KI-Agent) schreibt erst in eine Hilfsdatei und ersetzt dann in einem Schritt (`ReplaceFileW`); die erste Synchronisierung vergleicht gleich große Dateien inhaltlich, statt sie für identisch zu halten.
 
 Lesezeichen-Panel (22.10.): Doppelklick auf eine Zeilennummer setzt/entfernt ein Lesezeichen; Reiter „Lesezeichen“ im rechten Panel mit allen Lesezeichen der offenen Dateien (Zeilentext, Klick springt, × entfernt, „Alle entfernen“); Lesezeichen werden in Sitzung und Projekt-Tabs gespeichert.
+
+Eigener KI-Agent (22.10.): „In Nebula eingebaut“, ohne Node.js – Anthropic, OpenAI und OpenAI-kompatible Dienste (eigene Server-Adresse) sowie Ollama; spricht intern ACP, daher dieselbe Oberfläche wie die anderen Agenten (Modellwahl aus der Liste des Anbieters, Werkzeugaufrufe, Diffs, Rückfrage, Stopp). Werkzeuge: Datei lesen (offene Tabs), Dateien auflisten, Projekt durchsuchen, Datei ändern/schreiben (Diff mit Übernehmen/Immer/Ablehnen), Befehl in cmd.exe (mit Rückfrage, 2 Minuten Zeitlimit).

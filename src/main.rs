@@ -3,6 +3,7 @@
 #[macro_use]
 mod i18n;
 mod acp;
+mod agent;
 mod app;
 mod editor;
 mod editorconfig;

@@ -565,6 +565,26 @@ pub fn local_time(unix_ms: u64) -> LocalTime {
     LocalTime { year: t.wYear, month: t.wMonth, day: t.wDay, hour: t.wHour, minute: t.wMinute }
 }
 
+/// Console output as text: UTF-8 if it is valid (git, node …), else in the
+/// OEM code page that cmd and older tools write (umlauts as in "dir").
+pub fn console_text(bytes: &[u8]) -> String {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
+    use windows_sys::Win32::Globalization::{CP_OEMCP, MultiByteToWideChar};
+    let Ok(len) = i32::try_from(bytes.len()) else { return String::from_utf8_lossy(bytes).into_owned() };
+    // SAFETY: the first call only measures; the buffer then has exactly that size.
+    unsafe {
+        let n = MultiByteToWideChar(CP_OEMCP, 0, bytes.as_ptr(), len, std::ptr::null_mut(), 0);
+        if n <= 0 {
+            return String::from_utf8_lossy(bytes).into_owned();
+        }
+        let mut wide = vec![0u16; n as usize];
+        MultiByteToWideChar(CP_OEMCP, 0, bytes.as_ptr(), len, wide.as_mut_ptr(), n);
+        String::from_utf16_lossy(&wide)
+    }
+}
+
 /// Replaces `target` with `replacement` in one step, keeping the attributes
 /// and permissions of `target` (`replacement` is gone afterwards).
 pub fn replace_file(target: &std::path::Path, replacement: &std::path::Path) -> std::io::Result<()> {

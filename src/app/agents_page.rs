@@ -46,13 +46,20 @@ struct Edit {
     error: Option<String>,
     /// Remembered session settings, kept as they are.
     options: std::collections::BTreeMap<String, String>,
+    /// Built-in agent: provider id and server address (empty: the provider's default).
+    builtin: Option<String>,
+    base_url: String,
 }
 
 impl Edit {
     fn of(index: Option<usize>, cfg: &AgentConfig) -> Self {
+        let builtin = crate::agent::is_builtin(cfg).then(|| crate::agent::provider_of(cfg).0.to_string());
+        let base_url = cfg.env.get(crate::agent::BASE_URL).cloned().unwrap_or_default();
         let mut env: Vec<String> = cfg.env.iter().map(|(k, v)| format!("{k}={v}")).collect();
         env.sort();
         Self {
+            builtin,
+            base_url,
             index,
             name: cfg.name.clone(),
             command: cfg.command.clone(),
@@ -67,6 +74,15 @@ impl Edit {
     }
 
     fn config(&self) -> AgentConfig {
+        if let Some(provider) = &self.builtin {
+            let mut cfg = crate::agent::preset(self.name.trim(), provider);
+            let base = self.base_url.trim();
+            if !base.is_empty() {
+                cfg.env.insert(crate::agent::BASE_URL.into(), base.to_string());
+            }
+            cfg.options = self.options.clone();
+            return cfg;
+        }
         AgentConfig {
             name: self.name.trim().to_string(),
             command: self.command.trim().to_string(),
@@ -239,9 +255,18 @@ impl NebulaApp {
                         ui.add_space(6.0);
                         status_label(ui, &theme, state.probes.get(&agent.name));
                     });
-                    ui.label(RichText::new(agent.command_line()).monospace().size(11.0).color(theme.text_faint));
-                    if agent.api_key().is_some() {
-                        ui.label(RichText::new(t!("API-Schlüssel gespeichert ({api_key_env})", api_key_env = agent.api_key_env)).size(11.5).color(theme.text_muted));
+                    if crate::agent::is_builtin(agent) {
+                        let provider = crate::agent::provider_of(agent);
+                        let line = t!("In Nebula eingebaut · {provider} · {url}", provider = crate::i18n::tr(provider.1), url = crate::agent::base_url(agent));
+                        ui.label(RichText::new(line).size(11.5).color(theme.text_faint));
+                        if agent.api_key().is_some() {
+                            ui.label(RichText::new(t!("API-Schlüssel gespeichert")).size(11.5).color(theme.text_muted));
+                        }
+                    } else {
+                        ui.label(RichText::new(agent.command_line()).monospace().size(11.0).color(theme.text_faint));
+                        if agent.api_key().is_some() {
+                            ui.label(RichText::new(t!("API-Schlüssel gespeichert ({api_key_env})", api_key_env = agent.api_key_env)).size(11.5).color(theme.text_muted));
+                        }
                     }
                     if let Some(hint) = state.console_hint.get(&agent.name) {
                         ui.label(RichText::new(hint).size(11.5).color(theme.accent));
@@ -335,6 +360,22 @@ impl NebulaApp {
                     }
                 }
                 ui.separator();
+                // Built-in: no Node needed, API key or local model.
+                for (name, provider) in crate::agent::PRESETS {
+                    let name = crate::i18n::tr(name);
+                    let present = self.settings.agents.iter().any(|a| a.name == name);
+                    if ui.add_enabled(!present, egui::Button::new(name)).on_hover_text(t!("In Nebula eingebaut, ohne Node.js")).clicked() {
+                        ui.close();
+                        let cfg = crate::agent::preset(name, provider);
+                        // The key is needed right away: open the form.
+                        if crate::agent::provider_of(&cfg).3 {
+                            state.edit = Some(Edit::of(None, &cfg));
+                        } else {
+                            self.settings.agents.push(cfg);
+                        }
+                    }
+                }
+                ui.separator();
                 if ui.button(t!("Eigener Agent…")).clicked() {
                     ui.close();
                     state.edit = Some(Edit::of(None, &AgentConfig::default()));
@@ -373,8 +414,92 @@ fn status_label(ui: &mut Ui, theme: &crate::theme::Theme, probe: Option<&AgentSe
 /// The form for adding or changing an agent; `Some(true)`: save, `Some(false)`: cancel.
 fn edit_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit, agents: &[AgentConfig]) -> Option<bool> {
     let mut result = None;
-    ui.label(RichText::new(if e.index.is_some() { t!("Agent bearbeiten") } else { t!("Eigener Agent") }).strong());
+    ui.label(RichText::new(match (e.index, &e.builtin) { (Some(_), _) => t!("Agent bearbeiten"), (None, Some(_)) => t!("Neuer Agent"), (None, None) => t!("Eigener Agent") }).strong());
     ui.add_space(6.0);
+    if e.builtin.is_some() {
+        builtin_form(ui, theme, e);
+    } else {
+        process_form(ui, theme, e);
+    }
+    if let Some(err) = &e.error {
+        ui.label(RichText::new(err).color(theme.danger));
+    }
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        if ui.add(primary_button(t!("Speichern"), theme.accent)).clicked() {
+            let name = e.name.trim();
+            let taken = agents.iter().enumerate().any(|(i, a)| a.name == name && Some(i) != e.index);
+            e.error = if name.is_empty() {
+                Some(t!("Bitte einen Namen eingeben.").into())
+            } else if taken {
+                Some(t!("Diesen Namen gibt es schon.").into())
+            } else if e.builtin.is_none() && e.command.trim().is_empty() {
+                Some(t!("Bitte einen Befehl eingeben.").into())
+            } else {
+                None
+            };
+            if e.error.is_none() {
+                result = Some(true);
+            }
+        }
+        if ui.button(t!("Abbrechen")).clicked() {
+            result = Some(false);
+        }
+    });
+    result
+}
+
+/// Fields of an agent built into Nebula: provider, address and key.
+fn builtin_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit) {
+    let provider = e.builtin.clone().unwrap_or_default();
+    let (_, provider_name, default_url, needs_key) =
+        *crate::agent::PROVIDERS.iter().find(|p| p.0 == provider).unwrap_or(&crate::agent::PROVIDERS[0]);
+    egui::Grid::new("agent-edit").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
+        ui.label(t!("Name"));
+        ui.add(egui::TextEdit::singleline(&mut e.name).desired_width(380.0));
+        ui.end_row();
+        ui.label(t!("Anbieter"));
+        egui::ComboBox::from_id_salt("agent-provider").width(380.0).selected_text(crate::i18n::tr(provider_name)).show_ui(ui, |ui| {
+            for (id, name, _, _) in crate::agent::PROVIDERS {
+                ui.selectable_value(&mut e.builtin, Some(id.to_string()), crate::i18n::tr(name));
+            }
+        });
+        ui.end_row();
+        ui.label(t!("Server"));
+        ui.vertical(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut e.base_url).hint_text(default_url).desired_width(380.0));
+            let hint = if provider == "openai" {
+                t!("Leer lassen für OpenAI; für andere kompatible Dienste deren Adresse, z. B. https://openrouter.ai/api/v1 oder http://localhost:1234/v1 (LM Studio).")
+            } else {
+                t!("Leer lassen für die Standardadresse.")
+            };
+            ui.label(RichText::new(hint).size(11.0).color(theme.text_faint));
+        });
+        ui.end_row();
+        ui.label(t!("API-Schlüssel"));
+        ui.vertical(|ui| {
+            let hint = if e.has_key {
+                t!("gespeichert – leer lassen zum Behalten")
+            } else if needs_key {
+                t!("erforderlich")
+            } else {
+                t!("meist nicht nötig")
+            };
+            ui.add(egui::TextEdit::singleline(&mut e.key).password(true).hint_text(hint).desired_width(380.0));
+            ui.label(RichText::new(t!("Wird in der Windows-Anmeldeinformationsverwaltung gespeichert.")).size(11.0).color(theme.text_faint));
+        });
+        ui.end_row();
+    });
+    ui.add_space(4.0);
+    ui.label(
+        RichText::new(t!("Der Agent läuft direkt in Nebula (ohne Node.js). Er liest und durchsucht das Projekt; Änderungen und Befehle zeigt er vorher zur Bestätigung. Abgerechnet wird beim Anbieter pro Nutzung."))
+            .size(11.5)
+            .color(theme.text_muted),
+    );
+}
+
+/// Fields of an agent that runs as its own process (ACP).
+fn process_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit) {
     egui::Grid::new("agent-edit").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
         ui.label(t!("Name"));
         ui.add(egui::TextEdit::singleline(&mut e.name).desired_width(380.0));
@@ -401,30 +526,4 @@ fn edit_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit, agents: &[A
         });
         ui.end_row();
     });
-    if let Some(err) = &e.error {
-        ui.label(RichText::new(err).color(theme.danger));
-    }
-    ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        if ui.add(primary_button(t!("Speichern"), theme.accent)).clicked() {
-            let name = e.name.trim();
-            let taken = agents.iter().enumerate().any(|(i, a)| a.name == name && Some(i) != e.index);
-            e.error = if name.is_empty() {
-                Some(t!("Bitte einen Namen eingeben.").into())
-            } else if taken {
-                Some(t!("Diesen Namen gibt es schon.").into())
-            } else if e.command.trim().is_empty() {
-                Some(t!("Bitte einen Befehl eingeben.").into())
-            } else {
-                None
-            };
-            if e.error.is_none() {
-                result = Some(true);
-            }
-        }
-        if ui.button(t!("Abbrechen")).clicked() {
-            result = Some(false);
-        }
-    });
-    result
 }

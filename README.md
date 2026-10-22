@@ -82,6 +82,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 
 **KI-Agenten**
 - Coding-Agenten im rechten Panel (Reiter „KI“, Strg+Umschalt+A): Claude Code, Codex (ChatGPT) und Gemini CLI über das Agent Client Protocol (ACP, wie in Zed); eigene ACP-Agenten lassen sich hinzufügen
+- Eigener Agent ohne Node.js („In Nebula eingebaut“): mit API-Schlüssel für Anthropic (Claude) oder OpenAI, für jeden OpenAI-kompatiblen Dienst (OpenRouter, LM Studio …, Adresse unter „Server“) oder lokal mit Ollama. Er liest Dateien (auch ungespeicherte Tabs), listet und durchsucht das Projekt, ändert Dateien per Diff und führt Befehle in cmd.exe aus – Änderungen und Befehle erst nach Bestätigung. Das Modell wählt man in der Werkzeugleiste aus der Liste des Anbieters
 - Der Agent arbeitet im geöffneten Projekt: Antworten als Markdown, Gedanken, Plan, Werkzeugaufrufe mit Diffs; vor Änderungen und Befehlen fragt er nach (Erlauben / Immer erlauben / Ablehnen). Änderungen landen rückgängig machbar im offenen Tab und werden gespeichert; mit „Beim Speichern hochladen“ gehen sie auch auf den Server
 - Eingabe mit Werkzeugleiste: Agent, Modell, Aufwand und weitere Einstellungen des Agenten (Modell und Aufwand werden pro Agent gemerkt), Modus darunter; Stopp per ■ oder Esc
 - Dateien anhängen: Büroklammer (aktuelle Datei, Dateiauswahl) oder Rechtsklick in der Seitenleiste „An KI-Agent anhängen“, auch für Serverdateien
@@ -159,6 +160,7 @@ src/
   app/agent.rs         KI-Agent im rechten Panel (Unterhaltung, Eingabe, Anhänge, Limits)
   app/agents_page.rs   Einstellungsseite KI-Agenten (Anmeldung, Node.js)
   acp/                 Agent Client Protocol: Verbindung, Sitzung, Node-Verwaltung, Limits
+  agent/               Eingebauter Agent: ACP im Thread, Anthropic-/OpenAI-API (llm.rs), Werkzeuge (tools.rs)
   app/extensions.rs    Erweiterungen in der App: Dokument-Abgleich, Anfragen, Probleme
   app/extensions_page.rs  Einstellungsseite: installierte Erweiterungen, Bibliothek, Konsole
   preview.rs           WebView2-Fenster und eigenes URL-Schema
