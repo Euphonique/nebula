@@ -98,6 +98,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - macOS-typische Aufrufe werden übersetzt (`/usr/bin/env`, Shell-Skripte über Git Bash, npm-Shims). Erweiterungen mit macOS-Programmen oder Tree-sitter-Grammatiken als `.dylib` laufen unter Windows nicht.
 
 **Oberfläche**
+- Oberfläche auf Deutsch, Englisch, Spanisch, Französisch oder Italienisch: automatisch nach der Windows-Anzeigesprache (Englisch, wenn es keine Übersetzung gibt) oder fest unter Einstellungen › Editor. Sprachdateien sind JSON (deutscher Text → Übersetzung); „Sprachdatei exportieren…“ liefert eine Vorlage mit allen Texten, „…importieren…“ legt sie in `%APPDATA%\nebula\languages` ab, wo sie eingebaute Sprachen ergänzen oder ersetzen. Fehlende Texte erscheinen auf Englisch
 - Windows-Integration (Einstellungen › Windows), ohne Installer-Programm und ohne Adminrechte: „Installieren“ kopiert Nebula nach `%LOCALAPPDATA%\Programs\Nebula`, legt einen Startmenü-Eintrag an und trägt es unter „Apps“ zum Deinstallieren ein; „Mit Nebula öffnen“ im Explorer-Kontextmenü (Dateien, Ordner, Ordnerhintergrund); Nebula bei „Öffnen mit“ für Text- und Code-Dateien. Läuft Nebula schon, öffnen sich solche Dateien im vorhandenen Fenster (`--new-instance` erzwingt ein zweites)
 - Einstellungen exportieren und importieren (Menü Einstellungen oder Befehlspalette), z. B. für einen neuen Rechner: Editor und Darstellung, eigene Themes, Sprachen und Snippets, Tastenkürzel, Server, KI-Agenten und Erweiterungen, einzeln wählbar, als eine JSON-Datei. Passwörter und API-Schlüssel kommen nicht mit; Server, Snippets und Agenten werden beim Import ergänzt, fehlende Erweiterungen aus der Bibliothek nachinstalliert
 - Eigene Titelleiste mit Tabs; Tabs scrollen, lassen sich per Drag sortieren und haben ein Kontextmenü (Speichern, Duplizieren, Drucken, Schließen, andere/rechts/alle schließen, Pfad kopieren, im Explorer zeigen)
@@ -167,6 +168,7 @@ src/
   app/tabs.rs          Tab-Kontextmenü, Duplizieren, Drucken
   app/terminal.rs      Terminal-Panel (lokal und SSH): Tabs, Darstellung, Tastatur
   print.rs             Druckdialog und Seitenaufbau (GDI)
+  i18n.rs, i18n/       Übersetzungen: t!("deutscher Text"), Sprachdateien en/es/fr/it.json
   win32.rs             Mica, Andocklayouts, Datei-Zwischenablage, Cursorposition, Browser öffnen, Dateien hinausziehen
   ui/                  Titelleiste, Seitenleiste, Projektsuche, Git, Icons
   editor/              Dokument, Befehle, Vervollständigung, Emmet, Faltung, Suche, Widget

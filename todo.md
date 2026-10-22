@@ -53,7 +53,7 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 
 - **B** Mehrere Fenster/Projekte gleichzeitig.
 - **C** Update-Hinweis (braucht eine Adresse, unter der neue Versionen veröffentlicht werden).
-- **C** Oberfläche auch auf Englisch (Texte in Übersetzungsdateien auslagern).
+- ~~**C** Oberfläche auch auf Englisch (Texte in Übersetzungsdateien auslagern).~~ (erledigt: Englisch, Spanisch, Französisch, Italienisch)
 - **C** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
 
 ## Qualität und Technik
@@ -117,3 +117,5 @@ Serverliste (22.10.): Server per Drag \& Drop in Gruppen sortieren, Umschalter z
 Snippet-Gruppen (22.10.): eigene Snippets in einklappbaren Gruppen (Feld „Gruppe“, Drag \& Drop), Gruppen in Export\/Import und Einstellungs-Export; VS-Code-Sammlungen (`*.code-snippets`) werden zu einer Gruppe.
 
 Windows-Integration (22.10.): Installieren pro Benutzer ohne Fremdwerkzeug (Programmordner, Startmenü, Eintrag unter „Apps“), „Mit Nebula öffnen“ im Explorer, „Öffnen mit“ für 44 Text-/Code-Dateitypen, zweiter Start öffnet Dateien im laufenden Fenster.
+
+Lokalisierung (22.10.): Oberfläche auf Deutsch, Englisch, Spanisch, Französisch und Italienisch; automatisch nach der Windows-Anzeigesprache (sonst Englisch) oder fest unter Einstellungen › Editor. Sprachdateien (`src/i18n/*.json`, deutscher Text als Schlüssel) lassen sich exportieren, bearbeiten und importieren; eigene liegen in `languages\` im Einstellungsordner. Werkzeug `tools/i18n-wrap` (keys/merge) für neue Texte.

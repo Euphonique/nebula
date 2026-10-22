@@ -1371,21 +1371,21 @@ fn item_menu(
             close = true;
         }
     }
-    if menu_button(ui, t!("Ausschneiden"), "Strg+X") {
+    if menu_button(ui, t!("Ausschneiden"), &crate::i18n::keys("Strg+X")) {
         actions.push(SidebarAction::Clipboard { items: selection.to_vec(), cut: true });
         close = true;
     }
-    if menu_button(ui, t!("Kopieren"), "Strg+C") {
+    if menu_button(ui, t!("Kopieren"), &crate::i18n::keys("Strg+C")) {
         actions.push(SidebarAction::Clipboard { items: selection.to_vec(), cut: false });
         close = true;
     }
     if let Some(t) = target
-        && ui.add_enabled(clipboard_ready, egui::Button::new(t!("Einfügen")).shortcut_text("Strg+V")).clicked()
+        && ui.add_enabled(clipboard_ready, egui::Button::new(t!("Einfügen")).shortcut_text(&crate::i18n::keys("Strg+V"))).clicked()
     {
         actions.push(SidebarAction::Paste(t.clone()));
         close = true;
     }
-    if menu_button(ui, t!("Duplizieren"), "Strg+D") {
+    if menu_button(ui, t!("Duplizieren"), &crate::i18n::keys("Strg+D")) {
         actions.push(SidebarAction::Duplicate(selection.to_vec()));
         close = true;
     }
@@ -1487,7 +1487,7 @@ fn new_entries(ui: &mut Ui, dir: &DirRef, actions: &mut Vec<SidebarAction>, clos
 fn dir_menu(ui: &mut Ui, dir: &DirRef, clipboard_ready: bool, actions: &mut Vec<SidebarAction>) {
     let mut close = false;
     new_entries(ui, dir, actions, &mut close);
-    if ui.add_enabled(clipboard_ready, egui::Button::new(t!("Einfügen")).shortcut_text("Strg+V")).clicked() {
+    if ui.add_enabled(clipboard_ready, egui::Button::new(t!("Einfügen")).shortcut_text(&crate::i18n::keys("Strg+V"))).clicked() {
         actions.push(SidebarAction::Paste(dir.clone()));
         close = true;
     }

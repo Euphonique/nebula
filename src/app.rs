@@ -1416,13 +1416,13 @@ impl NebulaApp {
             ui.menu_button(t!("Bearbeiten"), |ui| {
                 let has_doc = self.active.is_some();
                 ui.add_enabled_ui(has_doc, |ui| {
-                    if ui.add(egui::Button::new(t!("Rückgängig")).shortcut_text("Strg+Z")).clicked() {
+                    if ui.add(egui::Button::new(t!("Rückgängig")).shortcut_text(&crate::i18n::keys("Strg+Z"))).clicked() {
                         if let Some(d) = self.active_doc() {
                             d.undo();
                         }
                         ui.close();
                     }
-                    if ui.add(egui::Button::new(t!("Wiederholen")).shortcut_text("Strg+Y")).clicked() {
+                    if ui.add(egui::Button::new(t!("Wiederholen")).shortcut_text(&crate::i18n::keys("Strg+Y"))).clicked() {
                         if let Some(d) = self.active_doc() {
                             d.redo();
                         }
@@ -1444,13 +1444,13 @@ impl NebulaApp {
                     ui.separator();
                     use crate::editor::commands as cmd;
                     let entries: [(&str, &str, fn(&mut Document)); 7] = [
-                        (t!("Nächstes Vorkommen auswählen"), "Strg+D", cmd::select_next_occurrence),
-                        (t!("Alle Vorkommen auswählen"), "Strg+Umschalt+L", cmd::select_all_occurrences),
-                        (t!("Zeile auswählen"), "Strg+L", cmd::select_line),
-                        (t!("Zeile duplizieren"), "Strg+Umschalt+D", cmd::duplicate_lines),
-                        (t!("Zeile löschen"), "Strg+Umschalt+K", cmd::delete_lines),
-                        (t!("Kommentar umschalten"), t!("Strg+/"), cmd::toggle_comment),
-                        (t!("Alles auswählen"), "Strg+A", cmd::select_all),
+                        (t!("Nächstes Vorkommen auswählen"), &crate::i18n::keys("Strg+D"), cmd::select_next_occurrence),
+                        (t!("Alle Vorkommen auswählen"), &crate::i18n::keys("Strg+Umschalt+L"), cmd::select_all_occurrences),
+                        (t!("Zeile auswählen"), &crate::i18n::keys("Strg+L"), cmd::select_line),
+                        (t!("Zeile duplizieren"), &crate::i18n::keys("Strg+Umschalt+D"), cmd::duplicate_lines),
+                        (t!("Zeile löschen"), &crate::i18n::keys("Strg+Umschalt+K"), cmd::delete_lines),
+                        (t!("Kommentar umschalten"), &crate::i18n::keys("Strg+/"), cmd::toggle_comment),
+                        (t!("Alles auswählen"), &crate::i18n::keys("Strg+A"), cmd::select_all),
                     ];
                     for (label, shortcut, f) in entries {
                         if ui.add(egui::Button::new(label).shortcut_text(shortcut)).clicked() {
@@ -1479,7 +1479,7 @@ impl NebulaApp {
                         self.toggle_terminal(&ui.ctx().clone());
                     }
                 });
-                if ui.add(egui::Button::new("Zen-Modus").shortcut_text(self.shortcut_label(palette::Command::ToggleZen))).clicked() {
+                if ui.add(egui::Button::new(t!("Zen-Modus")).shortcut_text(self.shortcut_label(palette::Command::ToggleZen))).clicked() {
                     ui.close();
                     self.toggle_zen(&ui.ctx().clone());
                 }
@@ -2205,9 +2205,9 @@ impl NebulaApp {
             welcome_heading(col, &theme, t!("Start"), false);
             type IconFn = fn(&egui::Painter, egui::Pos2, Color32);
             let actions: [(IconFn, &str, &str); 4] = [
-                (icons::new_file, t!("Neue Datei"), "Strg+N"),
-                (|p, c, col| icons::folder(p, c, col, true), t!("Ordner öffnen…"), "Strg+Umschalt+O"),
-                (|p, c, col| icons::search(p, c, col), t!("Datei öffnen…"), "Strg+O"),
+                (icons::new_file, t!("Neue Datei"), &crate::i18n::keys("Strg+N")),
+                (|p, c, col| icons::folder(p, c, col, true), t!("Ordner öffnen…"), &crate::i18n::keys("Strg+Umschalt+O")),
+                (|p, c, col| icons::search(p, c, col), t!("Datei öffnen…"), &crate::i18n::keys("Strg+O")),
                 (icons::server, t!("Server hinzufügen…"), ""),
             ];
             for (n, (icon, label, hint)) in actions.into_iter().enumerate() {
@@ -2381,7 +2381,7 @@ impl NebulaApp {
                         ui.label(t!("Startpfad"));
                         ui.add(egui::TextEdit::singleline(&mut s.root_path).hint_text("/httpdocs (leer = Home)").desired_width(280.0));
                         ui.end_row();
-                        ui.label("Web-URL");
+                        ui.label(t!("Web-URL"));
                         ui.add(egui::TextEdit::singleline(&mut s.web_url).hint_text("https://example.com").desired_width(280.0));
                         ui.end_row();
                         match s.protocol {

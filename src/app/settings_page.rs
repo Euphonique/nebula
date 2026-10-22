@@ -77,7 +77,7 @@ impl NebulaApp {
                 // Navigation.
                 ui.vertical(|ui| {
                     ui.set_width(150.0);
-                    for (page, label) in [(Page::Editor, t!("Editor")), (Page::Design, t!("Design")), (Page::Languages, t!("Sprachen")), (Page::Keys, t!("Tastenkürzel")), (Page::Agents, "KI-Agenten"), (Page::Extensions, t!("Erweiterungen")), (Page::System, t!("Windows"))] {
+                    for (page, label) in [(Page::Editor, t!("Editor")), (Page::Design, t!("Design")), (Page::Languages, t!("Sprachen")), (Page::Keys, t!("Tastenkürzel")), (Page::Agents, t!("KI-Agenten")), (Page::Extensions, t!("Erweiterungen")), (Page::System, t!("Windows"))] {
                         let sel = state.page == page;
                         if ui
                             .add_sized([140.0, 30.0], egui::Button::selectable(sel, RichText::new(label).size(14.0)))

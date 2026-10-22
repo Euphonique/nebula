@@ -11,7 +11,7 @@ impl NebulaApp {
         let theme = self.theme.clone();
         let faint = |t: &str| RichText::new(t.to_string()).small().color(theme.text_faint);
 
-        ui.heading("Windows-Integration");
+        ui.heading(t!("Windows-Integration"));
         ui.label(faint(t!("Alles gilt nur für dein Benutzerkonto, braucht keine Administratorrechte und kein zusätzliches Programm.")));
         ui.add_space(14.0);
 

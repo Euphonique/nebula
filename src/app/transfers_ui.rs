@@ -147,7 +147,7 @@ impl NebulaApp {
                                 acts.push(Act::Retry(t.tag));
                             }
                         } else {
-                            buttons.label(RichText::new("Strg+S").small().color(theme.text_faint)).on_hover_text(t!("Zum Wiederholen die Datei erneut speichern"));
+                            buttons.label(RichText::new(&crate::i18n::keys("Strg+S")).small().color(theme.text_faint)).on_hover_text(t!("Zum Wiederholen die Datei erneut speichern"));
                         }
                     }
                     TransferState::Done(_) => {

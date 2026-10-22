@@ -505,11 +505,11 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
         ui.ctx().copy_text(t.trim_end().to_string());
     }
     resp.context_menu(|ui| {
-        if ui.add_enabled(selected_text.is_some(), egui::Button::new(t!("Kopieren")).shortcut_text("Strg+C")).clicked() {
+        if ui.add_enabled(selected_text.is_some(), egui::Button::new(t!("Kopieren")).shortcut_text(&crate::i18n::keys("Strg+C"))).clicked() {
             ui.ctx().copy_text(selected_text.clone().unwrap_or_default().trim_end().to_string());
             ui.close();
         }
-        if ui.add(egui::Button::new(t!("Einfügen")).shortcut_text("Strg+V")).clicked() {
+        if ui.add(egui::Button::new(t!("Einfügen")).shortcut_text(&crate::i18n::keys("Strg+V"))).clicked() {
             if let Some(t) = crate::win32::clipboard_text() {
                 tab.term.send(t.replace('\n', "\r").into_bytes());
             }

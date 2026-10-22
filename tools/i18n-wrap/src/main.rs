@@ -474,7 +474,7 @@ fn main() {
                     eprintln!("Nummer {n} gibt es nicht");
                     continue;
                 };
-                map.insert(key.clone(), text.replace("\\n", "\n"));
+                map.insert(key.clone(), unescape(text));
             }
             let missing = keys.iter().filter(|k| !map.contains_key(*k)).count();
             let body: Vec<String> = map.iter().map(|(k, v)| format!("    {}: {}", json_string(k), json_string(v))).collect();
@@ -510,6 +510,30 @@ fn json_string(s: &str) -> String {
         }
     }
     out.push('"');
+    out
+}
+
+/// `\n` line break, `\\` backslash, `\"` quote, `\t` tab.
+fn unescape(s: &str) -> String {
+    let mut out = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
     out
 }
 

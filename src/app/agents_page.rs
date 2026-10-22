@@ -166,7 +166,7 @@ impl NebulaApp {
             probe.poll();
         }
 
-        ui.label(RichText::new("KI-Agenten").size(16.0).strong());
+        ui.label(RichText::new(t!("KI-Agenten")).size(16.0).strong());
         ui.add_space(2.0);
         ui.label(
             RichText::new(
@@ -386,7 +386,7 @@ fn edit_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit, agents: &[A
         ui.add(egui::TextEdit::singleline(&mut e.args).hint_text("-y paket@latest --acp").desired_width(380.0));
         ui.end_row();
         ui.label(t!("Umgebung"));
-        ui.add(egui::TextEdit::multiline(&mut e.env).hint_text("NAME=Wert (eine pro Zeile)").desired_rows(2).desired_width(380.0));
+        ui.add(egui::TextEdit::multiline(&mut e.env).hint_text(t!("NAME=Wert (eine pro Zeile)")).desired_rows(2).desired_width(380.0));
         ui.end_row();
         ui.label(t!("API-Schlüssel"));
         ui.vertical(|ui| {

@@ -101,9 +101,9 @@ impl Default for EditorSettings {
 #[serde(default)]
 pub struct AppSettings {
     pub editor: EditorSettings,
-    /// Light, dark or following Windows, and the theme used for each.
     /// Language of the user interface (code); empty = like Windows.
     pub ui_language: String,
+    /// Light, dark or following Windows, and the theme used for each.
     pub appearance: Appearance,
     pub theme_light: String,
     pub theme_dark: String,

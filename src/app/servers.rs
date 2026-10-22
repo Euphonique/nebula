@@ -133,7 +133,7 @@ impl NebulaApp {
         let Some(path) = rfd::FileDialog::new()
             .set_title(t!("Server exportieren"))
             .set_file_name("nebula-server.json")
-            .add_filter("Nebula-Serverliste", &["json"])
+            .add_filter(t!("Nebula-Serverliste"), &["json"])
             .save_file()
         else {
             return;

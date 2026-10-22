@@ -63,10 +63,10 @@ pub fn user_dir() -> PathBuf {
 }
 
 fn parse(text: &str) -> Result<LanguageFile> {
-    let file: LanguageFile = serde_json::from_str(text.trim_start_matches('\u{feff}')).context("Die Sprachdatei ist kein gültiges JSON")?;
+    let file: LanguageFile = serde_json::from_str(text.trim_start_matches('\u{feff}')).context(tr("Die Sprachdatei ist kein gültiges JSON"))?;
     let code = file.code.trim().to_lowercase();
     if code.is_empty() || code.len() > 12 || !code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        bail!("Die Sprachdatei hat keinen gültigen Sprachcode (z. B. \"fr\")");
+        bail!("{}", tr("Die Sprachdatei hat keinen gültigen Sprachcode (z. B. \"fr\")"));
     }
     Ok(LanguageFile { code, ..file })
 }
@@ -158,6 +158,21 @@ pub fn available() -> Vec<(String, String)> {
 }
 
 /// The translation of `key` (German text) in the active language.
+/// Translates the German key names in a fixed shortcut label such as "Strg+Umschalt+O".
+pub fn keys(label: &str) -> String {
+    label
+        .split('+')
+        .map(|part| match part {
+            "Strg" => tr("Strg+").trim_end_matches('+'),
+            "Umschalt" => tr("Umschalt+").trim_end_matches('+'),
+            "Entf" => tr("Entf"),
+            "Pos1" => tr("Pos1"),
+            other => other,
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
 pub fn tr(key: &'static str) -> &'static str {
     let state = STATE.read().unwrap();
     let Some(lang) = state.current.and_then(|i| state.languages.get(i)) else { return key };
@@ -200,10 +215,10 @@ pub fn export(code: &str, keys: &[&str]) -> Result<Vec<u8>> {
 
 /// Copies a language file into the config folder; returns its code and name.
 pub fn import(bytes: &[u8]) -> Result<(String, String)> {
-    let text = std::str::from_utf8(bytes).context("Die Datei ist keine Textdatei (UTF-8)")?;
+    let text = std::str::from_utf8(bytes).context(tr("Die Datei ist keine Textdatei (UTF-8)"))?;
     let file = parse(text)?;
     if file.code == SOURCE {
-        bail!("Deutsch ist die Ausgangssprache und braucht keine Sprachdatei");
+        bail!("{}", tr("Deutsch ist die Ausgangssprache und braucht keine Sprachdatei"));
     }
     let dir = user_dir();
     std::fs::create_dir_all(&dir)?;
