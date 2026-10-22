@@ -191,6 +191,10 @@ pub enum SidebarAction {
     Duplicate(Vec<Item>),
     UploadFiles { site_id: String, dir: String },
     DownloadTo(Item),
+    /// Choose a folder on a server, then copy or move the items there.
+    PickRemoteFolder { items: Vec<Item>, site_id: String, start: String, copy: bool },
+    /// Choose a folder below the project, then download the items there.
+    PickLocalFolder { items: Vec<Item>, start: PathBuf },
     /// Change permissions of server files (chmod).
     Permissions(Vec<Item>),
     /// Open an SSH terminal on a server.
@@ -256,6 +260,11 @@ struct RowCtx<'a> {
     servers: Vec<(String, String, String)>,
     /// The server list shows all servers without groups.
     servers_flat: bool,
+    /// Last selected folder per server, as targets for "copy to server".
+    remote_dirs: HashMap<String, String>,
+    /// Last selected project folder for downloads.
+    local_dir: Option<PathBuf>,
+    root: Option<PathBuf>,
 }
 
 pub struct Sidebar {
@@ -268,6 +277,10 @@ pub struct Sidebar {
     pub filter: String,
     local_filter: super::file_filter::LocalFilter,
     pub selection: Vec<Item>,
+    /// Folder last clicked on each server (a file counts as its folder).
+    pub remote_dirs: HashMap<String, String>,
+    /// Folder last clicked in the project.
+    pub local_dir: Option<PathBuf>,
     /// Internal clipboard and the system clipboard sequence when it was set.
     pub clipboard: Option<(Vec<Item>, bool, u32)>,
     /// The sidebar has keyboard focus (last click was in it).
@@ -303,6 +316,8 @@ impl Sidebar {
             filter: String::new(),
             local_filter: Default::default(),
             selection: Vec::new(),
+            remote_dirs: HashMap::new(),
+            local_dir: None,
             clipboard: None,
             focused: false,
             external_hover: None,
@@ -323,6 +338,7 @@ impl Sidebar {
         self.local_dirs.clear();
         self.local_expanded.clear();
         self.selection.clear();
+        self.local_dir = None;
         self.tab = SidebarTab::Files;
     }
 
@@ -645,6 +661,9 @@ impl Sidebar {
             modifiers: ui.input(|i| i.modifiers),
             servers,
             servers_flat: sites.flat,
+            remote_dirs: self.remote_dirs.clone(),
+            local_dir: self.local_dir.clone(),
+            root: self.root.clone(),
         };
         let mut list_ui = ui.new_child(egui::UiBuilder::new().max_rect(list_rect.shrink2(vec2(8.0, 0.0))));
         if self.tab == SidebarTab::Extensions {
@@ -684,6 +703,12 @@ impl Sidebar {
                 if resp.clicked() {
                     self.selection.clear();
                     self.focused = true;
+                    // Nothing selected: copies go to the start folder again.
+                    match self.tab {
+                        SidebarTab::Files => self.local_dir = None,
+                        SidebarTab::Servers => self.remote_dirs.clear(),
+                        _ => {}
+                    }
                 }
                 if let Some(target) = self.default_target() {
                     if let Some(payload) = resp.dnd_hover_payload::<DragItems>() {
@@ -885,12 +910,22 @@ impl Sidebar {
             } else if !selected || resp.clicked() {
                 self.selection = vec![item.clone()];
             }
+            if resp.clicked()
+                && let Some(dir) = &target
+            {
+                match dir {
+                    DirRef::Local(d) => self.local_dir = Some(d.clone()),
+                    DirRef::Remote { site_id, path } => {
+                        self.remote_dirs.insert(site_id.clone(), path.clone());
+                    }
+                }
+            }
         }
 
         let clipboard_ready = self.clipboard.is_some();
         let selection = if selected { self.selection.clone() } else { vec![item.clone()] };
         resp.context_menu(|ui| {
-            item_menu(ui, item, &selection, target.as_ref(), clipboard_ready, url, &rc.servers, actions);
+            item_menu(ui, item, &selection, target.as_ref(), clipboard_ready, url, rc, actions);
         });
         resp
     }
@@ -1318,6 +1353,12 @@ fn menu_button(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
     ui.add(egui::Button::new(label).shortcut_text(shortcut)).clicked()
 }
 
+/// A server path for a menu hint, shortened to its last folders.
+fn short_path(path: &str) -> String {
+    let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.len() <= 2 { format!("/{}", parts.join("/")) } else { format!("…/{}", parts[parts.len() - 2..].join("/")) }
+}
+
 /// Context menu for a file or folder row.
 fn item_menu(
     ui: &mut Ui,
@@ -1326,7 +1367,7 @@ fn item_menu(
     target: Option<&DirRef>,
     clipboard_ready: bool,
     url: Option<&str>,
-    servers: &[(String, String, String)],
+    rc: &RowCtx,
     actions: &mut Vec<SidebarAction>,
 ) {
     let mut close = false;
@@ -1389,24 +1430,66 @@ fn item_menu(
         actions.push(SidebarAction::Duplicate(selection.to_vec()));
         close = true;
     }
-    // To the start folder of another connected server (or the same one from local).
+    // To another connected server (or the same one from local): into the
+    // folder last selected there, its start folder or a chosen one.
     let source_site = match &item.file {
         FileRef::Remote { site_id, .. } => Some(site_id.as_str()),
         FileRef::Local(_) => None,
     };
-    let others: Vec<&(String, String, String)> = servers.iter().filter(|(id, _, _)| Some(id.as_str()) != source_site).collect();
+    let others: Vec<&(String, String, String)> = rc.servers.iter().filter(|(id, _, _)| Some(id.as_str()) != source_site).collect();
     if !others.is_empty() {
         for (label, copy) in [(t!("Auf Server kopieren"), true), (t!("Auf Server verschieben"), false)] {
             ui.menu_button(label, |ui| {
                 for (id, name, home) in &others {
-                    if ui.button(name).on_hover_text(t!("In den Startordner {home}", home = home)).clicked() {
-                        let target = DirRef::Remote { site_id: id.clone(), path: home.clone() };
-                        actions.push(SidebarAction::Transfer { items: selection.to_vec(), target, copy });
-                        ui.close();
-                    }
+                    ui.menu_button(name, |ui| {
+                        let selected = rc.remote_dirs.get(id).filter(|d| *d != home);
+                        let mut to = None;
+                        if let Some(dir) = selected
+                            && menu_button(ui, t!("In ausgewählten Ordner"), &short_path(dir))
+                        {
+                            to = Some(dir.clone());
+                        }
+                        if menu_button(ui, t!("In Startordner"), &short_path(home)) {
+                            to = Some(home.clone());
+                        }
+                        if let Some(path) = to {
+                            let target = DirRef::Remote { site_id: id.clone(), path };
+                            actions.push(SidebarAction::Transfer { items: selection.to_vec(), target, copy });
+                            ui.close();
+                        }
+                        if menu_button(ui, t!("In Ordner…"), "") {
+                            let start = selected.unwrap_or(home).clone();
+                            actions.push(SidebarAction::PickRemoteFolder { items: selection.to_vec(), site_id: id.clone(), start, copy });
+                            ui.close();
+                        }
+                    });
                 }
             });
         }
+    }
+    // Server files into the project.
+    if let (FileRef::Remote { .. }, Some(root)) = (&item.file, &rc.root) {
+        ui.menu_button(t!("Herunterladen in Projektordner"), |ui| {
+            let selected = rc.local_dir.as_ref().filter(|d| *d != root && d.starts_with(root));
+            let name = |p: &Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let mut to = None;
+            if let Some(dir) = selected
+                && menu_button(ui, t!("In ausgewählten Ordner"), &name(dir))
+            {
+                to = Some(dir.clone());
+            }
+            if menu_button(ui, t!("In Projektordner"), &name(root)) {
+                to = Some(root.clone());
+            }
+            if let Some(dir) = to {
+                actions.push(SidebarAction::Transfer { items: selection.to_vec(), target: DirRef::Local(dir), copy: true });
+                ui.close();
+            }
+            if menu_button(ui, t!("In Ordner…"), "") {
+                actions.push(SidebarAction::PickLocalFolder { items: selection.to_vec(), start: selected.unwrap_or(root).clone() });
+                ui.close();
+            }
+        });
     }
     ui.separator();
     if menu_button(ui, t!("Umbenennen…"), "F2") {
@@ -1668,6 +1751,9 @@ mod tests {
         let to_a = DirRef::Remote { site_id: "a".into(), path: "/www/css".into() };
         let to_b = DirRef::Remote { site_id: "b".into(), path: "/".into() };
         let local = DirRef::Local(PathBuf::from(r"C:\proj"));
+        assert_eq!(short_path("/"), "/");
+        assert_eq!(short_path("/www/html"), "/www/html");
+        assert_eq!(short_path("/home/user/www/html/"), "…/www/html");
         assert!(!drop_copies(&a, &to_a, none));
         assert!(drop_copies(&a, &to_b, none));
         assert!(drop_copies(&a, &local, none));

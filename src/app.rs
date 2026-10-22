@@ -50,6 +50,7 @@ mod snippets_panel;
 mod settings_transfer;
 mod sync_ui;
 mod system_page;
+mod folder_pick;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -93,6 +94,8 @@ enum Dialog {
     ConfirmDelete(Vec<Item>),
     /// A pasted/dropped item exists in the target folder.
     TransferConflict { name: String, queue: TransferQueue, apply_all: bool },
+    /// Choosing the server folder for "copy/move to server".
+    PickRemoteFolder(Box<folder_pick::RemoteFolderPick>),
     ConfirmRemoveSite(String),
     /// Unsaved changes when closing documents; `quit` closes the window afterwards.
     UnsavedChanges { doc_ids: Vec<u64>, quit: bool },
@@ -150,6 +153,8 @@ pub struct NebulaApp {
     pending_reloads: HashMap<u64, (u64, Option<crate::editor::document::Encoding>)>,
     /// Actions to run after a transfer succeeded (e.g. deleting a moved source).
     pending_followups: HashMap<u64, FollowUp>,
+    /// Copies/moves waiting for a server folder to be listed.
+    waiting_transfers: Vec<TransferQueue>,
     allow_close: bool,
     focus_editor: bool,
     last_title: String,
@@ -241,6 +246,7 @@ impl NebulaApp {
             pending_saves: HashMap::new(),
             pending_reloads: HashMap::new(),
             pending_followups: HashMap::new(),
+            waiting_transfers: Vec::new(),
             allow_close: false,
             focus_editor: true,
             last_title: String::new(),
@@ -1028,6 +1034,11 @@ impl NebulaApp {
             SidebarAction::Duplicate(items) => self.duplicate(items),
             SidebarAction::UploadFiles { site_id, dir } => self.upload_files_dialog(site_id, dir),
             SidebarAction::DownloadTo(item) => self.download_dialog(item),
+            SidebarAction::PickRemoteFolder { items, site_id, start, copy } => {
+                let pick = folder_pick::RemoteFolderPick { items, site_id, current: start, copy };
+                self.dialog = Some(Dialog::PickRemoteFolder(Box::new(pick)));
+            }
+            SidebarAction::PickLocalFolder { items, start } => self.pick_local_folder(items, start),
             SidebarAction::OpenTerminal(site_id) => self.open_terminal(ctx, &site_id),
             SidebarAction::Permissions(items) => {
                 let items: Vec<Item> = items.into_iter().filter(|i| matches!(i.file, FileRef::Remote { .. })).collect();
@@ -2904,6 +2915,10 @@ impl NebulaApp {
                 keep = self.import_dialog(ctx, &mut form);
                 Dialog::ImportSites(form)
             }
+            Dialog::PickRemoteFolder(mut pick) => {
+                keep = self.remote_folder_dialog(ctx, &mut pick);
+                Dialog::PickRemoteFolder(pick)
+            }
             Dialog::GotoSymbol(mut state) => {
                 keep = self.goto_symbol_dialog(ctx, &mut state);
                 Dialog::GotoSymbol(state)
@@ -3021,6 +3036,7 @@ impl eframe::App for NebulaApp {
             self.backdrop_state = Some(backdrop);
         }
         self.process_remote_events();
+        self.resume_waiting_transfers();
         self.poll_disk(&ctx);
         self.backup_unsaved(&ctx);
         self.poll_git_bases(&ctx);

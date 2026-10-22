@@ -9,7 +9,7 @@ use eframe::egui;
 use super::{Dialog, FollowUp, NebulaApp};
 use crate::editor::DocSource;
 use crate::remote::{self, Request};
-use crate::ui::sidebar::{DirRef, FileRef, Item};
+use crate::ui::sidebar::{DirRef, FileRef, Item, RemoteStatus};
 use crate::win32;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -101,6 +101,19 @@ impl NebulaApp {
             if same_dir && !queue.copy {
                 continue; // moving into its own folder changes nothing
             }
+            // A server folder not listed yet: read it first, so existing
+            // names are asked about instead of silently overwritten.
+            if let DirRef::Remote { site_id, path } = &target
+                && self.sidebar.remote_names(site_id, path).is_none()
+            {
+                let (site_id, path) = (site_id.clone(), path.clone());
+                queue.items.push_front((item, target));
+                if !self.sidebar.remote.get(&site_id).is_some_and(|t| t.loading.contains(&path)) {
+                    self.remote_request(&site_id, Request::List(path));
+                }
+                self.waiting_transfers.push(queue);
+                return;
+            }
             let mut dest = name.clone();
             if same_dir {
                 dest = self.unique_name(&target, &name);
@@ -117,6 +130,26 @@ impl NebulaApp {
                 }
             }
             self.transfer_one(&item, &target, &dest, queue.copy);
+        }
+    }
+
+    /// Continues queues that waited for a server folder listing.
+    pub(super) fn resume_waiting_transfers(&mut self) {
+        if self.waiting_transfers.is_empty() || self.dialog.is_some() {
+            return;
+        }
+        for queue in std::mem::take(&mut self.waiting_transfers) {
+            let Some((_, DirRef::Remote { site_id, path })) = queue.items.front() else { continue };
+            let tree = self.sidebar.remote.get(site_id);
+            if tree.is_none_or(|t| matches!(t.status, RemoteStatus::Failed(_))) {
+                // The connection error was reported already.
+                continue;
+            }
+            if self.sidebar.remote_names(site_id, path).is_some() && self.dialog.is_none() {
+                self.run_transfers(queue);
+            } else {
+                self.waiting_transfers.push(queue);
+            }
         }
     }
 
