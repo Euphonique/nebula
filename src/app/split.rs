@@ -118,6 +118,7 @@ impl NebulaApp {
         }
         EditorOutput {
             copied: left_out.copied.or(right_out.copied),
+            ai: left_out.ai.or(right_out.ai),
             has_focus: left_out.has_focus || right_out.has_focus,
             gained_focus: false,
         }

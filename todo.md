@@ -40,7 +40,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 Agenten über ACP und der eigene Agent (API-Schlüssel, Ollama) sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
 
-- **B** KI-Befehle auf der Auswahl: Erklären, Kommentieren, Umschreiben/Refaktorisieren, Fehler beheben – Ergebnis als Diff zum Übernehmen.
 - **B** Commit-Nachricht aus dem Diff (Knopf im Git-Tab).
 - **C** Nebula als MCP-Server: externe Agenten sehen offene Dateien, Auswahl und Fehler und können Dateien im Editor öffnen.
 - **C** Inline-Vorschläge beim Tippen (graue Vervollständigung, Tab übernimmt) – unbedingt ein-/ausschaltbar (Kosten).
@@ -77,7 +76,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
 Runde 3 ist damit komplett.
 
-KI: eigener Agent erledigt; als Nächstes KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
+KI: eigener Agent und KI-Befehle erledigt; als Nächstes Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
 
 ## Erledigt
 
@@ -130,3 +129,5 @@ Sicheres Speichern und Inhaltsvergleich (22.10.): Lokales Speichern (auch „In 
 Lesezeichen-Panel (22.10.): Doppelklick auf eine Zeilennummer setzt/entfernt ein Lesezeichen; Reiter „Lesezeichen“ im rechten Panel mit allen Lesezeichen der offenen Dateien (Zeilentext, Klick springt, × entfernt, „Alle entfernen“); Lesezeichen werden in Sitzung und Projekt-Tabs gespeichert.
 
 Eigener KI-Agent (22.10.): „In Nebula eingebaut“, ohne Node.js – Anthropic, OpenAI und OpenAI-kompatible Dienste (eigene Server-Adresse) sowie Ollama; spricht intern ACP, daher dieselbe Oberfläche wie die anderen Agenten (Modellwahl aus der Liste des Anbieters, Werkzeugaufrufe, Diffs, Rückfrage, Stopp). Werkzeuge: Datei lesen (offene Tabs), Dateien auflisten, Projekt durchsuchen, Datei ändern/schreiben (Diff mit Übernehmen/Immer/Ablehnen), Befehl in cmd.exe (mit Rückfrage, 2 Minuten Zeitlimit).
+
+KI-Befehle (22.10.): Rechtsklick im Editor › „KI“ (und Befehlspalette): Erklären, Kommentieren, Umschreiben… (mit Anweisung, Vorschläge wie „lesbarer“), Fehler beheben (mit den gemeldeten Problemen) – für die Auswahl oder die aktuelle Zeile; geht an den Agenten im Panel, Änderungen als Diff zum Übernehmen. Ändern nur bei lokalen Dateien. Nebenbei: Markdown im Agent-Panel bricht lange Absätze jetzt um.

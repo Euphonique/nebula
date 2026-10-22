@@ -51,6 +51,7 @@ mod settings_transfer;
 mod sync_ui;
 mod system_page;
 mod folder_pick;
+mod ai_commands;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -96,6 +97,8 @@ enum Dialog {
     TransferConflict { name: String, queue: TransferQueue, apply_all: bool },
     /// Choosing the server folder for "copy/move to server".
     PickRemoteFolder(Box<folder_pick::RemoteFolderPick>),
+    /// "How should it be rewritten?" for the AI command.
+    AiRewrite(Box<ai_commands::RewriteForm>),
     ConfirmRemoveSite(String),
     /// Unsaved changes when closing documents; `quit` closes the window afterwards.
     UnsavedChanges { doc_ids: Vec<u64>, quit: bool },
@@ -2955,6 +2958,10 @@ impl NebulaApp {
                 keep = self.remote_folder_dialog(ctx, &mut pick);
                 Dialog::PickRemoteFolder(pick)
             }
+            Dialog::AiRewrite(mut form) => {
+                keep = self.ai_rewrite_dialog(ctx, &mut form);
+                Dialog::AiRewrite(form)
+            }
             Dialog::GotoSymbol(mut state) => {
                 keep = self.goto_symbol_dialog(ctx, &mut state);
                 Dialog::GotoSymbol(state)
@@ -3211,6 +3218,9 @@ impl eframe::App for NebulaApp {
             }
             if let Some(text) = out.copied {
                 ctx.copy_text(text);
+            }
+            if let Some((doc_id, action)) = out.ai {
+                self.ai_action(doc_id, action, &ctx);
             }
             if out.has_focus {
                 self.sidebar.focused = false;

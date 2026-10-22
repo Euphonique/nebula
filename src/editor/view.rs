@@ -25,10 +25,21 @@ const TEXT_PADDING: f32 = 12.0;
 const TOP_PADDING: f32 = 6.0;
 const DOUBLE_CLICK: f64 = 0.4;
 
+/// AI commands from the editor's context menu, for the selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AiAction {
+    Explain,
+    Comment,
+    Rewrite,
+    Fix,
+}
+
 #[derive(Default)]
 pub struct EditorOutput {
     /// Text to put on the clipboard.
     pub copied: Option<String>,
+    /// An AI command for the document with this id.
+    pub ai: Option<(u64, AiAction)>,
     pub has_focus: bool,
     /// The editor got the keyboard focus this frame.
     pub gained_focus: bool,
@@ -107,6 +118,7 @@ impl EditorView<'_> {
 
         let mut out = EditorOutput {
             copied: None,
+            ai: None,
             has_focus: false,
             gained_focus: false,
         };
@@ -186,6 +198,27 @@ impl EditorView<'_> {
                         out.copied = Some(cmd::copy_text(doc).0);
                         ui.close();
                     }
+                    ui.separator();
+                    // The agent edits files on this computer: changes only for local files.
+                    let local = matches!(doc.source, crate::editor::DocSource::Local(_));
+                    ui.menu_button(t!("KI"), |ui| {
+                        let what = if doc.primary_selection().is_empty() { t!("die aktuelle Zeile") } else { t!("die Auswahl") };
+                        ui.label(egui::RichText::new(t!("Für {what}", what = what)).small().weak());
+                        let actions = [
+                            (AiAction::Explain, t!("Erklären"), true),
+                            (AiAction::Comment, t!("Kommentieren"), local),
+                            (AiAction::Rewrite, t!("Umschreiben…"), local),
+                            (AiAction::Fix, t!("Fehler beheben"), local),
+                        ];
+                        for (action, label, enabled) in actions {
+                            let resp = ui.add_enabled(enabled, egui::Button::new(label));
+                            let resp = resp.on_disabled_hover_text(t!("Nur für lokale Dateien – der Agent bearbeitet Dateien auf diesem Rechner."));
+                            if resp.clicked() {
+                                out.ai = Some((doc.id, action));
+                                ui.close();
+                            }
+                        }
+                    });
                     ui.separator();
                     if ui.button(t!("Alles auswählen")).clicked() {
                         cmd::select_all(doc);

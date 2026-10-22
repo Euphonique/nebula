@@ -351,7 +351,7 @@ impl NebulaApp {
     }
 
     /// Folder the agent works in: the project, else the active file's folder.
-    fn agent_cwd(&self) -> PathBuf {
+    pub(super) fn agent_cwd(&self) -> PathBuf {
         if let Some(root) = &self.sidebar.root {
             return root.clone();
         }
@@ -465,6 +465,12 @@ impl NebulaApp {
         }
         self.agent.pending_attach.clear();
         self.agent.input.clear();
+        self.send_agent_prompt(text, context, ctx);
+    }
+
+    /// Sends a message to the agent (starting it first if needed; while it
+    /// starts or works, the message waits).
+    pub(super) fn send_agent_prompt(&mut self, text: String, context: Vec<Attachment>, ctx: &egui::Context) {
         let needs_start = self.agent.session.as_ref().is_none_or(|s| matches!(s.phase, Phase::Failed(_) | Phase::Exited));
         if needs_start {
             self.start_agent(ctx);
@@ -1039,7 +1045,12 @@ fn entry_ui(ui: &mut egui::Ui, theme: &crate::theme::Theme, n: usize, entry: &En
                 .inner_margin(egui::Margin::symmetric(10, 7))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    ui.add(egui::Label::new(RichText::new(text).color(theme.foreground)).selectable(true));
+                    // Messages with code (e.g. from the AI commands) as Markdown; plain text keeps its line breaks.
+                    if text.contains("```") {
+                        markdown::show(ui, theme, text);
+                    } else {
+                        ui.add(egui::Label::new(RichText::new(text).color(theme.foreground)).selectable(true));
+                    }
                 });
         }
         Entry::Agent(text) => markdown::show(ui, theme, text),

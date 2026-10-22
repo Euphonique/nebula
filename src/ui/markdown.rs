@@ -33,7 +33,8 @@ pub fn show(ui: &mut egui::Ui, theme: &Theme, text: &str) {
         j.wrap.max_width = (ui.available_width() - indent).max(40.0);
         ui.horizontal(|ui| {
             ui.add_space(indent);
-            ui.add(egui::Label::new(j).selectable(true));
+            // Labels in a horizontal layout don't wrap by themselves.
+            ui.add(egui::Label::new(j).selectable(true).wrap());
         });
     };
     let indent = |lists: &Vec<Option<u64>>, quote: u32| lists.len().saturating_sub(1) as f32 * 16.0 + quote as f32 * 12.0;

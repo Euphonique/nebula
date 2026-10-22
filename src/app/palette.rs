@@ -55,6 +55,10 @@ pub enum Command {
     TogglePreview,
     ToggleAgent,
     NewAgentSession,
+    AiExplain,
+    AiComment,
+    AiRewrite,
+    AiFix,
     ExtLibrary,
     ExtManage,
     ExtConsole,
@@ -174,6 +178,10 @@ impl Command {
             (TogglePreview, t!("Vorschau: Live-Vorschau ein/aus")),
             (ToggleAgent, t!("KI-Agent: Panel ein/aus")),
             (NewAgentSession, t!("KI-Agent: Neue Unterhaltung")),
+            (AiExplain, t!("KI: Auswahl erklären")),
+            (AiComment, t!("KI: Auswahl kommentieren")),
+            (AiRewrite, t!("KI: Auswahl umschreiben…")),
+            (AiFix, t!("KI: Fehler in der Auswahl beheben")),
             (OpenInBrowser, t!("Vorschau: Im Browser öffnen")),
             (ToggleComment, t!("Bearbeiten: Kommentar umschalten")),
             (DuplicateLine, t!("Bearbeiten: Zeile duplizieren")),
@@ -397,6 +405,10 @@ impl NebulaApp {
                 self.new_agent_session();
                 self.show_agent();
             }
+            Command::AiExplain => self.ai_action_active(crate::editor::view::AiAction::Explain, ctx),
+            Command::AiComment => self.ai_action_active(crate::editor::view::AiAction::Comment, ctx),
+            Command::AiRewrite => self.ai_action_active(crate::editor::view::AiAction::Rewrite, ctx),
+            Command::AiFix => self.ai_action_active(crate::editor::view::AiAction::Fix, ctx),
             Command::ExtLibrary | Command::ExtManage | Command::ExtConsole => {
                 self.settings_ui.ext.tab = match c {
                     Command::ExtLibrary => super::extensions_page::Tab::Library,
