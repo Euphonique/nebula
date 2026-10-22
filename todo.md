@@ -40,7 +40,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 Agenten über ACP und der eigene Agent (API-Schlüssel, Ollama) sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
 
-- **C** Angehängte Serverdateien direkt bearbeitbar machen (virtueller Pfad, Lesen/Schreiben über die Serververbindung); bisher nur lesend bzw. über ein lokales Projekt mit „Beim Speichern hochladen“.
 - **C** Limits-Anzeige auch für Codex (ChatGPT-Abo), sobald der Adapter sie meldet.
 
 ## Oberfläche und Allgemein
@@ -73,7 +72,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
 Runde 3 ist damit komplett.
 
-KI: eigener Agent, KI-Befehle, Commit-Nachricht, MCP-Server und Inline-Vorschläge erledigt; offen: Serverdateien für Agenten bearbeitbar, Codex-Limits.
+KI: eigener Agent, KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge und bearbeitbare Serverdateien erledigt; offen: Codex-Limits.
 
 ## Erledigt
 
@@ -134,3 +133,5 @@ Commit-Nachricht per KI (22.10.): ✦ im Nachrichtenfeld des Git-Tabs – der Ag
 Nebula als MCP-Server (22.10.): lokaler MCP-Server (HTTP, nur 127.0.0.1, Schlüssel in der Adresse) mit get_open_files, get_active_editor (Cursor, Auswahl), get_diagnostics, get_file_text (ungespeicherter Stand) und open_file; Agenten im Panel bekommen ihn automatisch, für Claude Code im Terminal gibt es den Befehl zum Kopieren (Einstellungen › KI-Agenten), dort auch Aus und „Neuer Schlüssel“.
 
 Inline-Vorschläge (22.10.): nach einer Tipp-Pause am Zeilenende fragt Nebula einen eingebauten Agenten (eigenes, sonst automatisch kleines Modell wie Haiku/mini); Vorschlag grau am Cursor, weitere Zeilen auf Hintergrund darunter; Tab übernimmt, Esc verwirft, Weitertippen/Cursor bewegen lässt ihn verschwinden. Standardmäßig aus (Einstellungen › KI-Agenten), Pause einstellbar.
+
+Serverdateien für Agenten bearbeitbar (22.10.): Server-Dateien bekommen für den Agenten einen Pfad `\\nebula\<Server-ID>\pfad`; Lesen liefert den offenen Tab oder holt die Datei vom Server, Schreiben geht in den offenen Tab (Speichern = Hochladen) oder direkt auf den Server; angehängte Serverdateien nennen dem Agenten diesen Pfad; KI-Befehle zum Ändern gehen jetzt auch für Serverdateien; Klick auf solche Dateien im Panel öffnet die Serverdatei.

@@ -68,6 +68,24 @@ pub struct Attachment {
     pub text: String,
     /// On this disk (the agent can open it itself).
     pub local: bool,
+    /// For server files: the path under which the agent reads and writes it through Nebula.
+    pub virtual_path: Option<PathBuf>,
+}
+
+/// Root of the paths that stand for server files (`\\nebula\<site id>\www\a.php`).
+const VIRTUAL_ROOT: &str = r"\\nebula\";
+
+/// The path an agent uses for a server file.
+pub fn virtual_path(site_id: &str, path: &str) -> PathBuf {
+    PathBuf::from(format!("{VIRTUAL_ROOT}{site_id}{}", path.replace('/', "\\")))
+}
+
+/// Server and path of a path made by [`virtual_path`].
+pub fn parse_virtual(path: &Path) -> Option<(String, String)> {
+    let s = path.to_string_lossy();
+    let rest = s.get(..VIRTUAL_ROOT.len()).filter(|p| p.eq_ignore_ascii_case(VIRTUAL_ROOT)).map(|_| &s[VIRTUAL_ROOT.len()..])?;
+    let (site, file) = rest.split_once('\\')?;
+    Some((site.to_string(), format!("/{}", file.replace('\\', "/"))))
 }
 
 impl Attachment {
@@ -78,16 +96,18 @@ impl Attachment {
             label: path.display().to_string(),
             text,
             local: true,
+            virtual_path: None,
         }
     }
 
-    pub fn remote(server: &str, path: &str, text: String) -> Self {
+    pub fn remote(server: &str, site_id: &str, path: &str, text: String) -> Self {
         Self {
             uri: format!("sftp://{}{}", server.replace(' ', "_"), crate::preview::percent_encode(path)),
             name: path.rsplit('/').next().unwrap_or(path).to_string(),
             label: format!("{server}: {path}"),
             text,
             local: false,
+            virtual_path: Some(virtual_path(site_id, path)),
         }
     }
 }
@@ -572,6 +592,13 @@ impl AgentSession {
                 // Server files are not on this disk: the content goes along as text.
                 blocks.push(json!({ "type": "text", "text": format!("Datei {} ({}):\n```\n{}\n```", a.name, a.uri, a.text) }));
             }
+            // Server files are read and written through Nebula under a path of their own.
+            if let Some(v) = &a.virtual_path {
+                blocks.push(json!({ "type": "text", "text": format!(
+                    "{} is a file on the server \"{}\". To change it, read and write the path {} (Nebula uploads the change).",
+                    a.name, a.label, v.display()
+                ) }));
+            }
         }
         let mut shown = text.to_string();
         for a in context {
@@ -818,6 +845,15 @@ pub fn slice_lines(text: &str, line: Option<u32>, limit: Option<u32>) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn virtual_paths_for_server_files() {
+        let p = virtual_path("19a3f", "/www/html/a.php");
+        assert_eq!(p.to_string_lossy(), r"\\nebula\19a3f\www\html\a.php");
+        assert!(p.is_absolute());
+        assert_eq!(parse_virtual(&p), Some(("19a3f".to_string(), "/www/html/a.php".to_string())));
+        assert_eq!(parse_virtual(Path::new(r"C:\www\a.php")), None);
+    }
 
     #[test]
     fn reads_login_methods() {

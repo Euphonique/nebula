@@ -27,6 +27,8 @@ pub(super) struct AgentUi {
     /// Files attached from the sidebar for the next message, and server reads for them.
     attachments: Vec<PendingAttachment>,
     pending_attach: HashMap<u64, FileRef>,
+    /// Server files the agent reads that aren't open: request tag -> (answer id, line, limit).
+    pending_reads: HashMap<u64, (serde_json::Value, Option<u32>, Option<u32>)>,
     /// Focus the input on the next frame.
     focus_input: bool,
     /// Node.js being downloaded for the agents, and the last download error.
@@ -391,6 +393,22 @@ impl NebulaApp {
         for req in requests {
             match req {
                 FileRequest::Read { rpc_id, path, line, limit } => {
+                    // A server file that isn't open: answered once the download arrives.
+                    if let Some((site_id, remote)) = crate::acp::session::parse_virtual(&path)
+                        && self.remote_doc(&site_id, &remote).is_none()
+                    {
+                        match self.send_remote(&site_id, Request::Read(remote)) {
+                            Some(tag) => {
+                                self.agent.pending_reads.insert(tag, (rpc_id, line, limit));
+                            }
+                            None => {
+                                if let Some(s) = &mut self.agent.session {
+                                    s.reply_file(&rpc_id, Err(t!("Server nicht gefunden.").to_string()));
+                                }
+                            }
+                        }
+                        continue;
+                    }
                     let result = self.agent_read(&path).map(|t| Some(crate::acp::session::slice_lines(&t, line, limit)));
                     if let Some(s) = &mut self.agent.session {
                         s.reply_file(&rpc_id, result);
@@ -414,8 +432,17 @@ impl NebulaApp {
         })
     }
 
+    /// The open tab of a server file.
+    pub(super) fn remote_doc(&self, site_id: &str, path: &str) -> Option<usize> {
+        self.docs.iter().position(|d| matches!(&d.source, DocSource::Remote { site_id: s, path: p } if s == site_id && p == path) && d.image.is_none())
+    }
+
     /// Text of a file for the agent: the open buffer if there is one.
     pub(super) fn agent_read(&mut self, path: &Path) -> Result<String, String> {
+        if let Some((site_id, remote)) = crate::acp::session::parse_virtual(path) {
+            let i = self.remote_doc(&site_id, &remote).ok_or_else(|| t!("{path} ist nicht geöffnet.", path = remote))?;
+            return Ok(self.docs[i].text().to_string());
+        }
         if let Some(i) = self.local_doc(path) {
             return Ok(self.docs[i].text().to_string());
         }
@@ -428,6 +455,18 @@ impl NebulaApp {
 
     /// Writes for the agent: into the open tab (undoable, then saved) or to disk.
     fn agent_write(&mut self, path: &Path, content: &str) -> Result<(), String> {
+        // Server files: into the open tab (saved = uploaded), else straight onto the server.
+        if let Some((site_id, remote)) = crate::acp::session::parse_virtual(path) {
+            if let Some(i) = self.remote_doc(&site_id, &remote) {
+                self.docs[i].replace_text(content);
+                if !self.save_doc(i, false) {
+                    return Err(t!("{path} konnte nicht gespeichert werden.", path = remote));
+                }
+                return Ok(());
+            }
+            let request = Request::Write { path: remote.clone(), data: std::sync::Arc::new(content.as_bytes().to_vec()), expected: None };
+            return self.send_remote(&site_id, request).map(|_| ()).ok_or_else(|| t!("Server nicht gefunden.").to_string());
+        }
         if let Some(i) = self.local_doc(path) {
             self.docs[i].replace_text(content);
             if !self.save_doc(i, false) {
@@ -491,8 +530,8 @@ impl NebulaApp {
         match self.docs[i].source.clone() {
             DocSource::Local(p) => Some(Attachment::local(&p, text)),
             DocSource::Remote { site_id, path } => {
-                let server = self.sites.get(&site_id).map(|s| s.display_name()).unwrap_or(site_id);
-                Some(Attachment::remote(&server, &path, text))
+                let server = self.sites.get(&site_id).map(|s| s.display_name()).unwrap_or_else(|| site_id.clone());
+                Some(Attachment::remote(&server, &site_id, &path, text))
             }
             DocSource::Untitled(_) => None,
         }
@@ -549,8 +588,17 @@ impl NebulaApp {
         }
     }
 
-    /// A server file read for an attachment arrived; false if `tag` is not one.
+    /// A server file read for an attachment or for the agent arrived; false if `tag` is not one.
     pub(super) fn agent_read_done(&mut self, tag: u64, data: Result<&[u8], String>) -> bool {
+        if let Some((rpc_id, line, limit)) = self.agent.pending_reads.remove(&tag) {
+            let result = data.and_then(|bytes| {
+                if super::is_binary(bytes) { Err(t!("Keine Textdatei.").to_string()) } else { Ok(String::from_utf8_lossy(bytes).into_owned()) }
+            });
+            if let Some(s) = &mut self.agent.session {
+                s.reply_file(&rpc_id, result.map(|t| Some(crate::acp::session::slice_lines(&t, line, limit))));
+            }
+            return true;
+        }
         let Some(file) = self.agent.pending_attach.remove(&tag) else { return false };
         let FileRef::Remote { site_id, path } = &file else { return true };
         let server = self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_else(|| site_id.clone());
@@ -560,7 +608,7 @@ impl NebulaApp {
                 self.error(t!("{path} lässt sich nicht anhängen (keine Textdatei oder zu groß).", path = path));
             }
             Ok(bytes) => {
-                let a = Attachment::remote(&server, path, String::from_utf8_lossy(bytes).into_owned());
+                let a = Attachment::remote(&server, site_id, path, String::from_utf8_lossy(bytes).into_owned());
                 if let Some(p) = self.agent.attachments.iter_mut().find(|a| a.file == file) {
                     p.loaded = Some(a);
                 }
@@ -884,9 +932,14 @@ impl NebulaApp {
             self.agent_login(&m);
         }
         if let Some((path, line)) = open_location {
-            self.open_local(&path);
-            if let (Some(line), Some(i)) = (line, self.active) {
-                self.jump_to_line(i, line.saturating_sub(1) as usize);
+            if let Some((site_id, remote)) = crate::acp::session::parse_virtual(&path) {
+                let line = line.unwrap_or(1).saturating_sub(1) as usize;
+                self.open_file_at(FileRef::Remote { site_id, path: remote }, line, 0);
+            } else {
+                self.open_local(&path);
+                if let (Some(line), Some(i)) = (line, self.active) {
+                    self.jump_to_line(i, line.saturating_sub(1) as usize);
+                }
             }
         }
         if send && !working {

@@ -113,7 +113,9 @@ fn ftp_roundtrip() {
         let server = libunftp::ServerBuilder::new(Box::new(move || {
             unftp_sbe_fs::Filesystem::new(root.clone()).unwrap()
         }))
-        .passive_ports(51000..=51999)
+        // Below the range Windows hands out for random ports (49152+), which
+        // other tests running at the same time use.
+        .passive_ports(40000..=40999)
         .build()
         .unwrap();
         server.listen(format!("127.0.0.1:{port}")).await.unwrap();

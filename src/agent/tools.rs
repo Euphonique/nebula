@@ -88,6 +88,10 @@ pub fn resolve(cwd: &Path, path: &str) -> PathBuf {
 
 /// The path as shown to the user: relative to the project if inside it.
 pub fn display(cwd: &Path, path: &Path) -> String {
+    // Server files (read and written through Nebula).
+    if let Some((_, remote)) = crate::acp::session::parse_virtual(path) {
+        return format!("{remote} (Server)");
+    }
     path.strip_prefix(cwd).map(|p| p.display().to_string()).unwrap_or_else(|_| path.display().to_string())
 }
 

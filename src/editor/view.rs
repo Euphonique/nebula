@@ -199,8 +199,8 @@ impl EditorView<'_> {
                         ui.close();
                     }
                     ui.separator();
-                    // The agent edits files on this computer: changes only for local files.
-                    let local = matches!(doc.source, crate::editor::DocSource::Local(_));
+                    // The agent edits saved files (server files through Nebula), not new tabs.
+                    let local = !matches!(doc.source, crate::editor::DocSource::Untitled(_));
                     ui.menu_button(t!("KI"), |ui| {
                         let what = if doc.primary_selection().is_empty() { t!("die aktuelle Zeile") } else { t!("die Auswahl") };
                         ui.label(egui::RichText::new(t!("Für {what}", what = what)).small().weak());
@@ -212,7 +212,7 @@ impl EditorView<'_> {
                         ];
                         for (action, label, enabled) in actions {
                             let resp = ui.add_enabled(enabled, egui::Button::new(label));
-                            let resp = resp.on_disabled_hover_text(t!("Nur für lokale Dateien – der Agent bearbeitet Dateien auf diesem Rechner."));
+                            let resp = resp.on_disabled_hover_text(t!("Erst speichern – der Agent bearbeitet gespeicherte Dateien."));
                             if resp.clicked() {
                                 out.ai = Some((doc.id, action));
                                 ui.close();

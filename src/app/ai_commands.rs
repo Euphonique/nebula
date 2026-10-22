@@ -28,8 +28,8 @@ impl NebulaApp {
     /// The same for the active tab.
     pub(super) fn ai_action_active(&mut self, action: AiAction, ctx: &egui::Context) {
         let Some(i) = self.active else { return };
-        if action != AiAction::Explain && !matches!(self.docs[i].source, DocSource::Local(_)) {
-            self.info(t!("Nur für lokale Dateien – der Agent bearbeitet Dateien auf diesem Rechner."));
+        if action != AiAction::Explain && matches!(self.docs[i].source, DocSource::Untitled(_)) {
+            self.info(t!("Erst speichern – der Agent bearbeitet gespeicherte Dateien."));
             return;
         }
         self.ai_action(self.docs[i].id, action, ctx);
@@ -50,11 +50,12 @@ impl NebulaApp {
         let file = match &doc.source {
             // Relative to the project (where the agent works): shorter, and every agent understands it.
             DocSource::Local(p) => p.strip_prefix(&cwd).unwrap_or(p).display().to_string(),
-            DocSource::Remote { site_id, path } => {
-                format!("{}: {path}", self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_default())
-            }
+            // The agent reads and writes server files through Nebula under this path.
+            DocSource::Remote { site_id, path } => crate::acp::session::virtual_path(site_id, path).display().to_string(),
             DocSource::Untitled(_) => doc.title(),
         };
+        // As code: the conversation shows Markdown, which would eat backslashes.
+        let file = format!("`{file}`");
         let (from, to) = (first + 1, last + 1);
         let mut text = match action {
             AiAction::Explain => t!("Erkläre mir diesen Code aus {file} (Zeilen {from}–{to}). Ändere dabei keine Dateien.", file = file, from = from, to = to),
