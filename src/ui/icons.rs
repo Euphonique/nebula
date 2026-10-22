@@ -309,6 +309,17 @@ pub fn menu(painter: &Painter, c: Pos2, color: Color32) {
     }
 }
 
+/// Monitor and phone side by side ("device width").
+pub fn devices(painter: &Painter, c: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    let screen = Rect::from_min_size(c + vec2(-8.5, -6.0), vec2(11.0, 8.5));
+    painter.rect_stroke(screen, 1.5, stroke, eframe::egui::StrokeKind::Inside);
+    painter.line_segment([c + vec2(-5.0, 5.5), c + vec2(-1.0, 5.5)], stroke);
+    painter.line_segment([c + vec2(-3.0, 2.5), c + vec2(-3.0, 5.5)], stroke);
+    let phone = Rect::from_min_size(c + vec2(4.0, -3.5), vec2(5.0, 9.0));
+    painter.rect_stroke(phone, 1.5, stroke, eframe::egui::StrokeKind::Inside);
+}
+
 /// Three dots ("more actions").
 pub fn more(painter: &Painter, c: Pos2, color: Color32) {
     for dx in [-5.0, 0.0, 5.0] {

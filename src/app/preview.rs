@@ -13,6 +13,7 @@ use super::NebulaApp;
 use crate::editor::DocSource;
 use crate::preview::{self, ORIGIN, ProtocolRequest};
 use crate::remote::{self, Request};
+use crate::settings::PreviewDevice;
 use crate::ui::icons;
 
 /// Where URL paths of the current page resolve to.
@@ -387,30 +388,46 @@ impl NebulaApp {
 
         // Buttons, right to left.
         let mut x = right;
-        let mut button = |ui: &mut egui::Ui, tip: &str, paint: fn(&egui::Painter, egui::Pos2, egui::Color32)| {
+        let device = self.settings.preview_device;
+        let mut button = |ui: &mut egui::Ui, tip: &str, active: bool, paint: fn(&egui::Painter, egui::Pos2, egui::Color32)| {
             let r = Rect::from_center_size(pos2(x, cy), vec2(26.0, 24.0));
             x -= 28.0;
             let resp = ui.interact(r, egui::Id::unique(("preview_btn", tip)), Sense::click()).on_hover_text(tip);
-            if resp.hovered() {
+            if active {
+                ui.painter().rect_filled(r, 6.0, theme.hover.gamma_multiply(2.2));
+            } else if resp.hovered() {
                 ui.painter().rect_filled(r, 6.0, theme.hover);
             }
-            paint(ui.painter(), r.center(), if resp.hovered() { theme.foreground } else { theme.text_muted });
-            resp.clicked()
+            paint(ui.painter(), r.center(), if resp.hovered() || active { theme.foreground } else { theme.text_muted });
+            resp
         };
-        if button(ui, "Entwicklertools", icons::devtools) {
+        if button(ui, "Entwicklertools", false, icons::devtools).clicked() {
             self.preview.open_devtools();
         }
-        if button(ui, "Im Browser öffnen", icons::external) {
+        if button(ui, "Im Browser öffnen", false, icons::external).clicked() {
             self.open_in_browser(&ui.ctx().clone());
         }
-        if button(ui, "Neu laden", icons::refresh) {
+        let devices = button(ui, "Gerätebreite", device != PreviewDevice::Fit, icons::devices);
+        egui::Popup::menu(&devices).show(|ui| {
+            for d in PreviewDevice::ALL {
+                let label = match d.width() {
+                    Some(w) => format!("{} ({w} px)", d.label()),
+                    None => d.label().to_string(),
+                };
+                if ui.selectable_label(device == d, label).clicked() {
+                    self.settings.preview_device = d;
+                    ui.close();
+                }
+            }
+        });
+        if button(ui, "Neu laden", false, icons::refresh).clicked() {
             self.preview_state.cache.clear();
             self.preview.reload();
         }
-        if button(ui, "Vor", icons::forward) {
+        if button(ui, "Vor", false, icons::forward).clicked() {
             self.preview.go(true);
         }
-        if button(ui, "Zurück", icons::back) {
+        if button(ui, "Zurück", false, icons::back).clicked() {
             self.preview.go(false);
         }
 
@@ -428,7 +445,28 @@ impl NebulaApp {
             );
             return None;
         }
-        Some(body)
+        let Some(width) = device.width() else {
+            self.preview.set_zoom(1.0);
+            return Some(body);
+        };
+        // A device width: the page in its own width, centered; scaled down if
+        // the panel is narrower.
+        let area = Rect::from_min_max(body.min + vec2(10.0, 26.0), body.max - vec2(10.0, 10.0));
+        let zoom = (area.width() / width).min(1.0);
+        let view = Rect::from_center_size(
+            pos2(area.center().x, area.top() + area.height() / 2.0),
+            vec2(width * zoom, area.height()),
+        );
+        let painter = ui.painter();
+        painter.rect_filled(body, 0.0, theme.hover.gamma_multiply(0.6));
+        painter.rect_stroke(view.expand(1.0), 2.0, egui::Stroke::new(1.0, theme.gutter_fg.gamma_multiply(0.5)), egui::StrokeKind::Outside);
+        let mut info = format!("{} · {} px", device.label(), width);
+        if zoom < 0.999 {
+            info.push_str(&format!(" · {} %", (zoom * 100.0).round()));
+        }
+        painter.text(pos2(area.center().x, body.top() + 13.0), Align2::CENTER_CENTER, info, FontId::proportional(11.0), theme.text_muted);
+        self.preview.set_zoom(zoom as f64);
+        Some(view)
     }
 }
 

@@ -32,7 +32,7 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 ## Live-Vorschau und Web
 
-- **B** Vorschau in verschiedenen Gerätebreiten (Handy/Tablet/Desktop) umschaltbar.
+- **C** Gerätebreiten der Vorschau: Querformat und eigene Breiten.
 
 ## KI-Unterstützung (wie in VS Code)
 
@@ -70,7 +70,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 1. ~~„Schnell öffnen“ (Strg+P) für Serverdateien und mit `:Zeile`~~ (erledigt).
 2. ~~Absturzbericht~~ (erledigt).
 3. ~~Server duplizieren, gruppieren, Import/Export~~ (erledigt).
-4. Vorschau in Gerätebreiten (kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
+4. ~~Vorschau in Gerätebreiten~~ (erledigt; kein eigener PHP-Server – dafür gibt es Herd, XAMPP und Co.).
 5. Eigene Snippets pro Sprache.
 6. Tabs anheften; Einstellungen exportieren/importieren.
 7. Große Dateien schreibgeschützt öffnen, Hex-Ansicht.
@@ -95,3 +95,5 @@ Serververwaltung (22.10.): Server in einklappbaren Gruppen, duplizieren, Import 
 Schnell öffnen (22.10.): auch Dateien aus geladenen Serverordnern, `datei:Zeile[:Spalte]` und `:Zeile` für den aktuellen Tab; Treffer im Dateinamen werden besser gewichtet.
 
 Absturzbericht (22.10.): Panics landen mit Meldung, Stelle und Backtrace in `crashes\` (Release-Build mit Zeilentabellen in `nebula.pdb`), beim nächsten Start Dialog mit Öffnen/Kopieren/Explorer; Testauslöser `NEBULA_CRASH_TEST=1`.
+
+Gerätebreiten (22.10.): Vorschau wahlweise in Panelbreite, Handy (390 px), Tablet (768 px) oder Desktop (1440 px), bei Bedarf verkleinert (WebView-Zoom).

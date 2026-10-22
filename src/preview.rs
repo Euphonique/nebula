@@ -58,6 +58,7 @@ pub struct Preview {
     pub error: Option<String>,
     bounds: Option<(i32, i32, u32, u32)>,
     visible: bool,
+    zoom: f64,
 }
 
 impl Default for Preview {
@@ -71,6 +72,7 @@ impl Default for Preview {
             error: None,
             bounds: None,
             visible: false,
+            zoom: 1.0,
         }
     }
 }
@@ -155,6 +157,14 @@ impl Preview {
         if !self.visible {
             let _ = webview.set_visible(true);
             self.visible = true;
+        }
+    }
+
+    /// Page zoom (1.0 = 100 %); used to fit wide device widths into the panel.
+    pub fn set_zoom(&mut self, zoom: f64) {
+        let Some(webview) = &self.webview else { return };
+        if (self.zoom - zoom).abs() > 0.001 && webview.zoom(zoom).is_ok() {
+            self.zoom = zoom;
         }
     }
 

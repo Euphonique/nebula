@@ -129,6 +129,8 @@ pub struct AppSettings {
     /// Live preview shown next to the editor, and its share of the width.
     pub preview: bool,
     pub preview_split: f32,
+    /// Simulated device width of the preview.
+    pub preview_device: PreviewDevice,
     /// Panel right of the editor (preview, outline), its tab and width.
     pub right_panel: bool,
     pub right_tab: RightTab,
@@ -239,6 +241,7 @@ impl Default for AppSettings {
             terminal_shell: String::new(),
             right_panel: false,
             right_tab: RightTab::Preview,
+            preview_device: PreviewDevice::Fit,
             right_width: 460.0,
             disabled_extensions: Vec::new(),
             keybindings: Default::default(),
@@ -556,6 +559,40 @@ mod keyring_tests {
         let (id, user) = spec.split_once(':').unwrap();
         let site = super::Site { id: id.into(), user: user.into(), ..Default::default() };
         site.set_password(&std::env::var("NEBULA_PASS").unwrap_or_default()).unwrap();
+    }
+}
+
+/// Width the preview simulates.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PreviewDevice {
+    /// As wide as the panel.
+    #[default]
+    Fit,
+    Phone,
+    Tablet,
+    Desktop,
+}
+
+impl PreviewDevice {
+    pub const ALL: [PreviewDevice; 4] = [PreviewDevice::Fit, PreviewDevice::Phone, PreviewDevice::Tablet, PreviewDevice::Desktop];
+
+    /// Viewport width in CSS pixels.
+    pub fn width(self) -> Option<f32> {
+        match self {
+            PreviewDevice::Fit => None,
+            PreviewDevice::Phone => Some(390.0),
+            PreviewDevice::Tablet => Some(768.0),
+            PreviewDevice::Desktop => Some(1440.0),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PreviewDevice::Fit => "Panelbreite",
+            PreviewDevice::Phone => "Handy",
+            PreviewDevice::Tablet => "Tablet",
+            PreviewDevice::Desktop => "Desktop",
+        }
     }
 }
 
