@@ -130,17 +130,17 @@ pub fn system_language() -> String {
 /// Sets the language: a code, or empty for the system language. Languages
 /// without a translation fall back to English.
 pub fn set_language(setting: &str) {
-    let wanted = if setting.trim().is_empty() { system_language() } else { setting.trim().to_lowercase() };
+    let code = resolve(setting);
     let mut state = STATE.write().unwrap();
-    state.current = if wanted == SOURCE {
-        None
-    } else {
-        state
-            .languages
-            .iter()
-            .position(|l| l.code == wanted)
-            .or_else(|| state.languages.iter().position(|l| l.code == FALLBACK))
-    };
+    state.current = state.languages.iter().position(|l| l.code == code);
+}
+
+/// The language a setting leads to: the code itself (or the system language
+/// when empty) if a translation exists, otherwise English.
+pub fn resolve(setting: &str) -> String {
+    let wanted = if setting.trim().is_empty() { system_language() } else { setting.trim().to_lowercase() };
+    let state = STATE.read().unwrap();
+    if wanted == SOURCE || state.languages.iter().any(|l| l.code == wanted) { wanted } else { FALLBACK.to_string() }
 }
 
 /// Code of the active language.

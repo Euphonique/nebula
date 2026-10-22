@@ -665,12 +665,12 @@ impl NebulaApp {
         section(ui, t!("Sprache"));
         let languages = crate::i18n::available();
         let name_of = |code: &str| languages.iter().find(|(c, _)| c == code).map_or(code.to_string(), |(_, n)| n.clone());
-        let auto = t!("Automatisch ({name})", name = name_of(&crate::i18n::current()));
+        let auto = t!("Automatisch ({name})", name = name_of(&crate::i18n::resolve("")));
         let selected = if self.settings.ui_language.is_empty() { auto.clone() } else { name_of(&self.settings.ui_language) };
         let mut choice = None;
         ui.horizontal(|ui| {
             ui.label(t!("Oberfläche"));
-            egui::ComboBox::from_id_salt("ui-language").selected_text(selected).width(240.0).show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt("ui-language").selected_text(selected).width(240.0).height(480.0).show_ui(ui, |ui| {
                 if ui.selectable_label(self.settings.ui_language.is_empty(), &auto).on_hover_text(t!("Folgt der Windows-Anzeigesprache; ohne Übersetzung Englisch")).clicked() {
                     choice = Some(String::new());
                 }
