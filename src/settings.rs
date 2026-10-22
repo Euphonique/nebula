@@ -235,6 +235,9 @@ pub struct SessionEntry {
     pub cursor: usize,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub pinned: bool,
+    /// Bookmarked lines.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub bookmarks: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -657,6 +660,8 @@ pub enum RightTab {
     #[default]
     Preview,
     Outline,
+    /// Bookmarks of all open documents.
+    Bookmarks,
     /// Own and built-in snippets of the current language.
     Snippets,
     /// Chat with a coding agent.

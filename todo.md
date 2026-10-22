@@ -15,7 +15,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 - **C** Makros aufnehmen und abspielen.
 - **C** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
 - **C** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
-- **C** Lesezeichen im Panel rechts einbauen. Doppel Klick auf Zeilennummer setzt/entfernt Lesezeichen (mit Markierung bei Zeilennummer) und trägt dieses in die Liste der Lesezeichen im rechten Panel ein. Mit Klick auf ein Lesezeichen im rechten Panel springt es im Editor an besagte Stelle.
 
 ## Suchen und Navigieren
 
@@ -128,3 +127,5 @@ Kopieren auf den Server und Herunterladen ins Projekt (22.10.): „Auf Server ko
 Fehlersuche Datenverlust (22.10.): Neue Datei auf dem Server mit vorhandenem Namen leerte die vorhandene Datei; Umbenennen auf einen vorhandenen Namen überschrieb lokal (Windows) und per FTP stillschweigend; Tabs in umbenannten Ordnern zeigten auf den alten Pfad (und blieben nach fehlgeschlagenem Umbenennen auf dem neuen); Synchronisieren mit unvollständig eingelesener Seite (nicht lesbarer Ordner, Limit erreicht) hätte vorhandene Dateien als „neu“ überschrieben bzw. Löschen vorgeschlagen – jetzt Abbruch mit Meldung; Löschen in der Seitenleiste geht lokal in den Papierkorb.
 
 Sicheres Speichern und Inhaltsvergleich (22.10.): Lokales Speichern (auch „In Dateien ersetzen“ und KI-Agent) schreibt erst in eine Hilfsdatei und ersetzt dann in einem Schritt (`ReplaceFileW`); die erste Synchronisierung vergleicht gleich große Dateien inhaltlich, statt sie für identisch zu halten.
+
+Lesezeichen-Panel (22.10.): Doppelklick auf eine Zeilennummer setzt/entfernt ein Lesezeichen; Reiter „Lesezeichen“ im rechten Panel mit allen Lesezeichen der offenen Dateien (Zeilentext, Klick springt, × entfernt, „Alle entfernen“); Lesezeichen werden in Sitzung und Projekt-Tabs gespeichert.

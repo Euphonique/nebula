@@ -171,6 +171,8 @@ pub struct NebulaApp {
     pending_cursors: HashMap<(String, String), usize>,
     /// Server files from the last session whose tab was pinned.
     pending_pins: std::collections::HashSet<(String, String)>,
+    /// Bookmarks of remote tabs from the last session, applied once they load.
+    pending_bookmarks: HashMap<(String, String), Vec<usize>>,
     /// Line and column to jump to once a remote file from the search arrives.
     pending_lines: HashMap<(String, String), (usize, usize)>,
     /// Publish uploads in flight: tag -> (project, relative path, mtime).
@@ -259,6 +261,7 @@ impl NebulaApp {
             settings_ui: SettingsUi::default(),
             pending_cursors: HashMap::new(),
             pending_pins: Default::default(),
+            pending_bookmarks: HashMap::new(),
             pending_lines: HashMap::new(),
             pending_publish: HashMap::new(),
             reveal_active_tab: true,

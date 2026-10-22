@@ -74,8 +74,9 @@ impl NebulaApp {
         tabs.spacing_mut().item_spacing.x = 2.0;
         let tip = |name: &str, key: String| if key.is_empty() { name.to_string() } else { format!("{name} ({key})") };
         let preview_tip = tip(t!("Vorschau"), self.shortcut_label(super::palette::Command::TogglePreview));
-        let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 4] = [
+        let entries: [(RightTab, String, fn(&egui::Painter, egui::Pos2, egui::Color32)); 5] = [
             (RightTab::Outline, t!("Gliederung").into(), icons::outline),
+            (RightTab::Bookmarks, t!("Lesezeichen").into(), icons::bookmark),
             (RightTab::Snippets, t!("Snippets").into(), icons::snippets),
             (RightTab::Agent, tip("KI-Agent", self.shortcut_label(super::palette::Command::ToggleAgent)), icons::sparkle),
             (RightTab::Preview, preview_tip, icons::eye),
@@ -94,6 +95,10 @@ impl NebulaApp {
             RightTab::Preview => self.preview_pane(ui, row, body, row.right() - 13.0, x + 6.0),
             RightTab::Outline => {
                 self.outline(ui, body);
+                None
+            }
+            RightTab::Bookmarks => {
+                self.bookmarks_pane(ui, body);
                 None
             }
             RightTab::Snippets => {
@@ -163,6 +168,90 @@ impl NebulaApp {
             });
         });
         if let Some(line) = jump {
+            self.jump_to_line(i, line);
+        }
+    }
+
+    /// Bookmarks of all open documents, grouped by tab; a click jumps there.
+    fn bookmarks_pane(&mut self, ui: &mut egui::Ui, body: Rect) {
+        let theme = self.theme.clone();
+        let total: usize = self.docs.iter().map(|d| d.view.bookmarks.len()).sum();
+        let (mut jump, mut remove, mut clear) = (None, None, false);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(body.shrink2(vec2(10.0, 4.0))), |ui| {
+            if total == 0 {
+                ui.add_space(20.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(RichText::new(t!("Noch keine Lesezeichen")).color(theme.text_faint));
+                    ui.add_space(4.0);
+                    let key = self.shortcut_label(super::palette::Command::ToggleBookmark);
+                    ui.label(RichText::new(t!("Doppelklick auf eine Zeilennummer oder {key} setzt eines.", key = key)).small().color(theme.text_faint));
+                });
+                return;
+            }
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(if total == 1 { t!("1 Lesezeichen").to_string() } else { t!("{total} Lesezeichen", total = total) }).color(theme.text_muted));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button(t!("Alle entfernen")).clicked() {
+                        clear = true;
+                    }
+                });
+            });
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                for (i, doc) in self.docs.iter().enumerate() {
+                    if doc.view.bookmarks.is_empty() {
+                        continue;
+                    }
+                    ui.add_space(6.0);
+                    let where_ = match &doc.source {
+                        crate::editor::DocSource::Local(p) => p.display().to_string(),
+                        crate::editor::DocSource::Remote { site_id, path } => {
+                            format!("{}: {path}", self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_default())
+                        }
+                        crate::editor::DocSource::Untitled(_) => String::new(),
+                    };
+                    ui.label(RichText::new(doc.title()).strong()).on_hover_text(where_);
+                    let cursor_line = (Some(i) == self.active).then(|| doc.char_to_line(doc.primary_selection().head));
+                    for &line in &doc.view.bookmarks {
+                        if line >= doc.len_lines() {
+                            continue;
+                        }
+                        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
+                        if cursor_line == Some(line) {
+                            ui.painter().rect_filled(r, 5.0, theme.hover.gamma_multiply(2.2));
+                        } else if resp.hovered() {
+                            ui.painter().rect_filled(r, 5.0, theme.hover);
+                        }
+                        let painter = ui.painter().with_clip_rect(r);
+                        painter.text(pos2(r.left() + 34.0, r.center().y), Align2::RIGHT_CENTER, (line + 1).to_string(), FontId::proportional(11.0), theme.text_faint);
+                        let text = doc.line_text(line);
+                        let text = text.trim();
+                        let shown = if text.is_empty() { t!("(leere Zeile)") } else { text };
+                        let color = if text.is_empty() { theme.text_faint } else { theme.foreground };
+                        painter.text(pos2(r.left() + 44.0, r.center().y), Align2::LEFT_CENTER, shown, FontId::monospace(12.0), color);
+                        // Removing without jumping: a cross on the hovered row.
+                        let cross = Rect::from_center_size(pos2(r.right() - 12.0, r.center().y), vec2(18.0, 18.0));
+                        let over_cross = resp.hovered() && ui.input(|i| i.pointer.hover_pos()).is_some_and(|p| cross.contains(p));
+                        if resp.hovered() {
+                            painter.rect_filled(cross.expand(2.0), 4.0, if over_cross { theme.hover.gamma_multiply(2.5) } else { theme.hover });
+                            painter.text(cross.center(), Align2::CENTER_CENTER, "×", FontId::proportional(14.0), if over_cross { theme.foreground } else { theme.text_muted });
+                        }
+                        if resp.clicked() {
+                            if over_cross { remove = Some((i, line)) } else { jump = Some((i, line)) }
+                        }
+                        resp.on_hover_text(t!("Klick springt zur Zeile, × entfernt das Lesezeichen"));
+                    }
+                }
+            });
+        });
+        if clear {
+            self.docs.iter_mut().for_each(|d| d.view.bookmarks.clear());
+        }
+        if let Some((i, line)) = remove {
+            self.docs[i].view.bookmarks.remove(&line);
+        }
+        if let Some((i, line)) = jump {
+            self.activate(i);
             self.jump_to_line(i, line);
         }
     }

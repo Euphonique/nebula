@@ -12,18 +12,7 @@ impl NebulaApp {
         let mut active = None;
         let mut entries = Vec::new();
         for (i, d) in self.docs.iter().enumerate() {
-            let cursor = d.primary_selection().head;
-            let entry = match &d.source {
-                DocSource::Local(p) => SessionEntry { local: Some(p.clone()), cursor, pinned: d.pinned, ..Default::default() },
-                DocSource::Remote { site_id, path } => SessionEntry {
-                    site_id: Some(site_id.clone()),
-                    remote_path: Some(path.clone()),
-                    cursor,
-                    pinned: d.pinned,
-                    ..Default::default()
-                },
-                DocSource::Untitled(_) => continue,
-            };
+            let Some(entry) = session_entry(d) else { continue };
             if self.active == Some(i) {
                 active = Some(entries.len());
             }
@@ -45,10 +34,7 @@ impl NebulaApp {
                 self.open_local(path);
                 if let Some(i) = self.active {
                     let doc = &mut self.docs[i];
-                    let pos = e.cursor.min(doc.len_chars());
-                    doc.set_selection(Selection::cursor(pos));
-                    doc.view.center_line = Some(doc.char_to_line(pos));
-                    doc.pinned = e.pinned;
+                    apply_entry(doc, e);
                     if active == Some(n) {
                         active_id = Some(doc.id);
                     }
@@ -60,6 +46,9 @@ impl NebulaApp {
                 self.pending_cursors.insert((site_id.clone(), path.clone()), e.cursor);
                 if e.pinned {
                     self.pending_pins.insert((site_id.clone(), path.clone()));
+                }
+                if !e.bookmarks.is_empty() {
+                    self.pending_bookmarks.insert((site_id.clone(), path.clone()), e.bookmarks.clone());
                 }
                 self.open_remote(site_id, path);
             }
@@ -75,6 +64,10 @@ impl NebulaApp {
         let DocSource::Remote { site_id, path } = self.docs[index].source.clone() else { return };
         if self.pending_pins.remove(&(site_id.clone(), path.clone())) {
             self.docs[index].pinned = true;
+        }
+        if let Some(marks) = self.pending_bookmarks.remove(&(site_id.clone(), path.clone())) {
+            let doc = &mut self.docs[index];
+            doc.view.bookmarks = marks.into_iter().filter(|&l| l < doc.len_lines()).collect();
         }
         if let Some((line, column)) = self.pending_lines.remove(&(site_id.clone(), path.clone())) {
             self.goto_line_column(index, line, column);
@@ -110,8 +103,9 @@ impl NebulaApp {
                 if self.active == Some(i) {
                     tabs.active = Some(tabs.entries.len());
                 }
-                let DocSource::Local(p) = &d.source else { continue };
-                tabs.entries.push(SessionEntry { local: Some(p.clone()), cursor: d.primary_selection().head, pinned: d.pinned, ..Default::default() });
+                if let Some(entry) = session_entry(d) {
+                    tabs.entries.push(entry);
+                }
             }
             self.settings.project_tabs.insert(old.to_string_lossy().into_owned(), tabs);
             let active_id = self.active.map(|i| self.docs[i].id);
@@ -128,10 +122,7 @@ impl NebulaApp {
                 self.open_local(p);
                 if let Some(i) = self.active {
                     let doc = &mut self.docs[i];
-                    let pos = e.cursor.min(doc.len_chars());
-                    doc.set_selection(Selection::cursor(pos));
-                    doc.view.center_line = Some(doc.char_to_line(pos));
-                    doc.pinned = e.pinned;
+                    apply_entry(doc, e);
                     if tabs.active == Some(n) {
                         active_id = Some(doc.id);
                     }
@@ -154,4 +145,32 @@ impl NebulaApp {
         self.settings.project_tabs.retain(|k, _| keep.contains(k));
         self.sidebar.recent_folders = self.settings.recent_folders.clone();
     }
+}
+
+/// What the session remembers of a tab (untitled ones are not kept).
+fn session_entry(d: &crate::editor::Document) -> Option<SessionEntry> {
+    let mut entry = SessionEntry {
+        cursor: d.primary_selection().head,
+        pinned: d.pinned,
+        bookmarks: d.view.bookmarks.iter().copied().collect(),
+        ..Default::default()
+    };
+    match &d.source {
+        DocSource::Local(p) => entry.local = Some(p.clone()),
+        DocSource::Remote { site_id, path } => {
+            entry.site_id = Some(site_id.clone());
+            entry.remote_path = Some(path.clone());
+        }
+        DocSource::Untitled(_) => return None,
+    }
+    Some(entry)
+}
+
+/// Cursor, pin and bookmarks of a reopened local tab.
+fn apply_entry(doc: &mut crate::editor::Document, e: &SessionEntry) {
+    let pos = e.cursor.min(doc.len_chars());
+    doc.set_selection(Selection::cursor(pos));
+    doc.view.center_line = Some(doc.char_to_line(pos));
+    doc.pinned = e.pinned;
+    doc.view.bookmarks = e.bookmarks.iter().copied().filter(|&l| l < doc.len_lines()).collect();
 }

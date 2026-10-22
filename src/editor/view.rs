@@ -45,6 +45,8 @@ struct PointerState {
     origin: Option<(usize, usize)>,
     /// Alt+drag: block selection from this cell.
     block: Option<BlockStart>,
+    /// Line and time of the last click on a line number (double click: bookmark).
+    gutter_click: Option<(usize, f64)>,
 }
 
 #[derive(Clone, Copy)]
@@ -507,9 +509,23 @@ fn handle_pointer(
                 return;
             }
         }
+        let gutter_click = state.gutter_click.take();
         if in_gutter {
-            // Clicking a line number selects the line.
             let line = doc.char_to_line(at);
+            // Double click on a line number sets or removes a bookmark.
+            if let Some((last, t)) = gutter_click
+                && last == line
+                && time - t < DOUBLE_CLICK
+            {
+                if !doc.view.bookmarks.remove(&line) {
+                    doc.view.bookmarks.insert(line);
+                }
+                state.dragging = false;
+                ui.data_mut(|d| d.insert_temp(state_id, state));
+                return;
+            }
+            state.gutter_click = Some((line, time));
+            // Clicking a line number selects the line.
             let (s, e) = (doc.line_to_char(line), doc.line_to_char(line + 1));
             if mods.shift {
                 let anchor = doc.primary_selection().anchor;

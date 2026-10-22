@@ -337,6 +337,12 @@ pub fn snippets(painter: &Painter, c: Pos2, color: Color32) {
     painter.text(c + vec2(0.0, -0.5), eframe::egui::Align2::CENTER_CENTER, "{ }", eframe::egui::FontId::monospace(13.0), color);
 }
 
+/// A bookmark ribbon.
+pub fn bookmark(painter: &Painter, c: Pos2, color: Color32) {
+    let points = [vec2(-4.5, -6.5), vec2(4.5, -6.5), vec2(4.5, 6.5), vec2(0.0, 2.5), vec2(-4.5, 6.5)].map(|v| c + v);
+    painter.add(eframe::egui::Shape::closed_line(points.to_vec(), Stroke::new(1.3, color)));
+}
+
 /// Monitor and phone side by side ("device width").
 pub fn devices(painter: &Painter, c: Pos2, color: Color32) {
     let stroke = Stroke::new(1.3, color);

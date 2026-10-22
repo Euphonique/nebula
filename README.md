@@ -68,6 +68,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Git-Tab in der Seitenleiste: Dateien vormerken und zurücknehmen, Commit mit Nachricht (Strg+Enter; ohne Vormerkung werden alle Änderungen committet), Pull/Push mit Anzeige der Commits, Abrufen, Branch wechseln und neu anlegen; Klick auf eine Datei zeigt ihre Änderungen
 - Übertragungsliste in der Statusleiste: Uploads, Downloads, Kopien und Speichervorgänge auf Servern mit Fortschritt (Dateien), Abbrechen, Wiederholen bei Fehlern und „Erledigte entfernen“
 - Übersicht am rechten Rand: Suchtreffer, Probleme, Git-Änderungen, Lesezeichen und Cursor der ganzen Datei
+- Lesezeichen: Doppelklick auf eine Zeilennummer (oder Strg+F2) setzt bzw. entfernt eins; der Reiter „Lesezeichen“ im rechten Panel listet sie für alle offenen Dateien mit Zeilentext, Klick springt hin, × entfernt; Lesezeichen bleiben über einen Neustart erhalten
 - `.editorconfig` wird ausgewertet (Einrückung, Zeilenenden, Kodierung, Leerzeichen am Zeilenende, Zeilenumbruch am Dateiende); beides auch als Einstellung beim Speichern. Einrückung lässt sich zwischen Tabs und Leerzeichen umwandeln.
 
 **Live-Vorschau**
