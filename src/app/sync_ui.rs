@@ -18,11 +18,15 @@ pub(super) struct SyncRun {
     root: PathBuf,
     target: PublishTarget,
     stage: Stage,
+    /// Never synchronized files of equal size whose contents differ.
+    differing: HashSet<String>,
 }
 
 enum Stage {
     /// Waiting for the server listing.
     Scanning { tag: u64, local: Vec<LocalFile> },
+    /// Comparing the contents of never synchronized files of equal size.
+    Comparing { tag: u64, local: Vec<LocalFile>, files: Vec<ScannedFile> },
     Preview { items: Vec<Item> },
     /// Transfers running on the server connection.
     Running { tag: u64, transferred: HashSet<String> },
@@ -53,7 +57,7 @@ impl NebulaApp {
             self.error(t!("Der verknüpfte Server existiert nicht mehr."));
             return;
         };
-        self.sync = Some(SyncRun { root, target, stage: Stage::Scanning { tag, local } });
+        self.sync = Some(SyncRun { root, target, stage: Stage::Scanning { tag, local }, differing: HashSet::new() });
         self.dialog = Some(Dialog::Sync);
     }
 
@@ -71,26 +75,33 @@ impl NebulaApp {
                 true
             }
             Stage::Scanning { tag: t, local } if t == tag => {
-                let mut items = sync::plan(&local, &files, &run.target.synced);
-                // Decided conflicts show the newer side first.
-                items.sort_by_key(|i| (order(i.kind), i.rel.clone()));
-                if items.is_empty() {
-                    // Remember the state so the next run knows both sides.
-                    let snap = sync::snapshot(&local, &files, &run.target.synced, &HashSet::new());
-                    let root = run.root.clone();
-                    self.sync = None;
-                    self.store_snapshot(&root, snap);
-                    if matches!(self.dialog, Some(Dialog::Sync)) {
-                        self.dialog = None;
+                let candidates = sync::compare_candidates(&local, &files, &run.target.synced);
+                if candidates.is_empty() {
+                    self.sync_preview(local, files);
+                    return true;
+                }
+                // Equal size isn't proof of equal contents: read those server files once.
+                let remote_root = remote::normalize(&run.target.remote_path);
+                let pairs = candidates
+                    .into_iter()
+                    .map(|rel| {
+                        let (remote, local) = (remote::join(&remote_root, &rel), run.root.join(rel.replace('/', "\\")));
+                        (rel, remote, local)
+                    })
+                    .collect();
+                let site_id = run.target.site_id.clone();
+                match self.send_remote(&site_id, Request::Compare(pairs)) {
+                    Some(tag) => {
+                        if let Some(run) = &mut self.sync {
+                            run.stage = Stage::Comparing { tag, local, files };
+                        }
                     }
-                    self.info(t!("Alles synchron – keine Unterschiede."));
-                } else {
-                    run.stage = Stage::Preview { items };
+                    None => self.sync = None,
                 }
                 true
             }
             Stage::Rescanning { tag: t, local, transferred } if t == tag => {
-                let snap = sync::snapshot(&local, &files, &run.target.synced, &transferred);
+                let snap = sync::snapshot(&local, &files, &run.target.synced, &transferred, &run.differing);
                 let root = run.root.clone();
                 // Uploaded and downloaded files count as published.
                 if let Some(t) = self.settings.publish.get_mut(&root.to_string_lossy().into_owned()) {
@@ -106,6 +117,41 @@ impl NebulaApp {
                 run.stage = other;
                 false
             }
+        }
+    }
+
+    /// The contents of never synchronized files of equal size were compared.
+    pub(super) fn sync_compared(&mut self, tag: u64, differing: Vec<String>) -> bool {
+        let Some(run) = &mut self.sync else { return false };
+        if !matches!(run.stage, Stage::Comparing { tag: t, .. } if t == tag) {
+            return false;
+        }
+        let Stage::Comparing { local, files, .. } = std::mem::replace(&mut run.stage, Stage::Preview { items: Vec::new() }) else {
+            return false;
+        };
+        run.differing = differing.into_iter().collect();
+        self.sync_preview(local, files);
+        true
+    }
+
+    /// Plans the synchronization and shows it (or reports that nothing differs).
+    fn sync_preview(&mut self, local: Vec<LocalFile>, files: Vec<ScannedFile>) {
+        let Some(run) = &mut self.sync else { return };
+        let mut items = sync::plan(&local, &files, &run.target.synced, &run.differing);
+        // Decided conflicts show the newer side first.
+        items.sort_by_key(|i| (order(i.kind), i.rel.clone()));
+        if items.is_empty() {
+            // Remember the state so the next run knows both sides.
+            let snap = sync::snapshot(&local, &files, &run.target.synced, &HashSet::new(), &run.differing);
+            let root = run.root.clone();
+            self.sync = None;
+            self.store_snapshot(&root, snap);
+            if matches!(self.dialog, Some(Dialog::Sync)) {
+                self.dialog = None;
+            }
+            self.info(t!("Alles synchron – keine Unterschiede."));
+        } else {
+            run.stage = Stage::Preview { items };
         }
     }
 
@@ -154,7 +200,10 @@ impl NebulaApp {
     pub(super) fn sync_failed(&mut self, tag: u64, message: &str) -> bool {
         let Some(run) = &self.sync else { return false };
         let ours = match &run.stage {
-            Stage::Scanning { tag: t, .. } | Stage::Running { tag: t, .. } | Stage::Rescanning { tag: t, .. } => *t == tag,
+            Stage::Scanning { tag: t, .. }
+            | Stage::Comparing { tag: t, .. }
+            | Stage::Running { tag: t, .. }
+            | Stage::Rescanning { tag: t, .. } => *t == tag,
             Stage::Preview { .. } => false,
         };
         if ours {
@@ -185,10 +234,14 @@ impl NebulaApp {
             );
             ui.add_space(8.0);
             match &mut run.stage {
-                Stage::Scanning { .. } | Stage::Rescanning { .. } => {
+                Stage::Scanning { .. } | Stage::Comparing { .. } | Stage::Rescanning { .. } => {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(t!("Lese Projekt und Server ein…"));
+                        ui.label(if matches!(run.stage, Stage::Comparing { .. }) {
+                            t!("Vergleiche gleich große Dateien inhaltlich…")
+                        } else {
+                            t!("Lese Projekt und Server ein…")
+                        });
                     });
                     ui.add_space(8.0);
                     if ui.button(t!("Abbrechen")).clicked() {
@@ -265,6 +318,10 @@ impl NebulaApp {
             }
         });
         if cancel {
+            // A running comparison would otherwise keep the connection busy.
+            if let Some(SyncRun { stage: Stage::Comparing { tag, .. }, .. }) = &self.sync {
+                self.remote.cancel(*tag);
+            }
             self.sync = None;
             return false;
         }

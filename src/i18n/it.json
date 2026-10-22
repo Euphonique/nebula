@@ -466,6 +466,8 @@
     "Herunterladen": "Scarica",
     "Herunterladen nach": "Scarica in",
     "Herunterladen nach…": "Scarica in…",
+    "Vergleichen von {files_count} Dateien": "Confronto di {files_count} file",
+    "Vergleiche gleich große Dateien inhaltlich…": "Confronto del contenuto dei file della stessa dimensione…",
     "Das Projekt enthält mehr als {limit} Dateien – große Ordner (z. B. vendor) in die Ausschlussliste aufnehmen.": "Il progetto contiene più di {limit} file: aggiungi le cartelle grandi (ad es. vendor) all’elenco delle esclusioni.",
     "Synchronisieren nicht möglich: {e}": "Impossibile sincronizzare: {e}",
     "Synchronisieren nicht möglich: Der Serverordner enthält sehr viele Dateien – große Ordner (z. B. vendor) in die Ausschlussliste aufnehmen.": "Impossibile sincronizzare: la cartella del server contiene troppi file; aggiungi le cartelle grandi (ad es. vendor) all’elenco delle esclusioni.",

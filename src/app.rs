@@ -582,7 +582,7 @@ impl NebulaApp {
                 let doc = &mut self.docs[index];
                 let doc_id = doc.id;
                 let bytes = doc.to_bytes();
-                match std::fs::write(&path, &bytes) {
+                match crate::safe_write::write(&path, &bytes) {
                     Ok(()) => {
                         self.record_history(&DocSource::Local(path.clone()), &bytes, crate::history::Kind::Saved);
                         let doc = &mut self.docs[index];
@@ -854,6 +854,9 @@ impl NebulaApp {
                     self.preview_saved(&DocSource::Remote { site_id: ev.site_id.clone(), path: path.clone() });
                     let name = path.rsplit('/').next().unwrap_or(&path).to_string();
                     self.info(t!("{name} auf {site_name} gespeichert ({human_bytes})", name = name, site_name = site_name, human_bytes = human_bytes(bytes)));
+                }
+                Reply::Compared { differing } => {
+                    self.sync_compared(ev.tag, differing);
                 }
                 Reply::Scanned { files, truncated } => {
                     self.sync_scanned(ev.tag, files, truncated);

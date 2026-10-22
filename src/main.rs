@@ -24,6 +24,7 @@ mod server_import;
 mod snippet_io;
 mod sync;
 mod settings;
+mod safe_write;
 mod settings_io;
 mod theme;
 mod theme_import;

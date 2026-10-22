@@ -99,6 +99,8 @@ pub enum Request {
     Scan { root: String, exclude: Vec<String> },
     /// Synchronizing: uploads, downloads and deletions one after another.
     Sync(Vec<SyncOp>),
+    /// Compares server files with local ones byte by byte: (name, remote, local).
+    Compare(Vec<(String, String, std::path::PathBuf)>),
 }
 
 /// One step of a synchronization.
@@ -144,6 +146,7 @@ impl Request {
             Request::Chmod { path, .. } => t!("Ändern der Berechtigungen von {path}", path = path),
             Request::Scan { root, .. } => t!("Einlesen von {root}", root = root),
             Request::Sync(ops) => t!("Synchronisieren ({ops_count} Schritte)", ops_count = ops.len()),
+            Request::Compare(files) => t!("Vergleichen von {files_count} Dateien", files_count = files.len()),
         }
     }
 }
@@ -161,6 +164,8 @@ pub enum Reply {
     Changed { dir: String, message: String },
     /// Result of [`Request::Scan`]; `truncated` when the limit was reached.
     Scanned { files: Vec<ScannedFile>, truncated: bool },
+    /// Result of [`Request::Compare`]: names whose contents differ.
+    Compared { differing: Vec<String> },
     /// A [`Request::Sync`] finished; `failed` lists steps that went wrong.
     Synced { done: usize, failed: Vec<String> },
     Failed { request: Request, message: String },
@@ -244,6 +249,8 @@ pub struct RemoteManager {
     next_tag: u64,
     /// Uploads, downloads, copies and saves for the transfer list.
     pub transfers: transfers::Transfers,
+    /// Cancel flags of long requests outside the transfer list (comparisons).
+    cancels: HashMap<u64, Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl RemoteManager {
@@ -256,6 +263,7 @@ impl RemoteManager {
             ctx,
             next_tag: 1,
             transfers: Default::default(),
+            cancels: HashMap::new(),
         }
     }
 
@@ -316,6 +324,8 @@ impl RemoteManager {
                 finished: None,
                 cancel: cancel.clone(),
             });
+        } else if matches!(request, Request::Compare(_)) {
+            self.cancels.insert(tag, cancel.clone());
         }
         let conn = &self.connections[&site.id];
         conn.busy.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -323,6 +333,13 @@ impl RemoteManager {
             conn.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         }
         tag
+    }
+
+    /// Stops a running or queued comparison.
+    pub fn cancel(&mut self, tag: u64) {
+        if let Some(c) = self.cancels.get(&tag) {
+            c.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 
     /// Sends a failed transfer again; the old entry is replaced.
@@ -362,6 +379,7 @@ impl RemoteManager {
                 }
             }
             if !matches!(ev.reply, Reply::Progress { .. }) {
+                self.cancels.remove(&ev.tag);
                 out.push(ev);
             }
         }
@@ -617,6 +635,20 @@ impl Worker {
                     }
                 }
                 Reply::Synced { done, failed }
+            }
+            Request::Compare(files) => {
+                let mut differing = Vec::new();
+                for (name, remote, local) in files {
+                    progress.file()?;
+                    // Server errors stop the comparison (a dropped connection
+                    // is retried); an unreadable local file counts as different.
+                    let r = b.read(remote)?;
+                    let same = std::fs::read(local).is_ok_and(|l| l == r);
+                    if !same {
+                        differing.push(name.clone());
+                    }
+                }
+                Reply::Compared { differing }
             }
         })
     }

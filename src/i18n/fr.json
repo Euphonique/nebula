@@ -466,6 +466,8 @@
     "Herunterladen": "Télécharger",
     "Herunterladen nach": "Télécharger vers",
     "Herunterladen nach…": "Télécharger vers…",
+    "Vergleichen von {files_count} Dateien": "Comparaison de {files_count} fichiers",
+    "Vergleiche gleich große Dateien inhaltlich…": "Comparaison du contenu des fichiers de même taille…",
     "Das Projekt enthält mehr als {limit} Dateien – große Ordner (z. B. vendor) in die Ausschlussliste aufnehmen.": "Le projet contient plus de {limit} fichiers – ajoute les gros dossiers (p. ex. vendor) à la liste d’exclusion.",
     "Synchronisieren nicht möglich: {e}": "Synchronisation impossible : {e}",
     "Synchronisieren nicht möglich: Der Serverordner enthält sehr viele Dateien – große Ordner (z. B. vendor) in die Ausschlussliste aufnehmen.": "Synchronisation impossible : le dossier du serveur contient trop de fichiers – ajoute les gros dossiers (p. ex. vendor) à la liste d’exclusion.",

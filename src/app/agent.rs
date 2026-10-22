@@ -442,7 +442,7 @@ impl NebulaApp {
         } else if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
-        std::fs::write(path, content).map_err(|e| format!("{}: {e}", path.display()))?;
+        crate::safe_write::write(path, content.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
         self.sidebar.refresh_local(path.parent());
         // Like saving in the editor: with "upload on save" the change goes to the server.
         self.upload_on_save(&crate::ui::sidebar::normalize_path(path));

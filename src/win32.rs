@@ -565,6 +565,20 @@ pub fn local_time(unix_ms: u64) -> LocalTime {
     LocalTime { year: t.wYear, month: t.wMonth, day: t.wDay, hour: t.wHour, minute: t.wMinute }
 }
 
+/// Replaces `target` with `replacement` in one step, keeping the attributes
+/// and permissions of `target` (`replacement` is gone afterwards).
+pub fn replace_file(target: &std::path::Path, replacement: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{REPLACEFILE_IGNORE_MERGE_ERRORS, ReplaceFileW};
+    let wide = |p: &std::path::Path| -> Vec<u16> { p.as_os_str().encode_wide().chain([0]).collect() };
+    let (t, r) = (wide(target), wide(replacement));
+    // SAFETY: both paths are zero-terminated wide strings that outlive the call.
+    let ok = unsafe {
+        ReplaceFileW(t.as_ptr(), r.as_ptr(), std::ptr::null(), REPLACEFILE_IGNORE_MERGE_ERRORS, std::ptr::null(), std::ptr::null())
+    };
+    if ok != 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+}
+
 /// Whether deleting on this drive goes to the recycle bin: only local hard
 /// disks have one (not network drives, UNC paths or USB sticks).
 pub fn has_recycle_bin(path: &std::path::Path) -> bool {

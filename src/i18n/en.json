@@ -466,6 +466,8 @@
     "Herunterladen": "Download",
     "Herunterladen nach": "Download to",
     "Herunterladen nach…": "Download to…",
+    "Vergleichen von {files_count} Dateien": "Comparing {files_count} files",
+    "Vergleiche gleich große Dateien inhaltlich…": "Comparing files of equal size by content…",
     "Das Projekt enthält mehr als {limit} Dateien – große Ordner (z. B. vendor) in die Ausschlussliste aufnehmen.": "The project contains more than {limit} files – add large folders (e.g. vendor) to the exclusion list.",
     "Synchronisieren nicht möglich: {e}": "Cannot synchronize: {e}",
     "Synchronisieren nicht möglich: Der Serverordner enthält sehr viele Dateien – große Ordner (z. B. vendor) in die Ausschlussliste aufnehmen.": "Cannot synchronize: the server folder contains too many files – add large folders (e.g. vendor) to the exclusion list.",

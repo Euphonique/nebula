@@ -110,8 +110,20 @@ pub fn scan_local(root: &Path, exclude: &[String], limit: usize) -> Result<Vec<L
     Ok(out)
 }
 
+/// Files on both sides that were never synchronized and have the same size:
+/// only their contents tell whether they are the same file.
+pub fn compare_candidates(local: &[LocalFile], remote: &[ScannedFile], last: &BTreeMap<String, SyncedState>) -> Vec<String> {
+    let r: BTreeMap<&str, &ScannedFile> = remote.iter().map(|f| (f.rel.as_str(), f)).collect();
+    local
+        .iter()
+        .filter(|lf| !last.contains_key(&lf.rel) && r.get(lf.rel.as_str()).is_some_and(|rf| rf.size == lf.size))
+        .map(|lf| lf.rel.clone())
+        .collect()
+}
+
 /// Compares both sides with the last synchronization and lists what to do.
-pub fn plan(local: &[LocalFile], remote: &[ScannedFile], last: &BTreeMap<String, SyncedState>) -> Vec<Item> {
+/// `differing`: never synchronized files of equal size whose contents differ.
+pub fn plan(local: &[LocalFile], remote: &[ScannedFile], last: &BTreeMap<String, SyncedState>, differing: &HashSet<String>) -> Vec<Item> {
     let l: BTreeMap<&str, &LocalFile> = local.iter().map(|f| (f.rel.as_str(), f)).collect();
     let r: BTreeMap<&str, &ScannedFile> = remote.iter().map(|f| (f.rel.as_str(), f)).collect();
     let all: BTreeSet<&str> = l.keys().chain(r.keys()).copied().chain(last.keys().map(String::as_str)).collect();
@@ -128,8 +140,9 @@ pub fn plan(local: &[LocalFile], remote: &[ScannedFile], last: &BTreeMap<String,
                 (true, true) => items.push(conflict(rel, lf, rf, t!("auf beiden Seiten geändert"))),
             },
             (Some(lf), Some(rf), None) => {
-                // First sync: same size counts as the same file.
-                if lf.size != rf.size {
+                // First sync: equal size counts as the same file unless the
+                // contents were compared and differ.
+                if lf.size != rf.size || differing.contains(rel) {
                     items.push(conflict(rel, lf, rf, t!("unterschiedlich, noch nie abgeglichen")));
                 }
             }
@@ -166,8 +179,14 @@ fn conflict(rel: &str, lf: &LocalFile, rf: &ScannedFile, note: &str) -> Item {
 
 /// The state to remember after a synchronization, from fresh scans of both
 /// sides: files present on both sides that are in sync now or were just transferred.
-pub fn snapshot(local: &[LocalFile], remote: &[ScannedFile], last: &BTreeMap<String, SyncedState>, transferred: &HashSet<String>) -> BTreeMap<String, SyncedState> {
-    let open: HashSet<String> = plan(local, remote, last).into_iter().map(|i| i.rel).collect();
+pub fn snapshot(
+    local: &[LocalFile],
+    remote: &[ScannedFile],
+    last: &BTreeMap<String, SyncedState>,
+    transferred: &HashSet<String>,
+    differing: &HashSet<String>,
+) -> BTreeMap<String, SyncedState> {
+    let open: HashSet<String> = plan(local, remote, last, differing).into_iter().map(|i| i.rel).collect();
     let r: BTreeMap<&str, &ScannedFile> = remote.iter().map(|f| (f.rel.as_str(), f)).collect();
     local
         .iter()
@@ -198,13 +217,22 @@ mod tests {
     fn first_sync() {
         let local = [l("same.css", 10, 100), l("new.php", 5, 100), l("diff.js", 3, 100)];
         let remote = [r("same.css", 10, 50), r("server.txt", 7, 50), r("diff.js", 4, 200)];
-        let items = plan(&local, &remote, &BTreeMap::new());
+        let none = HashSet::new();
+        // Only same.css has the same size on both sides: its contents decide.
+        assert_eq!(compare_candidates(&local, &remote, &BTreeMap::new()), ["same.css"]);
+        let items = plan(&local, &remote, &BTreeMap::new(), &none);
         assert_eq!(
             kinds(&items),
             [("diff.js", Kind::Conflict, false), ("new.php", Kind::Upload, true), ("server.txt", Kind::Download, true)]
         );
         // The server copy is newer.
         assert_eq!(items[0].suggestion, Resolution::Download);
+        // Same size, different contents: a conflict, and not remembered as in sync.
+        let differing = HashSet::from(["same.css".to_string()]);
+        let items = plan(&local, &remote, &BTreeMap::new(), &differing);
+        assert!(items.iter().any(|i| i.rel == "same.css" && i.kind == Kind::Conflict));
+        assert!(!snapshot(&local, &remote, &BTreeMap::new(), &none, &differing).contains_key("same.css"));
+        assert!(snapshot(&local, &remote, &BTreeMap::new(), &none, &none).contains_key("same.css"));
     }
 
     #[test]
@@ -216,7 +244,7 @@ mod tests {
         }
         let local = [l("a", 1, 10), l("b", 2, 11), l("c", 1, 10), l("e", 1, 10), l("f", 3, 12)];
         let remote = [r("a", 1, 20), r("b", 1, 20), r("c", 5, 30), r("d", 1, 20), r("f", 4, 40)];
-        let items = plan(&local, &remote, &last);
+        let items = plan(&local, &remote, &last, &HashSet::new());
         assert_eq!(
             kinds(&items),
             [
@@ -236,11 +264,11 @@ mod tests {
         // b was uploaded (so its server time changed); c is still undecided.
         let local = [l("a", 1, 10), l("b", 2, 11), l("c", 9, 12)];
         let remote = [r("a", 1, 20), r("b", 2, 99), r("c", 8, 13)];
-        let snap = snapshot(&local, &remote, &BTreeMap::new(), &HashSet::from(["b".to_string()]));
+        let snap = snapshot(&local, &remote, &BTreeMap::new(), &HashSet::from(["b".to_string()]), &HashSet::new());
         assert_eq!(snap.keys().collect::<Vec<_>>(), ["a", "b"]);
         assert_eq!(snap["b"].remote_mtime, Some(99));
         // Next time nothing is left to do for a and b.
-        assert_eq!(kinds(&plan(&local, &remote, &snap)), [("c", Kind::Conflict, false)]);
+        assert_eq!(kinds(&plan(&local, &remote, &snap, &HashSet::new())), [("c", Kind::Conflict, false)]);
     }
 
     #[test]

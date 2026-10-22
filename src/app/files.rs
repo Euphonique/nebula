@@ -458,7 +458,7 @@ impl NebulaApp {
                 continue;
             }
             let new = regex.replace_all(&text, replacement.as_str());
-            match std::fs::write(&path, new.as_bytes()) {
+            match crate::safe_write::write(&path, new.as_bytes()) {
                 Ok(()) => {
                     count += n;
                     changed_files += 1;
