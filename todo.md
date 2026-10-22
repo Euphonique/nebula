@@ -40,7 +40,6 @@ Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, 
 
 Agenten über ACP und der eigene Agent (API-Schlüssel, Ollama) sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfolge abgestimmt:
 
-- **B** Commit-Nachricht aus dem Diff (Knopf im Git-Tab).
 - **C** Nebula als MCP-Server: externe Agenten sehen offene Dateien, Auswahl und Fehler und können Dateien im Editor öffnen.
 - **C** Inline-Vorschläge beim Tippen (graue Vervollständigung, Tab übernimmt) – unbedingt ein-/ausschaltbar (Kosten).
 - **C** Angehängte Serverdateien direkt bearbeitbar machen (virtueller Pfad, Lesen/Schreiben über die Serververbindung); bisher nur lesend bzw. über ein lokales Projekt mit „Beim Speichern hochladen“.
@@ -76,7 +75,7 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 
 Runde 3 ist damit komplett.
 
-KI: eigener Agent und KI-Befehle erledigt; als Nächstes Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
+KI: eigener Agent, KI-Befehle und Commit-Nachricht erledigt; als Nächstes MCP-Server und Inline-Vorschläge (siehe oben).
 
 ## Erledigt
 
@@ -131,3 +130,5 @@ Lesezeichen-Panel (22.10.): Doppelklick auf eine Zeilennummer setzt/entfernt ein
 Eigener KI-Agent (22.10.): „In Nebula eingebaut“, ohne Node.js – Anthropic, OpenAI und OpenAI-kompatible Dienste (eigene Server-Adresse) sowie Ollama; spricht intern ACP, daher dieselbe Oberfläche wie die anderen Agenten (Modellwahl aus der Liste des Anbieters, Werkzeugaufrufe, Diffs, Rückfrage, Stopp). Werkzeuge: Datei lesen (offene Tabs), Dateien auflisten, Projekt durchsuchen, Datei ändern/schreiben (Diff mit Übernehmen/Immer/Ablehnen), Befehl in cmd.exe (mit Rückfrage, 2 Minuten Zeitlimit).
 
 KI-Befehle (22.10.): Rechtsklick im Editor › „KI“ (und Befehlspalette): Erklären, Kommentieren, Umschreiben… (mit Anweisung, Vorschläge wie „lesbarer“), Fehler beheben (mit den gemeldeten Problemen) – für die Auswahl oder die aktuelle Zeile; geht an den Agenten im Panel, Änderungen als Diff zum Übernehmen. Ändern nur bei lokalen Dateien. Nebenbei: Markdown im Agent-Panel bricht lange Absätze jetzt um.
+
+Commit-Nachricht per KI (22.10.): ✦ im Nachrichtenfeld des Git-Tabs – der Agent des Panels schreibt die Nachricht aus dem Diff (vorgemerkte Änderungen, sonst alle samt neuer Dateien) in einer eigenen, unsichtbaren Sitzung; Sprache und Stil wie die letzten Commits; darf Dateien lesen, nichts ändern; nochmal klicken bricht ab.

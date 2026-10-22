@@ -14,12 +14,16 @@ pub enum GitAction {
     /// Show the changes of a file against the last commit.
     Compare(PathBuf),
     Open(PathBuf),
+    /// Let the AI agent write the commit message (or stop it while it does).
+    SuggestMessage { staged_only: bool },
 }
 
 #[derive(Default)]
 pub struct GitPanel {
     pub message: String,
     new_branch: String,
+    /// The agent is writing a message (set by the app).
+    pub suggesting: bool,
 }
 
 fn args(a: &[&str]) -> Vec<String> {
@@ -89,8 +93,27 @@ impl GitPanel {
             egui::TextEdit::multiline(&mut self.message)
                 .hint_text(t!("Commit-Nachricht (Strg+Enter)"))
                 .desired_rows(3)
+                // Room on the right for the AI button.
+                .margin(egui::Margin { left: 4, right: 28, top: 2, bottom: 2 })
                 .desired_width(f32::INFINITY),
         );
+        // AI button in the top right corner of the message field.
+        let spot = egui::Rect::from_min_size(msg.rect.right_top() + vec2(-30.0, 4.0), vec2(26.0, 22.0));
+        let tip = if self.suggesting { t!("Abbrechen") } else { t!("Commit-Nachricht vom KI-Agenten schreiben lassen") };
+        // A click area over the field (takes no room in the layout).
+        let ai = ui.interact(spot, egui::Id::unique("git-ai-commit-message"), Sense::click()).on_hover_text(tip);
+        if ai.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if self.suggesting {
+            egui::Spinner::new().size(14.0).paint_at(ui, egui::Rect::from_center_size(spot.center(), vec2(14.0, 14.0)));
+        } else {
+            let color = if ai.hovered() { theme.accent } else { theme.text_faint };
+            icons::sparkle(ui.painter(), spot.center(), color);
+        }
+        if ai.clicked() && (total > 0 || self.suggesting) {
+            actions.push(GitAction::SuggestMessage { staged_only: staged > 0 });
+        }
         let message = self.message.trim().to_string();
         let label = match (staged, total) {
             (0, 0) => t!("Keine Änderungen").to_string(),

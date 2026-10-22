@@ -415,7 +415,7 @@ impl NebulaApp {
     }
 
     /// Text of a file for the agent: the open buffer if there is one.
-    fn agent_read(&mut self, path: &Path) -> Result<String, String> {
+    pub(super) fn agent_read(&mut self, path: &Path) -> Result<String, String> {
         if let Some(i) = self.local_doc(path) {
             return Ok(self.docs[i].text().to_string());
         }

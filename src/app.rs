@@ -52,6 +52,7 @@ mod sync_ui;
 mod system_page;
 mod folder_pick;
 mod ai_commands;
+mod commit_msg;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -219,6 +220,8 @@ pub struct NebulaApp {
     right_state: right_panel::RightPanelState,
     /// Chat with a coding agent (ACP).
     agent: agent::AgentUi,
+    /// Commit message being written by the agent (Git tab).
+    commit_msg: Option<commit_msg::CommitMessageJob>,
     /// Earlier cursor positions for Alt+←/→.
     nav: nav::NavHistory,
 }
@@ -289,6 +292,7 @@ impl NebulaApp {
             split: None,
             right_state: Default::default(),
             agent: Default::default(),
+            commit_msg: None,
             nav: Default::default(),
             settings,
         };
@@ -1082,6 +1086,7 @@ impl NebulaApp {
             }
             SidebarAction::RunCommand { site_id, command } => self.run_server_command(ctx, &site_id, &command),
             SidebarAction::Git(crate::ui::git_panel::GitAction::Compare(path)) => self.compare_path_with_head(&path),
+            SidebarAction::Git(crate::ui::git_panel::GitAction::SuggestMessage { staged_only }) => self.suggest_commit_message(staged_only, ctx),
             SidebarAction::Git(crate::ui::git_panel::GitAction::Open(path)) => self.open_local(&path),
             SidebarAction::AttachToAgent(files) => self.attach_to_agent(files),
             SidebarAction::Compare(files) => match files.as_slice() {
@@ -3085,6 +3090,7 @@ impl eframe::App for NebulaApp {
         self.poll_git_bases(&ctx);
         self.poll_terminals();
         self.poll_agent();
+        self.poll_commit_message();
         self.poll_printing();
         self.serve_preview();
         self.sync_extensions(&ctx);

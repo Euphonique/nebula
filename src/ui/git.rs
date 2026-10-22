@@ -117,6 +117,37 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// What a commit would contain, for writing its message.
+pub struct CommitContext {
+    /// Unified diff (cut if very long).
+    pub diff: String,
+    /// New files that would be committed too.
+    pub new_files: Vec<String>,
+    /// Summary lines of the last commits (for language and style).
+    pub recent: Vec<String>,
+}
+
+/// Longest diff given to a model.
+const MAX_DIFF: usize = 40_000;
+
+/// The changes of the next commit: the staged ones, or everything when
+/// nothing is staged (the commit button then adds all).
+pub fn commit_context(top: &Path, staged_only: bool) -> Result<CommitContext, String> {
+    let mut diff = if staged_only { git_op(top, &["diff", "--cached", "--no-color"])? } else { git_op(top, &["diff", "HEAD", "--no-color"]).or_else(|_| git_op(top, &["diff", "--no-color"]))? };
+    if diff.len() > MAX_DIFF {
+        let cut = diff.char_indices().nth(MAX_DIFF).map_or(diff.len(), |(i, _)| i);
+        diff.truncate(cut);
+        diff.push_str("\n… (diff cut)");
+    }
+    let new_files = if staged_only {
+        Vec::new()
+    } else {
+        git_op(top, &["ls-files", "--others", "--exclude-standard"])?.lines().map(str::to_string).collect()
+    };
+    let recent = git_op(top, &["log", "-8", "--format=%s"]).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default();
+    Ok(CommitContext { diff, new_files, recent })
+}
+
 /// The repository folder from the project folder and `git rev-parse --show-cdup` ("../../").
 fn repo_top(root: &Path, cdup: &str) -> PathBuf {
     let mut top = root.to_path_buf();
