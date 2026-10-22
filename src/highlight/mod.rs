@@ -240,7 +240,13 @@ fn grammar_source(grammar: &str) -> Option<(tree_sitter::Language, String, Strin
         "markdown" => (
             tree_sitter_md::LANGUAGE.into(),
             s(tree_sitter_md::HIGHLIGHT_QUERY_BLOCK),
-            s(tree_sitter_md::INJECTION_QUERY_BLOCK),
+            // Punctuation inside code fences is a child node of the content; without
+            // include-children it would be cut out of the injected code.
+            tree_sitter_md::INJECTION_QUERY_BLOCK.replacen(
+                "(code_fence_content) @injection.content)",
+                "(code_fence_content) @injection.content\n  (#set! injection.include-children))",
+                1,
+            ),
             String::new(),
         ),
         "markdown_inline" => (
@@ -590,5 +596,38 @@ pub fn bench_incremental(language: Language, text: &str) {
         let t = Instant::now();
         engine.highlight(1, grammar, edited.clone());
         eprintln!("  Inkrementell, Zeichen {}: {:.1} ms", i + 1, t.elapsed().as_secs_f64() * 1000.0);
+    }
+}
+
+#[cfg(test)]
+mod fence_tests {
+    use super::*;
+
+    /// Code in Markdown fences is colored completely (punctuation included),
+    /// by the full and by the incremental highlighter.
+    #[test]
+    fn markdown_code_fences() {
+        let md = "# T
+
+```css
+a { color: red; }
+```
+
+```js
+const x = { a: 1 };
+```
+";
+        let mut configs = Configs::new();
+        configs.prepare(Language::Markdown, md);
+        let full = highlight(&configs, &mut Highlighter::new(), Language::Markdown, md);
+        let inc = incremental::Engine::new().highlight(1, "markdown", md.to_string());
+        for lines in [&full, &*inc] {
+            let names = |l: usize| lines[l].iter().map(|s| HIGHLIGHT_NAMES[s.style as usize]).collect::<Vec<_>>();
+            let css = names(3);
+            assert!(css.contains(&"style.attribute.name") && css.contains(&"bracket"), "CSS: {css:?}");
+            assert!(!css[1..].contains(&"style.selector.element"), "CSS: {css:?}");
+            let js = names(7);
+            assert!(js.contains(&"bracket") && js.contains(&"property"), "JS: {js:?}");
+        }
     }
 }
