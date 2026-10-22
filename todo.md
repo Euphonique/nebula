@@ -52,8 +52,7 @@ Agenten über ACP sind fertig (siehe „Erledigt“). Offen, in dieser Reihenfol
 ## Oberfläche und Allgemein
 
 - **B** Mehrere Fenster/Projekte gleichzeitig.
-- **B** Update-Hinweis, Installer und Eintrag „Mit Nebula öffnen“ im Explorer-Kontextmenü, Dateizuordnungen.
-- **C** Oberfläche auch auf Englisch (Texte in Übersetzungsdateien auslagern).
+- **C** Update-Hinweis (braucht eine Adresse, unter der neue Versionen veröffentlicht werden).
 - **C** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
 
 ## Qualität und Technik
@@ -76,7 +75,9 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 5. ~~Eigene Snippets pro Sprache~~ (erledigt, als Panel „{ }“).
 6. ~~Tabs anheften; Einstellungen exportieren/importieren~~ (erledigt).
 7. ~~Große Dateien schreibgeschützt öffnen, Hex-Ansicht~~ (erledigt).
-8. ~~Synchronisieren mit Vorschau~~ (erledigt); Installer/„Mit Nebula öffnen“.
+8. ~~Synchronisieren mit Vorschau; Installer/„Mit Nebula öffnen“~~ (erledigt).
+
+Runde 3 ist damit komplett.
 
 KI: als Nächstes der eigene Agent für API-Schlüssel und Ollama, danach KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge (siehe oben).
 
@@ -115,6 +116,12 @@ Kopieren zwischen Servern (22.10.): Ziehen zwischen verschiedenen Orten kopiert 
 Serverliste (22.10.): Server per Drag \& Drop in Gruppen sortieren, Umschalter zwischen Gruppen und flacher Liste.
 
 Snippet-Gruppen (22.10.): eigene Snippets in einklappbaren Gruppen (Feld „Gruppe“, Drag \& Drop), Gruppen in Export\/Import und Einstellungs-Export; VS-Code-Sammlungen (`*.code-snippets`) werden zu einer Gruppe.
+
+Windows-Integration (22.10.): Installieren pro Benutzer ohne Fremdwerkzeug (Programmordner, Startmenü, Eintrag unter „Apps“), „Mit Nebula öffnen“ im Explorer, „Öffnen mit“ für 44 Text-/Code-Dateitypen, zweiter Start öffnet Dateien im laufenden Fenster.
+
+Neue Datei mit Sprache (22.10.): Rechtsklick oder Umschalt+Klick auf „+“ wählt Sprache und Endung; „Speichern unter“ schlägt die Endung der Dokumentsprache vor.
+
+Lokalisierung (22.10.): Oberfläche auf Deutsch, Englisch, Spanisch, Französisch und Italienisch; automatisch nach der Windows-Anzeigesprache (sonst Englisch) oder fest unter Einstellungen › Editor. Sprachdateien (`src/i18n/*.json`, deutscher Text als Schlüssel) lassen sich exportieren, bearbeiten und importieren; eigene liegen in `languages\` im Einstellungsordner. Werkzeug `tools/i18n-wrap` (keys/merge) für neue Texte. Sprachwechsel wirkt sofort, „Automatisch“ nennt die tatsächlich gewählte Sprache; feste Kürzel in Menüs (Strg+…) werden mitübersetzt.
 
 Kopieren auf den Server und Herunterladen ins Projekt (22.10.): „Auf Server kopieren/verschieben › Server ›“ mit „In ausgewählten Ordner“ (zuletzt auf dem Server angeklickter Ordner), „In Startordner“ und „In Ordner…“ (Ordnerauswahl auf dem Server); bei Serverdateien „Herunterladen in Projektordner ›“ mit „In ausgewählten Ordner“, „In Projektordner“ und „In Ordner…“. Vorhandene Namen fragen jetzt auch bei noch nicht aufgelisteten Serverordnern nach (Ersetzen/Beide behalten/Überspringen, auf Wunsch für alle), statt stillschweigend zu überschreiben.
 
