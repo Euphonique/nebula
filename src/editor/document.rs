@@ -370,6 +370,8 @@ pub struct Document {
     pub read_only: bool,
     /// Server file shown from the offline copy of this time (read-only until reconnected).
     pub offline: Option<std::time::SystemTime>,
+    /// Placeholder while the file (of this many bytes) loads in the background.
+    pub loading: Option<u64>,
     /// Image tab: the decoded picture (the text is empty).
     pub image: Option<std::sync::Arc<crate::image_view::Image>>,
     /// Binary file shown as hex (the text is empty).
@@ -416,6 +418,7 @@ impl Document {
             suggested_name: None,
             read_only: false,
             offline: None,
+            loading: None,
             image: None,
             hex: None,
             disk_stamp: None,

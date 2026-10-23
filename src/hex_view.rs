@@ -1,6 +1,7 @@
 //! Hex view and editor for binary files: offset, 16 bytes in hex and as text.
-//! Bytes are overwritten in place (the size stays). Large local files are read
-//! on demand; saving writes only the changed bytes into the file.
+//! Bytes are overwritten, or inserted and deleted (files held in memory).
+//! Large local files are read on demand; saving writes only the changed bytes
+//! into the file, or the whole file once its size changed.
 
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -20,14 +21,31 @@ pub enum Source {
     File { path: PathBuf, len: u64 },
 }
 
+/// One undoable change.
+#[derive(Clone, Debug)]
+enum Op {
+    Set { offset: u64, old: u8, new: u8 },
+    Insert { offset: u64, bytes: Vec<u8> },
+    Delete { offset: u64, bytes: Vec<u8> },
+}
+
 struct State {
     /// Original bytes (memory source).
     base: Vec<u8>,
     /// Unsaved changes: offset -> new value.
     edits: BTreeMap<u64, u8>,
-    /// (offset, old, new) for undo and redo.
-    undo: Vec<(u64, u8, u8)>,
-    redo: Vec<(u64, u8, u8)>,
+    undo: Vec<Op>,
+    redo: Vec<Op>,
+    /// Inserts and deletes since the last save (undo counts back); the file
+    /// then is written as a whole.
+    resized: isize,
+    /// Typing inserts bytes instead of overwriting them (Insert key).
+    insert_mode: bool,
+    /// Search field in the header.
+    search: String,
+    search_focus: bool,
+    /// Take the keyboard focus next frame (after a dialog closed).
+    want_focus: bool,
     cursor: u64,
     /// Next hex digit goes into the low half of the byte.
     low_nibble: bool,
@@ -57,6 +75,11 @@ impl HexData {
             edits: BTreeMap::new(),
             undo: Vec::new(),
             redo: Vec::new(),
+            resized: 0,
+            insert_mode: false,
+            search: String::new(),
+            search_focus: false,
+            want_focus: false,
             cursor: 0,
             low_nibble: false,
             text_side: false,
@@ -74,8 +97,13 @@ impl HexData {
     }
 
     pub fn len(&self) -> u64 {
+        self.len_of(&self.state.lock().unwrap())
+    }
+
+    /// The length while the state is locked already (`len` would deadlock).
+    fn len_of(&self, state: &State) -> u64 {
         match &self.source {
-            Source::Memory => self.state.lock().unwrap().base.len() as u64,
+            Source::Memory => state.base.len() as u64,
             Source::File { len, .. } => *len,
         }
     }
@@ -125,7 +153,13 @@ impl HexData {
     }
 
     pub fn is_dirty(&self) -> bool {
-        !self.state.lock().unwrap().edits.is_empty()
+        let s = self.state.lock().unwrap();
+        !s.edits.is_empty() || s.resized != 0
+    }
+
+    /// Inserting and deleting needs all bytes in memory.
+    pub fn can_resize(&self) -> bool {
+        matches!(self.source, Source::Memory)
     }
 
     pub fn is_edited(&self, offset: u64) -> bool {
@@ -150,29 +184,156 @@ impl HexData {
             return;
         }
         let mut state = self.state.lock().unwrap();
-        state.undo.push((offset, old, value));
+        state.undo.push(Op::Set { offset, old, new: value });
         state.redo.clear();
         self.apply(&mut state, offset, value);
     }
 
+    /// Inserts bytes before `offset` (memory only; undoable).
+    pub fn insert(&self, offset: u64, bytes: &[u8]) {
+        if !self.can_resize() || offset > self.len() || bytes.is_empty() {
+            return;
+        }
+        let mut state = self.state.lock().unwrap();
+        Self::splice(&mut state, offset, 0, bytes);
+        state.undo.push(Op::Insert { offset, bytes: bytes.to_vec() });
+        state.redo.clear();
+        state.resized += 1;
+    }
+
+    /// Deletes `count` bytes from `offset` on (memory only; undoable).
+    pub fn delete(&self, offset: u64, count: usize) {
+        let len = self.len();
+        if !self.can_resize() || offset >= len || count == 0 {
+            return;
+        }
+        let count = count.min((len - offset) as usize);
+        let mut state = self.state.lock().unwrap();
+        let removed = Self::splice(&mut state, offset, count, &[]);
+        state.undo.push(Op::Delete { offset, bytes: removed });
+        state.redo.clear();
+        state.resized += 1;
+    }
+
+    /// Replaces `count` bytes at `offset` with `bytes` in the memory copy;
+    /// pending overwrites are taken into it first. Returns the removed bytes.
+    fn splice(state: &mut State, offset: u64, count: usize, bytes: &[u8]) -> Vec<u8> {
+        let edits: Vec<(u64, u8)> = state.edits.iter().map(|(&o, &v)| (o, v)).collect();
+        Self::commit(state, &edits);
+        let at = offset as usize;
+        state.base.splice(at..at + count, bytes.iter().copied()).collect()
+    }
+
     pub fn undo(&self) -> bool {
         let mut state = self.state.lock().unwrap();
-        let Some((offset, old, new)) = state.undo.pop() else { return false };
-        self.apply(&mut state, offset, old);
-        state.redo.push((offset, old, new));
-        state.cursor = offset;
+        let Some(op) = state.undo.pop() else { return false };
+        let at = match &op {
+            Op::Set { offset, old, .. } => {
+                self.apply(&mut state, *offset, *old);
+                *offset
+            }
+            Op::Insert { offset, bytes } => {
+                Self::splice(&mut state, *offset, bytes.len(), &[]);
+                state.resized -= 1;
+                *offset
+            }
+            Op::Delete { offset, bytes } => {
+                Self::splice(&mut state, *offset, 0, bytes);
+                state.resized -= 1;
+                *offset
+            }
+        };
+        state.redo.push(op);
+        state.cursor = at;
         state.scroll_to_cursor = true;
         true
     }
 
     pub fn redo(&self) -> bool {
         let mut state = self.state.lock().unwrap();
-        let Some((offset, old, new)) = state.redo.pop() else { return false };
-        self.apply(&mut state, offset, new);
-        state.undo.push((offset, old, new));
-        state.cursor = offset;
+        let Some(op) = state.redo.pop() else { return false };
+        let at = match &op {
+            Op::Set { offset, new, .. } => {
+                self.apply(&mut state, *offset, *new);
+                *offset
+            }
+            Op::Insert { offset, bytes } => {
+                Self::splice(&mut state, *offset, 0, bytes);
+                state.resized += 1;
+                *offset
+            }
+            Op::Delete { offset, bytes } => {
+                Self::splice(&mut state, *offset, bytes.len(), &[]);
+                state.resized += 1;
+                *offset
+            }
+        };
+        state.undo.push(op);
+        state.cursor = at;
         state.scroll_to_cursor = true;
         true
+    }
+
+    /// Moves the cursor to `offset` (clamped) and scrolls there.
+    pub fn go_to(&self, offset: u64) {
+        let last = self.len().saturating_sub(1);
+        let mut s = self.state.lock().unwrap();
+        s.cursor = offset.min(last);
+        s.low_nibble = false;
+        s.scroll_to_cursor = true;
+    }
+
+    /// Puts the keyboard into the search field (Ctrl+F).
+    /// Gives the bytes the keyboard focus (e.g. after "go to offset").
+    pub fn focus(&self) {
+        self.state.lock().unwrap().want_focus = true;
+    }
+
+    pub fn focus_search(&self) {
+        self.state.lock().unwrap().search_focus = true;
+    }
+
+    /// Next (or previous) place of `needle` after (before) `from`, wrapping around.
+    pub fn find(&self, needle: &[u8], from: u64, forward: bool) -> Option<u64> {
+        let len = self.len();
+        if needle.is_empty() || needle.len() as u64 > len {
+            return None;
+        }
+        // In pieces, so large files are not read at once.
+        const CHUNK: u64 = 1 << 20;
+        let n = needle.len() as u64;
+        let scan = |start: u64, end: u64| -> Option<u64> {
+            let mut a = start;
+            while a + n <= end {
+                let b = (a + CHUNK + n - 1).min(end);
+                let buf = self.read(a, (b - a) as usize);
+                if let Some(i) = buf.windows(needle.len()).position(|w| w == needle) {
+                    return Some(a + i as u64);
+                }
+                a += CHUNK;
+            }
+            None
+        };
+        let scan_back = |start: u64, end: u64| -> Option<u64> {
+            let mut b = end;
+            while b >= start + n {
+                let a = b.saturating_sub(CHUNK + n - 1).max(start);
+                let buf = self.read(a, (b - a) as usize);
+                if let Some(i) = buf.windows(needle.len()).rposition(|w| w == needle) {
+                    return Some(a + i as u64);
+                }
+                if a == start {
+                    break;
+                }
+                b = a + n - 1;
+            }
+            None
+        };
+        if forward {
+            scan(from + 1, len).or_else(|| scan(0, (from + n).min(len)))
+        } else {
+            scan_back(0, (from + n - 1).min(len)).or_else(|| scan_back(from, len))
+        }
     }
 
     /// All bytes with the changes (for uploading; memory source).
@@ -183,6 +344,14 @@ impl HexData {
     /// Writes the changed bytes into the file at `path` and makes them the new original.
     pub fn save_in_place(&self, path: &Path) -> std::io::Result<()> {
         let mut state = self.state.lock().unwrap();
+        if state.resized != 0 {
+            // The size changed: the whole file is written anew.
+            let edits: Vec<(u64, u8)> = state.edits.iter().map(|(&o, &v)| (o, v)).collect();
+            Self::commit(&mut state, &edits);
+            crate::safe_write::write(path, &state.base)?;
+            state.resized = 0;
+            return Ok(());
+        }
         let mut file = std::fs::OpenOptions::new().write(true).open(path)?;
         // Consecutive changes are written together.
         let edits: Vec<(u64, u8)> = state.edits.iter().map(|(&o, &v)| (o, v)).collect();
@@ -207,8 +376,18 @@ impl HexData {
     /// The bytes `saved` reached the server: they are the new original.
     pub fn saved(&self, saved: &[u8]) {
         let mut state = self.state.lock().unwrap();
-        state.base = saved.to_vec();
         // Changes made while uploading stay unsaved.
+        let edits: Vec<(u64, u8)> = state.edits.iter().map(|(&o, &v)| (o, v)).collect();
+        let mut current = state.base.clone();
+        for (o, v) in edits {
+            if let Some(x) = current.get_mut(o as usize) {
+                *x = v;
+            }
+        }
+        if current == saved {
+            state.resized = 0;
+        }
+        state.base = saved.to_vec();
         state.edits.retain(|&o, v| saved.get(o as usize) != Some(v));
     }
 
@@ -229,6 +408,38 @@ fn human(n: u64) -> String {
         n if n < 1024 * 1024 * 1024 => format!("{:.1} MB", n as f64 / 1024.0 / 1024.0),
         n => format!("{:.2} GB", n as f64 / 1024.0 / 1024.0 / 1024.0),
     }
+}
+
+fn s_not_found() -> String {
+    t!("Nicht gefunden").to_string()
+}
+
+/// What to search for: hex bytes ("DE AD", "dead"), else the text itself
+/// (in quotes to search for text that looks like hex).
+pub fn parse_needle(input: &str) -> Vec<u8> {
+    let t = input.trim();
+    if let Some(inner) = t.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+        return inner.as_bytes().to_vec();
+    }
+    let digits: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+    let is_hex = !digits.is_empty() && digits.len() % 2 == 0 && digits.chars().all(|c| c.is_ascii_hexdigit());
+    if is_hex {
+        (0..digits.len()).step_by(2).filter_map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok()).collect()
+    } else {
+        t.as_bytes().to_vec()
+    }
+}
+
+/// An offset as typed: "0x1F00", "1F00h" or "$1F00" are hex, plain digits decimal.
+pub fn parse_offset(input: &str) -> Option<u64> {
+    let t = input.trim().replace(['_', ' ', '.'], "");
+    if let Some(h) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")).or_else(|| t.strip_prefix('$')).or_else(|| t.strip_suffix('h')).or_else(|| t.strip_suffix('H')) {
+        return u64::from_str_radix(h, 16).ok();
+    }
+    if t.chars().any(|c| c.is_ascii_hexdigit() && !c.is_ascii_digit()) {
+        return u64::from_str_radix(&t, 16).ok();
+    }
+    t.parse().ok()
 }
 
 /// Column (in characters) of byte `i` of a row in the hex part: gap after eight.
@@ -277,6 +488,28 @@ fn handle_keys(ui: &egui::Ui, data: &HexData, page_rows: u64) {
                     state.text_side = !state.text_side;
                     state.low_nibble = false;
                 }
+                Key::Insert if data.can_resize() => {
+                    state.insert_mode = !state.insert_mode;
+                    state.low_nibble = false;
+                }
+                Key::Delete if data.can_resize() => {
+                    drop(state);
+                    data.delete(cur, 1);
+                    let mut state = data.state.lock().unwrap();
+                    state.cursor = cur.min(data.len_of(&state).saturating_sub(1));
+                    state.low_nibble = false;
+                    state.scroll_to_cursor = true;
+                    continue;
+                }
+                Key::Backspace if data.can_resize() && cur > 0 => {
+                    drop(state);
+                    data.delete(cur - 1, 1);
+                    let mut state = data.state.lock().unwrap();
+                    state.cursor = cur - 1;
+                    state.low_nibble = false;
+                    state.scroll_to_cursor = true;
+                    continue;
+                }
                 _ => {}
             },
             Event::Key { key: Key::Z, pressed: true, modifiers, .. } if modifiers.command => {
@@ -294,14 +527,25 @@ fn handle_keys(ui: &egui::Ui, data: &HexData, page_rows: u64) {
             Event::Text(text) => {
                 for c in text.chars() {
                     let cur = state.cursor;
+                    let inserting = state.insert_mode && data.can_resize();
                     if state.text_side {
                         if !c.is_ascii() || c.is_ascii_control() {
                             continue;
                         }
                         drop(state);
-                        data.set(cur, c as u8);
+                        if inserting {
+                            data.insert(cur, &[c as u8]);
+                        } else {
+                            data.set(cur, c as u8);
+                        }
                         state = data.state.lock().unwrap();
-                        state.cursor = (cur + 1).min(len - 1);
+                        state.cursor = (cur + 1).min(data.len_of(&state) - 1);
+                    } else if inserting && !state.low_nibble && let Some(d) = c.to_digit(16) {
+                        // First digit of a new byte; the second one fills it in.
+                        drop(state);
+                        data.insert(cur, &[(d as u8) << 4]);
+                        state = data.state.lock().unwrap();
+                        state.low_nibble = true;
                     } else if let Some(d) = c.to_digit(16) {
                         let old = data.read_base(&state, cur, 1).first().copied().unwrap_or(0);
                         let current = state.edits.get(&cur).copied().unwrap_or(old);
@@ -312,7 +556,7 @@ fn handle_keys(ui: &egui::Ui, data: &HexData, page_rows: u64) {
                         state = data.state.lock().unwrap();
                         state.low_nibble = !low;
                         if low {
-                            state.cursor = (cur + 1).min(len - 1);
+                            state.cursor = (cur + 1).min(data.len_of(&state) - 1);
                         }
                     }
                     state.scroll_to_cursor = true;
@@ -344,9 +588,52 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, data: &HexData, theme: &Theme, id: eg
                 action = Action::OpenAsText;
             }
         }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new(t!("Hex-Ziffern oder Text überschreiben · Tab wechselt die Spalte")).small().color(theme.text_faint));
-        });
+        ui.add_space(12.0);
+        let mut s = data.state.lock().unwrap();
+        let mode = if s.insert_mode { t!("Einfügen") } else { t!("Überschreiben") };
+        let hint = if data.can_resize() {
+            t!("Einfg wechselt zwischen Überschreiben und Einfügen, Entf/Rück löschen Bytes · Tab wechselt die Spalte")
+        } else {
+            t!("Datei zu groß zum Einfügen oder Löschen – Bytes lassen sich überschreiben · Tab wechselt die Spalte")
+        };
+        if ui.add_enabled(data.can_resize(), egui::Button::new(egui::RichText::new(mode).small())).on_hover_text(hint).on_disabled_hover_text(hint).clicked() {
+            s.insert_mode = !s.insert_mode;
+            s.low_nibble = false;
+        }
+        ui.add_space(12.0);
+        let field = ui.add(egui::TextEdit::singleline(&mut s.search).id(id.with("search")).hint_text(t!("Suchen: DE AD BE EF oder Text")).desired_width(220.0));
+        if std::mem::take(&mut s.search_focus) {
+            field.request_focus();
+        }
+        let mut step = None;
+        if field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+            step = Some(!ui.input(|i| i.modifiers.shift));
+            field.request_focus();
+        }
+        if ui.small_button("▲").on_hover_text(t!("Vorheriger (Umschalt+Enter)")).clicked() {
+            step = Some(false);
+        }
+        if ui.small_button("▼").on_hover_text(t!("Nächster (Enter)")).clicked() {
+            step = Some(true);
+        }
+        let needle = parse_needle(&s.search);
+        drop(s);
+        let note_id = id.with("search-note");
+        if let Some(forward) = step {
+            let found = data.find(&needle, cursor, forward);
+            match found {
+                Some(at) => {
+                    data.go_to(at);
+                    ui.data_mut(|d| d.remove::<String>(note_id));
+                }
+                None => {
+                    ui.data_mut(|d| d.insert_temp(note_id, s_not_found()));
+                }
+            }
+        }
+        if let Some(note) = ui.data(|d| d.get_temp::<String>(note_id)) {
+            ui.label(egui::RichText::new(note).small().color(theme.danger));
+        }
     });
 
     let font = FontId::monospace(13.0);
@@ -360,7 +647,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, data: &HexData, theme: &Theme, id: eg
     // One widget over the whole body takes clicks and keyboard focus (rows only
     // look at where it was clicked); a click on another widget would drop the focus.
     let focus_resp = ui.interact(body, focus_id, Sense::click());
-    if focus_resp.clicked() {
+    if focus_resp.clicked() || std::mem::take(&mut data.state.lock().unwrap().want_focus) {
         focus_resp.request_focus();
     }
     let click_at = focus_resp.clicked().then(|| focus_resp.interact_pointer_pos()).flatten();
@@ -498,6 +785,52 @@ mod tests {
         assert_eq!(disk.len(), bytes.len());
         assert_eq!((disk[10], disk[150_000], disk[150_001]), (b'X', 0xAA, bytes[150_001]));
         assert_eq!(data.read(150_000, 1), [0xAA]);
+    }
+
+    #[test]
+    fn insert_delete_undo_and_save() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), b"ABCDEF").unwrap();
+        let data = HexData::memory(b"ABCDEF".to_vec());
+        data.set(0, b'a');
+        data.insert(2, b"xy");
+        assert_eq!(data.bytes(), b"aBxyCDEF");
+        data.delete(5, 2);
+        assert_eq!(data.bytes(), b"aBxyCF");
+        assert!(data.undo());
+        assert!(data.undo());
+        assert_eq!(data.bytes(), b"aBCDEF");
+        assert!(data.redo());
+        data.save_in_place(tmp.path()).unwrap();
+        assert!(!data.is_dirty());
+        assert_eq!(std::fs::read(tmp.path()).unwrap(), b"aBxyCDEF");
+        // Big files read in pieces keep their size.
+        let file = HexData::file(tmp.path().to_path_buf(), 8);
+        file.insert(0, b"z");
+        assert_eq!(file.len(), 8);
+    }
+
+    #[test]
+    fn find_and_parse() {
+        let mut bytes = vec![0u8; 3_000_000];
+        bytes[10..14].copy_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+        bytes[2_500_000..2_500_004].copy_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+        let data = HexData::memory(bytes);
+        let needle = parse_needle("de ad BE EF");
+        assert_eq!(needle, [0xDE, 0xAD, 0xBE, 0xEF]);
+        assert_eq!(data.find(&needle, 0, true), Some(10));
+        assert_eq!(data.find(&needle, 10, true), Some(2_500_000));
+        assert_eq!(data.find(&needle, 2_500_000, true), Some(10));
+        assert_eq!(data.find(&needle, 2_500_000, false), Some(10));
+        assert_eq!(data.find(&needle, 10, false), Some(2_500_000));
+        assert_eq!(data.find(b"nope", 0, true), None);
+        assert_eq!(parse_needle("Hallo"), b"Hallo");
+        assert_eq!(parse_needle("\"cafe\""), b"cafe");
+        assert_eq!(parse_offset("0x1F"), Some(31));
+        assert_eq!(parse_offset("1Fh"), Some(31));
+        assert_eq!(parse_offset("31"), Some(31));
+        assert_eq!(parse_offset("ff"), Some(255));
+        assert_eq!(parse_offset("x"), None);
     }
 
     #[test]

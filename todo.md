@@ -29,7 +29,6 @@ Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über 
 
 ## Qualität und Technik
 
-- **2** Große Textdateien im Hintergrund laden (bei ~70 MB blockiert das Öffnen die Oberfläche kurz); Hex-Editor: „Gehe zu Offset“, Suche, Bytes einfügen/löschen (Größe ändern).
 - **2** Absturzbericht auch für harte Abstürze in nativem Code (Zugriffsverletzung in WebView/wgpu), z. B. per `SetUnhandledExceptionFilter` – bisher nur Rust-Panics.
 - **4** Automatisierte UI-Tests für die wichtigsten Abläufe (Öffnen, Bearbeiten, Speichern lokal/Server).
 
@@ -66,7 +65,7 @@ Runde 5 (alle **2**-Punkte, der Reihe nach):
 3. ~~Regex-Ersetzung mit Vorschau~~ (erledigt).
 4. ~~Suche im Terminal-Verlauf~~ (erledigt).
 5. ~~Serverdateien offline lesbar~~ (erledigt).
-6. Große Textdateien im Hintergrund laden; Hex-Editor erweitern.
+6. ~~Große Textdateien im Hintergrund laden; Hex-Editor erweitern~~ (erledigt).
 7. Absturzbericht für native Abstürze.
 
 ## Erledigt
@@ -154,3 +153,5 @@ Regex-Ersetzung mit Vorschau (23.10.): Suchleiste zeigt unter dem Ersetzungsfeld
 Suche im Terminal-Verlauf (23.10.): Strg+F im Terminal öffnet oben rechts ein Suchfeld (vorbelegt mit der Auswahl); durchsucht Verlauf und Bildschirm ohne Groß-/Kleinschreibung, markiert alle Treffer, springt zum neuesten und scrollt mit Enter/Umschalt+Enter oder ▲/▼ zu älteren/neueren; Treffer folgen neuer Ausgabe; Esc schließt und gibt den Fokus ans Terminal zurück.
 
 Serverdateien offline (23.10.): Kopien geöffneter/gespeicherter Serverdateien, Ordnerlisten und Startordner unter `offline\<Server>` im Einstellungsordner (Dateien bis 10 MB, gesamt 500 MB, älteste zuerst entfernt). Bei Verbindungsfehler zeigt die Seitenleiste „Offline – Stand vom …“ mit den gemerkten Ordnern, Dateien (auch Sitzungs-Tabs beim Start) öffnen schreibgeschützt aus der Kopie mit Hinweis in der Statusleiste; nach „Erneut versuchen“ bzw. Wiederverbinden werden sie frisch geladen. Einstellung und „Leeren“ unter Einstellungen › Editor; beim Entfernen eines Servers wird sein Zwischenspeicher gelöscht.
+
+Große Dateien und Hex-Editor (23.10.): Textdateien ab 16 MB werden im Hintergrund gelesen und aufgebaut, der Tab zeigt so lange „Lade … (n MB)“ (Oberfläche bleibt bedienbar). Hex-Editor: Gehe zu Offset (Strg+G; `0x1F00`, `1F00h`, `$1F00`, dezimal), Suche im Kopf (Strg+F; Hex-Bytes wie `DE AD BE EF` oder Text, in Anführungszeichen erzwungen; Enter/Umschalt+Enter, sucht auch große Dateien stückweise), Einfügemodus (Einfg) sowie Entf/Rück zum Löschen bei Dateien im Speicher (bis 64 MB) mit Rückgängig; nach Einfügen/Löschen wird beim Speichern die ganze Datei geschrieben. Behoben: Fokus nach Dialogen landete bei Hex-Tabs im Nichts; fehlgeschlagene Ordnerabfragen überdeckten offline die gemerkte Ordnerliste, doppelte „Keine Verbindung“-Meldungen offline.

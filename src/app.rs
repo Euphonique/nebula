@@ -58,6 +58,7 @@ mod inline_ai;
 mod windows;
 mod definition;
 mod macros;
+mod loading;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -227,6 +228,8 @@ pub struct NebulaApp {
     /// The last recorded macro, and steps of one being played back.
     last_macro: Vec<crate::editor::macros::Step>,
     macro_queue: std::collections::VecDeque<crate::editor::macros::Step>,
+    /// Large files being loaded in the background.
+    loadings: Vec<loading::Loading>,
     /// Differences shown in the conflict dialog (document id).
     compare: Option<(u64, compare::Compare)>,
     /// Second editor beside the first.
@@ -314,6 +317,7 @@ impl NebulaApp {
             definition_job: None,
             last_macro: Vec::new(),
             macro_queue: Default::default(),
+            loadings: Vec::new(),
             compare: None,
             split: None,
             right_state: right_panel::RightPanelState::new(&cc.egui_ctx),
@@ -485,6 +489,10 @@ impl NebulaApp {
                 self.open_hex(DocSource::Local(path.clone()), crate::hex_view::HexData::file(path.clone(), size));
                 return;
             }
+        }
+        if size >= loading::BACKGROUND_BYTES && !crate::image_view::is_image_name(&path.to_string_lossy()) {
+            self.open_local_in_background(path, size);
+            return;
         }
         match std::fs::read(&path) {
             Ok(bytes) if crate::image_view::is_image_name(&path.to_string_lossy()) => {
@@ -998,7 +1006,12 @@ impl NebulaApp {
                         Request::List(path) => {
                             if let Some(tree) = self.sidebar.remote.get_mut(&ev.site_id) {
                                 tree.loading.remove(path);
-                                tree.dirs.insert(path.clone(), Vec::new());
+                                if tree.offline.is_some() {
+                                    // Offline: the folder comes from its kept listing.
+                                    tree.dirs.remove(path);
+                                } else {
+                                    tree.dirs.insert(path.clone(), Vec::new());
+                                }
                             }
                         }
                         Request::Read(path) => {
@@ -1025,7 +1038,11 @@ impl NebulaApp {
                         }
                         _ => {}
                     }
-                    self.error(format!("{site_name}: {message}"));
+                    // While offline, the connection error was reported once already.
+                    let offline = self.sidebar.remote.get(&ev.site_id).is_some_and(|t| t.offline.is_some());
+                    if !(offline && matches!(request, Request::List(_) | Request::Read(_))) {
+                        self.error(format!("{site_name}: {message}"));
+                    }
                 }
                 Reply::HostKeyUnknown(prompt) => {
                     self.host_keys.push_back((ev.site_id, prompt));
@@ -1429,6 +1446,11 @@ impl NebulaApp {
     }
 
     fn open_find(&mut self, replace: bool) {
+        // Hex tabs have their own search field.
+        if let Some(hex) = self.active.and_then(|i| self.docs.get(i)).and_then(|d| d.hex.clone()) {
+            hex.focus_search();
+            return;
+        }
         self.find.visible = true;
         self.find.show_replace = replace;
         self.find.focus_query = true;
@@ -2981,9 +3003,11 @@ impl NebulaApp {
             }
             Dialog::GotoLine { mut value, focus } => {
                 let mut go = false;
+                // Hex tabs jump to a byte offset instead.
+                let hex = self.active.and_then(|i| self.docs.get(i)).and_then(|d| d.hex.clone());
                 modal(ctx, egui::Id::unique("goto")).show(ctx, |ui| {
                     ui.set_width(260.0);
-                    ui.label(t!("Gehe zu Zeile"));
+                    ui.label(if hex.is_some() { t!("Gehe zu Offset (0x1F00, 1F00h oder dezimal)") } else { t!("Gehe zu Zeile") });
                     let resp = ui.add(egui::TextEdit::singleline(&mut value).desired_width(f32::INFINITY));
                     if focus {
                         resp.request_focus();
@@ -2995,7 +3019,17 @@ impl NebulaApp {
                         keep = false;
                     }
                 });
-                if go {
+                if go && let Some(hex) = &hex {
+                    keep = false;
+                    match crate::hex_view::parse_offset(&value) {
+                        Some(offset) => {
+                            hex.go_to(offset);
+                            hex.focus();
+                        }
+                        None => self.error(t!("Ungültiger Offset: {value}", value = value.trim())),
+                    }
+                    self.focus_editor = true;
+                } else if go {
                     keep = false;
                     if let (Ok(n), Some(doc)) = (value.trim().parse::<usize>(), self.active_doc()) {
                         let line = n.saturating_sub(1).min(doc.len_lines() - 1);
@@ -3295,6 +3329,7 @@ impl eframe::App for NebulaApp {
         self.poll_git_bases(&ctx);
         self.poll_definition(&ctx);
         self.drive_macro(&ctx);
+        self.poll_loadings(&ctx);
         if self.settings.editor.spell_check {
             crate::spell::init(ctx.clone());
             crate::spell::configure(&self.settings.editor.spell_languages);
@@ -3464,12 +3499,13 @@ impl eframe::App for NebulaApp {
             if out.has_focus {
                 self.sidebar.focused = false;
             }
-            if std::mem::take(&mut self.focus_editor)
-                && self.dialog.is_none()
-                && !self.find.focus_query
-                && let Some(id) = self.active_editor_id()
-            {
-                ctx.memory_mut(|m| m.request_focus(id));
+            if std::mem::take(&mut self.focus_editor) && self.dialog.is_none() && !self.find.focus_query {
+                // Hex tabs have no text editor; their byte area takes the keys.
+                if let Some(hex) = self.active.and_then(|i| self.docs.get(i)).and_then(|d| d.hex.clone()) {
+                    hex.focus();
+                } else if let Some(id) = self.active_editor_id() {
+                    ctx.memory_mut(|m| m.request_focus(id));
+                }
             }
         });
 
