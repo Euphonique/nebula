@@ -93,7 +93,8 @@ pub struct ExtUi {
     next_req: u64,
     completion: Option<(u64, u64, usize)>,
     hover: Option<(u64, u64, usize)>,
-    definition: Option<u64>,
+    /// Definition request: (req, doc, position); without an answer the built-in search runs.
+    definition: Option<(u64, u64, usize)>,
     /// Saves waiting for extensions to finish `onWillSave`: req -> (doc, close after).
     will_save: HashMap<u64, (u64, bool)>,
     replies: Vec<(String, u64, Value)>,
@@ -352,8 +353,10 @@ impl NebulaApp {
         if let Some(pos) = doc.view.definition_request.take() {
             if running {
                 let req = self.ext.req();
-                self.ext.definition = Some(req);
+                self.ext.definition = Some((req, id, pos));
                 self.ext.host.send(ToHost::Definition { req, doc: id, pos });
+            } else {
+                self.builtin_definition(id, pos);
             }
         }
     }
@@ -552,13 +555,15 @@ impl NebulaApp {
                 }
             }
             FromHost::Definition { req, locations } => {
-                if self.ext.definition == Some(req) {
+                if let Some((r, doc, pos)) = self.ext.definition
+                    && r == req
+                {
                     self.ext.definition = None;
                     match locations.first() {
                         Some(l) => {
                             self.goto_location(&l.uri, l.line, l.column);
                         }
-                        None => self.info(t!("Keine Definition gefunden.")),
+                        None => self.builtin_definition(doc, pos),
                     }
                 }
             }

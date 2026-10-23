@@ -100,6 +100,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Installation direkt aus Novas Extension Library (Suche, Kategorien, Beschreibung), aus einem Ordner oder einer ZIP-Datei
 - JavaScript-Laufzeit (QuickJS) mit der Nova-Extension-API: Befehle, Einstellungen, Editor- und Dokument-API, Meldungen, Paletten, Benachrichtigungen, Prozesse (auch JSON-RPC), fetch, Dateisystem, Pfade, Zwischenablage, Anmeldedaten, Timer, Seitenleisten (TreeView)
 - Language Server (LanguageClient): Probleme, Vervollständigung, Hover-Infos, Gehe zu Definition (Strg+Klick oder F12)
+- Gehe zu Definition auch ohne Language Server: CSS-Klassen und IDs aus `class`/`id`-Attributen und Selektor-Strings in Skripten (CSS-, SCSS-, LESS-Dateien und `<style>`-Blöcke), Funktionen und Klassen in PHP, JavaScript/TypeScript und weiteren Sprachen, Dateipfade in Strings (`href`, `src`, `require`, `import`); bei mehreren Treffern eine Auswahlliste. Springt ein, wenn keine Erweiterung eine Definition liefert
 - Formatierer über `onWillSave`, Prüf-Assistenten (Issues) mit Wellenlinien und Problemliste in der Statusleiste
 - Einstellungsseiten werden aus den Manifesten der Erweiterungen erzeugt; Projekteinstellungen liegen wie bei Nova in `.nova/Configuration.json`
 - Clips und Themes aus Erweiterungen (Themes erscheinen automatisch in der Theme-Auswahl); Erweiterungskonsole für Ausgaben und Fehler
@@ -146,7 +147,7 @@ Alle Kürzel lassen sich unter Einstellungen → Tastenkürzel ändern. Standard
 | Geteilte Ansicht | Strg+Alt+T |
 | Blockauswahl / Cursor an Zeilenenden | Alt+Ziehen / Alt+Umschalt+I |
 | Terminal ein/aus | Strg+Ö |
-| Gehe zu Definition (Erweiterungen) | F12 / Strg+Klick |
+| Gehe zu Definition | F12 / Strg+Klick |
 | Vervollständigung / Emmet | Strg+Leertaste / Tab |
 | Nächstes / alle Vorkommen auswählen | Strg+D / Strg+Umschalt+L |
 | Cursor darüber/darunter | Strg+Alt+↑/↓ |

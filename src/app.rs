@@ -56,6 +56,7 @@ mod commit_msg;
 mod mcp_tools;
 mod inline_ai;
 mod windows;
+mod definition;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -117,6 +118,8 @@ enum Dialog {
     Permissions { items: Vec<Item>, mode: u32, octal: String, recurse: Option<remote::Recurse> },
     QuickOpen(quick_open::QuickOpenState),
     GotoSymbol(nav::SymbolSearch),
+    /// Several definitions found: choose one.
+    Definitions(Box<definition::DefinitionList>),
     Settings,
 }
 
@@ -216,6 +219,8 @@ pub struct NebulaApp {
     backups: backup::Backups,
     /// Committed versions of open files for the Git markers.
     git_bases: gitdiff::GitBases,
+    /// Built-in definition search in progress.
+    definition_job: Option<definition::DefinitionJob>,
     /// Differences shown in the conflict dialog (document id).
     compare: Option<(u64, compare::Compare)>,
     /// Second editor beside the first.
@@ -298,6 +303,7 @@ impl NebulaApp {
             disk: Default::default(),
             backups: Default::default(),
             git_bases: Default::default(),
+            definition_job: None,
             compare: None,
             split: None,
             right_state: right_panel::RightPanelState::new(&cc.egui_ctx),
@@ -3005,6 +3011,10 @@ impl NebulaApp {
                 keep = self.goto_symbol_dialog(ctx, &mut state);
                 Dialog::GotoSymbol(state)
             }
+            Dialog::Definitions(mut list) => {
+                keep = self.definitions_dialog(ctx, &mut list);
+                Dialog::Definitions(list)
+            }
         };
         if keep && self.dialog.is_none() {
             self.dialog = Some(dialog);
@@ -3126,6 +3136,7 @@ impl eframe::App for NebulaApp {
         self.poll_disk(&ctx);
         self.backup_unsaved(&ctx);
         self.poll_git_bases(&ctx);
+        self.poll_definition(&ctx);
         self.poll_terminals();
         self.poll_agent();
         self.poll_commit_message();

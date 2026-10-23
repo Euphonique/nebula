@@ -19,7 +19,6 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 ## Suchen und Navigieren
 
 - **2** Regex-Ersetzung mit Vorschau.
-- **1** Gehe zu Definition ohne Language Server für einfache Fälle (CSS-Klassen, PHP-Funktionen im Projekt).
 
 ## Git
 
@@ -72,7 +71,7 @@ Runde 4 (alle **1**-Punkte, kleine zuerst):
 
 1. ~~Implizites FTPS (Port 990)~~ (erledigt).
 2. ~~Blame für die aktuelle Zeile~~ (erledigt).
-3. Gehe zu Definition ohne Language Server.
+3. ~~Gehe zu Definition ohne Language Server~~ (erledigt).
 4. Rechtschreibprüfung.
 
 ## Erledigt
@@ -146,3 +145,5 @@ Performance (22.10.): Highlighting großer Dateien (ab 256 KB) inkrementell – 
 Implizites FTPS (23.10.): Protokoll „FTPS (implizites TLS)“ mit Port 990, FileZilla-Import übernimmt es jetzt richtig; FTP-Verbindungen probieren alle Adressen eines Hosts (IPv6 und IPv4) statt nur der ersten. Tests für explizites und implizites FTPS.
 
 Blame (23.10.): Autor, Alter („vor 3 Tagen“) und Commit-Nachricht der letzten Änderung dezent am Ende der aktuellen Zeile, Tooltip mit Datum und Hash; geänderte/neue Zeilen zeigen „Noch nicht committet“, eingefügte Zeilen verschieben die Zuordnung nicht. Geladen wird nur für den aktiven Tab im Hintergrund (`git blame --porcelain HEAD`), neu nach jedem Commit. Abschaltbar unter Ansicht und Einstellungen › Editor.
+
+Gehe zu Definition ohne Language Server (23.10.): F12/Strg+Klick findet CSS-Klassen und IDs (aus `class`/`id`, `querySelector('.x')`, `getElementById`) in CSS/SCSS/LESS und `<style>`-Blöcken, Funktionen und Klassen über die Gliederungs-Erkennung (PHP, JS/TS und weitere) im Projekt und in offenen Dateien (ungespeicherter Stand), Dateipfade in Strings öffnen die Datei. Mehrere Treffer → Auswahlliste. Läuft im Hintergrund, beachtet `.gitignore`; Erweiterungen haben Vorrang.
