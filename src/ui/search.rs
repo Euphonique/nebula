@@ -33,9 +33,39 @@ fn split_patterns(s: &str) -> Vec<String> {
 pub struct LineMatch {
     /// Zero-based line number.
     pub line: usize,
+    /// Excerpt of the line (long lines are cut around the first match).
     pub text: String,
     /// Byte ranges within `text`.
     pub ranges: Vec<std::ops::Range<usize>>,
+    /// Char column of the first match in the full line.
+    pub column: usize,
+}
+
+/// Longest excerpt kept per line, in bytes.
+const MAX_EXCERPT_BYTES: usize = 400;
+
+impl LineMatch {
+    /// Keeps up to `MAX_EXCERPT_BYTES` of `line` starting a little before the
+    /// first match; `ranges` (bytes in `line`, sorted, non-empty) are shifted
+    /// into the excerpt and those past its end dropped.
+    fn new(line: usize, text: &str, ranges: Vec<std::ops::Range<usize>>) -> Self {
+        let first = ranges[0].start;
+        let column = text[..first].chars().count();
+        let mut start = first.saturating_sub(100);
+        while !text.is_char_boundary(start) {
+            start -= 1;
+        }
+        let mut end = (start + MAX_EXCERPT_BYTES).min(text.len());
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let mut ranges: Vec<_> = ranges.into_iter().filter(|r| r.start < end).map(|r| r.start - start..r.end.min(end) - start).collect();
+        if ranges.is_empty() {
+            // The first match itself is longer than the excerpt and starts at its end.
+            ranges.push(first - start..first - start);
+        }
+        LineMatch { line, text: text[start..end].to_string(), ranges, column }
+    }
 }
 
 #[derive(Clone)]
@@ -293,7 +323,7 @@ impl SearchPanel {
                     let ranges: Vec<_> = re.find_iter(line).filter(|m| !m.is_empty()).map(|m| m.range()).collect();
                     if !ranges.is_empty() {
                         total += ranges.len();
-                        lines.push(LineMatch { line: n, text: line.chars().take(400).collect(), ranges });
+                        lines.push(LineMatch::new(n, line, ranges));
                     }
                 }
                 if !lines.is_empty() {
@@ -332,7 +362,7 @@ impl SearchPanel {
                         if ranges.is_empty() {
                             ranges.push(0..0);
                         }
-                        let m = LineMatch { line: h.line, text: h.text, ranges };
+                        let m = LineMatch::new(h.line, &h.text, ranges);
                         match self.results.last_mut() {
                             Some(f) if f.rel == h.path => f.lines.push(m),
                             _ => {
@@ -600,8 +630,7 @@ impl SearchPanel {
                         theme.text_faint,
                     );
                     if resp.clicked() {
-                        let column = m.text[..first.start].chars().count();
-                        actions.push(SearchAction::Open { file: file.file.clone(), line: m.line, column });
+                        actions.push(SearchAction::Open { file: file.file.clone(), line: m.line, column: m.column });
                     }
                 }
             }
@@ -677,5 +706,23 @@ mod tests {
         panel.files = "[".into();
         assert!(panel.walker(&root).is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn long_lines_keep_matches_inside_the_excerpt() {
+        // Matches far behind the cut of a long (minified) line.
+        let line = format!("{}logo ä {}logo{}", "x".repeat(600), "ü".repeat(150), "y".repeat(50));
+        let re = regex::Regex::new("logo").unwrap();
+        let ranges: Vec<_> = re.find_iter(&line).map(|m| m.range()).collect();
+        let m = LineMatch::new(3, &line, ranges);
+        assert!(m.text.len() <= MAX_EXCERPT_BYTES);
+        assert_eq!(m.column, 600);
+        assert_eq!(&m.text[m.ranges[0].clone()], "logo");
+        for r in &m.ranges {
+            assert!(r.end <= m.text.len() && m.text.is_char_boundary(r.start) && m.text.is_char_boundary(r.end));
+        }
+        // A short line stays whole.
+        let m = LineMatch::new(0, "a logo b", vec![2..6]);
+        assert_eq!((m.text.as_str(), m.ranges, m.column), ("a logo b", vec![2..6], 2));
     }
 }
