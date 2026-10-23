@@ -28,9 +28,119 @@ pub fn install() {
         let _ = write_report(&dir(), &message, &location, &thread, &backtrace.to_string());
         default(info);
     }));
+    native::install();
 }
 
-fn write_report(dir: &std::path::Path, message: &str, location: &str, thread: &str, backtrace: &str) -> std::io::Result<()> {
+/// Hard crashes in native code (access violations in drivers, WebView, …)
+/// never reach the panic hook; Windows hands them to this filter.
+mod native {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use windows_sys::Win32::Foundation::{GENERIC_WRITE, HMODULE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Storage::FileSystem::{CREATE_ALWAYS, CreateFileW, FILE_ATTRIBUTE_NORMAL};
+    use windows_sys::Win32::System::Diagnostics::Debug::{
+        EXCEPTION_POINTERS, MINIDUMP_EXCEPTION_INFORMATION, MiniDumpNormal, MiniDumpWriteDump, SetUnhandledExceptionFilter,
+    };
+    use windows_sys::Win32::System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, GetModuleFileNameW, GetModuleHandleExW,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetCurrentProcessId, GetCurrentThreadId};
+
+    /// Only the first crash is written (a crash while writing must not loop).
+    static HANDLED: AtomicBool = AtomicBool::new(false);
+
+    pub fn install() {
+        // SAFETY: registers a plain function pointer.
+        unsafe { SetUnhandledExceptionFilter(Some(filter)) };
+    }
+
+    /// Readable names of the usual exception codes.
+    pub(super) fn code_name(code: u32) -> &'static str {
+        match code {
+            0xC000_0005 => "Zugriffsverletzung",
+            0xC000_001D => "Ungültiger Befehl",
+            0xC000_0094 => "Division durch null",
+            0xC000_00FD => "Stapelüberlauf",
+            0xC000_0409 => "Stapel beschädigt",
+            0xC000_0374 => "Heap beschädigt",
+            0x8000_0003 => "Haltepunkt",
+            _ => "Ausnahme",
+        }
+    }
+
+    /// Module that contains `addr` and the offset into it ("nvwgf2umx.dll+0x1A2B").
+    fn module_of(addr: usize) -> String {
+        let mut module: HMODULE = std::ptr::null_mut();
+        // SAFETY: the address is only looked up, not dereferenced; the name buffer is sized.
+        unsafe {
+            let flags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
+            if GetModuleHandleExW(flags, addr as *const u16, &mut module) == 0 {
+                return format!("0x{addr:X}");
+            }
+            let mut buf = [0u16; 260];
+            let n = GetModuleFileNameW(module, buf.as_mut_ptr(), buf.len() as u32) as usize;
+            let path = String::from_utf16_lossy(&buf[..n]);
+            let name = path.rsplit('\\').next().unwrap_or(&path).to_string();
+            format!("{name}+0x{:X}", addr - module as usize)
+        }
+    }
+
+    unsafe extern "system" fn filter(info: *const EXCEPTION_POINTERS) -> i32 {
+        const CONTINUE_SEARCH: i32 = 0;
+        if HANDLED.swap(true, Ordering::SeqCst) || info.is_null() {
+            return CONTINUE_SEARCH;
+        }
+        // SAFETY: Windows passes valid exception pointers for the faulting thread.
+        let (code, addr) = unsafe {
+            let rec = &*(*info).ExceptionRecord;
+            (rec.ExceptionCode as u32, rec.ExceptionAddress as usize)
+        };
+        let message = format!("{} (0x{code:08X})", code_name(code));
+        let location = module_of(addr);
+        let thread = std::thread::current().name().unwrap_or("unbenannt").to_string();
+        let backtrace = std::backtrace::Backtrace::force_capture().to_string();
+        if let Ok(name) = super::write_report(&super::dir(), &message, &location, &thread, &backtrace) {
+            // A small memory dump next to the report, for a debugger.
+            let dump = super::dir().join(name.replace(".txt", ".dmp"));
+            let wide: Vec<u16> = dump.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+            // SAFETY: plain Win32 calls with valid handles and the exception info of this thread.
+            unsafe {
+                let file = CreateFileW(wide.as_ptr(), GENERIC_WRITE, 0, std::ptr::null(), CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, std::ptr::null_mut());
+                if file != INVALID_HANDLE_VALUE {
+                    let exception = MINIDUMP_EXCEPTION_INFORMATION { ThreadId: GetCurrentThreadId(), ExceptionPointers: info as *mut _, ClientPointers: 0 };
+                    let ok = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, MiniDumpNormal, &exception, std::ptr::null(), std::ptr::null());
+                    windows_sys::Win32::Foundation::CloseHandle(file);
+                    if ok != 0 {
+                        use std::io::Write;
+                        let note = format!("\nSpeicherabbild (für einen Debugger): {}\n", dump.display());
+                        if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(super::dir().join(&name)) {
+                            let _ = f.write_all(note.as_bytes());
+                        }
+                    }
+                }
+            }
+        }
+        // Windows ends the process as usual (and may report it).
+        CONTINUE_SEARCH
+    }
+
+    use std::os::windows::ffi::OsStrExt;
+
+    /// Crashes on purpose with an access violation (NEBULA_CRASH_TEST=native).
+    pub fn crash_now() {
+        use windows_sys::Win32::System::Diagnostics::Debug::{RaiseException, SEM_NOGPFAULTERRORBOX, SetErrorMode};
+        // SAFETY: no Windows error dialog for the test; then an exception nobody handles ends the process.
+        unsafe {
+            SetErrorMode(SEM_NOGPFAULTERRORBOX);
+            RaiseException(0xC000_0005, 0, 0, std::ptr::null());
+        }
+    }
+}
+
+pub use native::crash_now as native_crash_test;
+
+/// Writes a report and marks it to be shown on the next start; returns its file name.
+fn write_report(dir: &std::path::Path, message: &str, location: &str, thread: &str, backtrace: &str) -> std::io::Result<String> {
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -56,7 +166,7 @@ fn write_report(dir: &std::path::Path, message: &str, location: &str, thread: &s
     std::fs::write(dir.join(&name), text)?;
     std::fs::write(dir.join(PENDING), &name)?;
     prune(dir);
-    Ok(())
+    Ok(name)
 }
 
 fn prune(dir: &std::path::Path) {
@@ -71,6 +181,8 @@ fn prune(dir: &std::path::Path) {
     let excess = reports.len().saturating_sub(KEEP);
     for p in &reports[..excess] {
         let _ = std::fs::remove_file(p);
+        // The memory dump of a native crash goes with its report.
+        let _ = std::fs::remove_file(p.with_extension("dmp"));
     }
 }
 

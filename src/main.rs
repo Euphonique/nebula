@@ -62,8 +62,11 @@ fn wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
 fn main() -> eframe::Result {
     crash::install();
     // Checks the crash report (also in release builds, e.g. for symbol names).
-    if std::env::var_os("NEBULA_CRASH_TEST").is_some() {
-        panic!("Absturztest (NEBULA_CRASH_TEST)");
+    match std::env::var("NEBULA_CRASH_TEST").as_deref() {
+        // A hard crash in native code (access violation).
+        Ok("native") => crash::native_crash_test(),
+        Ok(_) => panic!("Absturztest (NEBULA_CRASH_TEST)"),
+        Err(_) => {}
     }
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
     // "Deinstallieren" under Windows' "Apps".
