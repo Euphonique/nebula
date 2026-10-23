@@ -8,7 +8,6 @@
 Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind alle erledigt).
 
 ## Editor
-- **3** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
 
 ## Server und Veröffentlichen
 
@@ -66,6 +65,14 @@ Runde 5 (alle **2**-Punkte, der Reihe nach) ist komplett:
 5. ~~Serverdateien offline lesbar~~ (erledigt).
 6. ~~Große Textdateien im Hintergrund laden; Hex-Editor erweitern~~ (erledigt).
 7. ~~Absturzbericht für native Abstürze~~ (erledigt).
+
+Runde 6 (alle **3**-Punkte, der Reihe nach):
+
+1. ~~Ligaturen~~ (erledigt).
+2. Datenbank light (MySQL über SSH-Tunnel).
+3. Gerätebreiten der Vorschau: Querformat und eigene Breiten.
+4. Update-Hinweis.
+5. Barrierefreiheit.
 
 ## Erledigt
 
@@ -156,3 +163,5 @@ Serverdateien offline (23.10.): Kopien geöffneter/gespeicherter Serverdateien, 
 Große Dateien und Hex-Editor (23.10.): Textdateien ab 16 MB werden im Hintergrund gelesen und aufgebaut, der Tab zeigt so lange „Lade … (n MB)“ (Oberfläche bleibt bedienbar). Hex-Editor: Gehe zu Offset (Strg+G; `0x1F00`, `1F00h`, `$1F00`, dezimal), Suche im Kopf (Strg+F; Hex-Bytes wie `DE AD BE EF` oder Text, in Anführungszeichen erzwungen; Enter/Umschalt+Enter, sucht auch große Dateien stückweise), Einfügemodus (Einfg) sowie Entf/Rück zum Löschen bei Dateien im Speicher (bis 64 MB) mit Rückgängig; nach Einfügen/Löschen wird beim Speichern die ganze Datei geschrieben. Behoben: Fokus nach Dialogen landete bei Hex-Tabs im Nichts; fehlgeschlagene Ordnerabfragen überdeckten offline die gemerkte Ordnerliste, doppelte „Keine Verbindung“-Meldungen offline.
 
 Absturzbericht für native Abstürze (23.10.): `SetUnhandledExceptionFilter` schreibt bei Zugriffsverletzungen u. ä. einen Bericht im gewohnten Format (Ausnahmecode mit Namen, Modul+Offset, Backtrace) und ein Speicherabbild (`.dmp`, MiniDumpNormal) daneben; der Dialog beim nächsten Start zeigt ihn wie bei Panics. Alte Abbilder werden mit ihren Berichten gelöscht. Testauslöser `NEBULA_CRASH_TEST=native` (ohne Windows-Fehlerdialog).
+
+Ligaturen (23.10.): egui 0.37 formt Text mit harfrust – Ligatur-Schriften (Cascadia Code, Fira Code, JetBrains Mono …) zeigen sie im Editor schon, weil gleich gefärbte Zeichen ein Abschnitt sind. Neu: Einstellung „Ligaturen“ (abgeschaltet bekommt jedes Zeichen einen eigenen Formabschnitt) mit Hinweis auf installierte Ligatur-Schriften; Test gegen Cascadia Code (an/aus).

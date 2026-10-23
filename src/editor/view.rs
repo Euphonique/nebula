@@ -1397,6 +1397,7 @@ fn paint_doc(
             from_col,
             count,
             settings.show_invisibles,
+            settings.ligatures,
         );
         if !job.text.is_empty() {
             let galley = painter.layout_job(job);
@@ -1718,6 +1719,7 @@ fn layout_line(
     first_col: usize,
     col_count: usize,
     invisibles: bool,
+    ligatures: bool,
 ) -> (LayoutJob, usize) {
     let mut job = LayoutJob::default();
     let faint = theme.invisible;
@@ -1730,10 +1732,24 @@ fn layout_line(
     let mut segment_color = theme.foreground;
 
     let flush = |job: &mut LayoutJob, segment: &mut String, color: Color32| {
-        if !segment.is_empty() {
-            job.append(segment, 0.0, TextFormat::simple(font.clone(), color));
-            segment.clear();
+        if segment.is_empty() {
+            return;
         }
+        if ligatures {
+            job.append(segment, 0.0, TextFormat::simple(font.clone(), color));
+        } else {
+            // egui shapes each section on its own: one char per section, no ligatures.
+            for ch in segment.chars() {
+                let start = job.text.len();
+                job.text.push(ch);
+                job.sections.push(egui::text::LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: start.into()..job.text.len().into(),
+                    format: TextFormat::simple(font.clone(), color),
+                });
+            }
+        }
+        segment.clear();
     };
 
     for (offset, ch) in text[from_byte..].char_indices() {

@@ -192,6 +192,22 @@ impl NebulaApp {
             ui.add(egui::Slider::new(&mut e.line_height, 1.0..=2.5).step_by(0.05).fixed_decimals(2));
             ui.end_row();
             ui.label("");
+            ui.vertical(|ui| {
+                ui.checkbox(&mut e.ligatures, t!("Ligaturen (z. B. => als Pfeil, != als ≠)"));
+                // Only some fonts have them; name the installed ones.
+                const LIGATURE_FONTS: [&str; 7] = ["Cascadia Code", "Fira Code", "JetBrains Mono", "Iosevka", "Victor Mono", "Hasklig", "Monaspace Neon"];
+                let installed: Vec<&str> = LIGATURE_FONTS.iter().copied().filter(|f| crate::fonts::installed().contains_key(*f)).collect();
+                if e.ligatures && !LIGATURE_FONTS.contains(&e.font_family.as_str()) {
+                    let hint = if installed.is_empty() {
+                        t!("Diese Schrift hat keine Ligaturen – z. B. Fira Code oder Cascadia Code installieren.").to_string()
+                    } else {
+                        t!("Nur Schriften mit Ligaturen zeigen sie, installiert: {fonts}.", fonts = installed.join(", "))
+                    };
+                    ui.label(RichText::new(hint).small().color(self.theme.text_faint));
+                }
+            });
+            ui.end_row();
+            ui.label("");
             ui.checkbox(&mut e.highlight_current_line, t!("Aktuelle Zeile hervorheben"));
             ui.end_row();
             ui.label("");

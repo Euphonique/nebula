@@ -115,3 +115,51 @@ pub fn apply(ctx: &egui::Context, code_family: &str) {
     fonts.families.insert(theme::bold_family(), bold);
     ctx.set_fonts(fonts);
 }
+
+#[cfg(test)]
+mod tests {
+    use eframe::egui::{self, FontData, FontDefinitions, FontFamily, FontId};
+
+    /// Ligatures come from egui's shaping (harfrust): a ligature font joins
+    /// "=>" into one glyph, the second char gets a zero-width continuation.
+    #[test]
+    #[ignore]
+    fn ligature_font_joins_arrows() {
+        let ctx = egui::Context::default();
+        let mut fonts = FontDefinitions::default();
+        let bytes = std::fs::read(r"C:\Windows\Fonts\CascadiaCode.ttf").expect("Cascadia Code");
+        fonts.font_data.insert("lig".into(), std::sync::Arc::new(FontData::from_owned(bytes)));
+        fonts.families.get_mut(&FontFamily::Monospace).unwrap().insert(0, "lig".into());
+        ctx.set_fonts(fonts);
+        let mut widths: Vec<(char, f32)> = Vec::new();
+        // The picture of each glyph: the same chars look different inside a ligature.
+        let mut joined = Vec::new();
+        let mut apart = Vec::new();
+        let mut split = Vec::new();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let layout = |t: &str| ui.fonts_mut(|f| f.layout_no_wrap(t.into(), FontId::monospace(14.0), egui::Color32::WHITE));
+            let galley = layout("a => b");
+            widths = galley.rows[0].glyphs.iter().map(|g| (g.chr, g.advance_width)).collect();
+            joined = galley.rows[0].glyphs.iter().map(|g| g.uv_rect.min).collect::<Vec<_>>();
+            apart = layout("a =x b").rows[0].glyphs.iter().map(|g| g.uv_rect.min).collect::<Vec<_>>();
+            // One section per char, as the editor does with ligatures off.
+            let mut job = egui::text::LayoutJob::default();
+            for ch in "a => b".chars() {
+                let start = job.text.len();
+                job.text.push(ch);
+                let format = egui::TextFormat::simple(FontId::monospace(14.0), egui::Color32::WHITE);
+                job.sections.push(egui::text::LayoutSection { leading_space: 0.0, byte_range: start.into()..job.text.len().into(), format });
+            }
+            split = ui.fonts_mut(|f| f.layout_job(job)).rows[0].glyphs.iter().map(|g| g.uv_rect.min).collect::<Vec<_>>();
+        });
+        out.textures_delta.clear();
+        // '=' in "=>" is drawn differently than a lone '='.
+        assert_ne!(joined[2], apart[2], "keine Ligatur");
+        // Split into sections: a plain '=' again.
+        assert_eq!(split[2], apart[2]);
+        let total: f32 = widths.iter().map(|w| w.1).sum();
+        let a = widths[0].1;
+        // Still a grid: six cells wide in total.
+        assert!((total - 6.0 * a).abs() < 0.5, "{widths:?}");
+    }
+}

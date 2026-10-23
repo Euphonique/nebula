@@ -47,6 +47,8 @@ pub struct EditorSettings {
     pub font_family: String,
     /// Line height as a multiple of the font's height.
     pub line_height: f32,
+    /// Ligatures of fonts that have them (Cascadia Code, Fira Code, …).
+    pub ligatures: bool,
     /// Shrunken document view on the right edge.
     pub minimap: bool,
     /// Author and date of the last change at the end of the current line (Git).
@@ -93,6 +95,7 @@ impl Default for EditorSettings {
             insert_final_newline: false,
             font_family: String::new(),
             line_height: 1.45,
+            ligatures: true,
             minimap: true,
             git_blame: true,
             spell_check: true,
