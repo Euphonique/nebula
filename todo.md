@@ -7,11 +7,6 @@
 
 Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind alle erledigt).
 
-## Editor
-
-## Server und Veröffentlichen
-
-
 ## KI-Unterstützung (wie in VS Code)
 
 Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über ACP, eigener Agent, KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge, bearbeitbare Serverdateien, Codex-Limits.
@@ -163,4 +158,4 @@ Ligaturen (23.10.): egui 0.37 formt Text mit harfrust – Ligatur-Schriften (Cas
 
 Datenbank light (23.10.): Tab „DB · Server“ (Server-Kontextmenü, Befehlspalette). Lokaler Port wird per SSH `direct-tcpip` über die Server-Anmeldung zur Datenbank weitergeleitet, Client ist `mysql_async` (minimal-rust, ohne C-Abhängigkeiten) – auf dem Server muss nichts installiert sein. Tabellenliste (SHOW TABLES) mit Filter, Klick = `SELECT * … LIMIT 200`, eigene Abfragen (Strg+Enter, mehrere Ergebnismengen), Raster mit Spaltenbreiten aus dem Inhalt, NULL grau, „Zeile kopieren“, „Als CSV kopieren“ (Semikolon). Nicht-lesende Abfragen erst nach Bestätigung. Einstellungen pro Server (`Site.db`), Passwort im Windows-Tresor; 20 s Zeitgrenze beim Verbinden. Ende-zu-Ende-Test mit SSH-Testserver (jetzt mit direct-tcpip) und MySQL-Fake (opensrv-mysql, nur dev); `cargo test serve_mysql -- --ignored` (Port 3307) für UI-Tests mit `serve_sftp`.
 
-Gerätebreiten (23.10.): Querformat-Schalter im Geräte-Menü der Vorschau (Handy 844 px, Tablet 1024 px, Anzeige „Handy quer · 844 px“), eigene Breiten (200–7680 px) im Menü hinzufügen/entfernen, gespeichert und im Einstellungs-Export enthalten. Menü nur per Test geprüft, nicht per Screenshot (Nebula kam nicht in den Vordergrund).
+Gerätebreiten (23.10.): Querformat-Schalter im Geräte-Menü der Vorschau (Handy 844 px, Tablet 1024 px, Anzeige „Handy quer · 844 px“), eigene Breiten (200–7680 px) im Menü hinzufügen/entfernen, gespeichert und im Einstellungs-Export enthalten.
