@@ -322,6 +322,8 @@ pub struct ViewState {
     pub tag_pair: Option<((u64, usize), Option<(Range<usize>, Range<usize>)>)>,
     /// Markdown: lines inside code fences (not spell checked), for a document version.
     pub code_fences: Option<(u64, Arc<Vec<Range<usize>>>)>,
+    /// Input of a macro to play back in the next frame.
+    pub macro_events: Vec<eframe::egui::Event>,
     /// Click areas of the color bars under CSS color values (last frame).
     pub color_hits: Vec<(eframe::egui::Rect, Range<usize>)>,
     /// Open color picker: the value and where the picker sits.

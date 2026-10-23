@@ -99,6 +99,9 @@ pub enum Command {
     FoldToggle,
     FoldAll,
     UnfoldAll,
+    MacroRecord,
+    MacroPlay,
+    MacroPlayTimes,
     Language(Language),
     /// Index into `available_ext_commands()`.
     Ext(usize),
@@ -206,6 +209,9 @@ impl Command {
             (LowerCase, t!("Text: kleinbuchstaben")),
             (TitleCase, t!("Text: Wörter Großschreiben")),
             (WrapInTag, t!("Text: Auswahl mit Tag umschließen")),
+            (MacroRecord, t!("Makro: Aufnahme starten/beenden")),
+            (MacroPlay, t!("Makro: Abspielen")),
+            (MacroPlayTimes, t!("Makro: Mehrmals abspielen…")),
             (CursorsAtLineEnds, t!("Auswahl: Cursor an alle Zeilenenden")),
             (IndentToSpaces, t!("Text: Einrückung in Leerzeichen umwandeln")),
             (IndentToTabs, t!("Text: Einrückung in Tabs umwandeln")),
@@ -239,6 +245,27 @@ fn score(label: &str, query: &str) -> Option<i32> {
     }
     Some(s * 10 - label.len() as i32 / 4)
 }
+
+/// Commands that change the document and are recorded in macros.
+pub(super) const RECORDABLE: [Command; 17] = [
+    Command::FindNext,
+    Command::FindPrevious,
+    Command::ToggleComment,
+    Command::DuplicateLine,
+    Command::DeleteLine,
+    Command::SelectAllOccurrences,
+    Command::CursorsAtLineEnds,
+    Command::SortLines,
+    Command::SortLinesDesc,
+    Command::UniqueLines,
+    Command::ReverseLines,
+    Command::JoinLines,
+    Command::UpperCase,
+    Command::LowerCase,
+    Command::TitleCase,
+    Command::WrapInTag,
+    Command::TrimWhitespace,
+];
 
 pub struct PaletteState {
     pub query: String,
@@ -335,7 +362,19 @@ impl NebulaApp {
                 app.focus_editor = true;
             }
         };
+        if let Some(n) = RECORDABLE.iter().position(|r| *r == c) {
+            crate::editor::macros::record(crate::editor::macros::Step::Command(n));
+        }
         match c {
+            Command::MacroRecord => self.toggle_macro_recording(),
+            Command::MacroPlay => self.play_macro(1),
+            Command::MacroPlayTimes => {
+                if self.last_macro.is_empty() {
+                    self.info(t!("Noch kein Makro aufgenommen (Strg+Umschalt+R)."));
+                } else {
+                    self.dialog = Some(super::Dialog::MacroTimes { value: "10".into(), focus: true });
+                }
+            }
             Command::NewFile => self.new_document(),
             Command::OpenFile => self.pick_and_open_file(),
             Command::OpenFolder => self.pick_and_open_folder(),

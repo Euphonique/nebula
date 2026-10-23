@@ -737,7 +737,13 @@ fn handle_keyboard(
     wrap: Option<usize>,
 ) -> Option<String> {
     let tab = settings.tab_size;
-    let events = ui.input(|i| i.events.clone());
+    let input = ui.input(|i| i.events.clone());
+    super::macros::record_events(&input);
+    // A macro being played back comes first, as if it had been typed.
+    let replay = std::mem::take(&mut doc.view.macro_events);
+    // Recording and playback leave completion out, so both run alike.
+    let no_popup = !replay.is_empty() || super::macros::recording();
+    let events = replay.into_iter().chain(input);
     let mut copied = None;
     // Renaming one tag of a pair renames its partner too.
     let mut link = None;
@@ -803,7 +809,11 @@ fn handle_keyboard(
             Event::PointerMoved(_) | Event::MouseMoved(_) | Event::MouseWheel { .. } => continue,
             _ => continue,
         }
-        doc.view.completion = if refresh { complete::compute(doc) } else { None };
+        doc.view.completion = if refresh && !no_popup { complete::compute(doc) } else { None };
+    }
+    if no_popup {
+        doc.view.completion = None;
+        doc.view.completion_request = None;
     }
     sync_tag_partner(doc, link);
     copied

@@ -2,6 +2,7 @@ pub mod colors;
 pub mod commands;
 pub mod complete;
 pub mod definition;
+pub mod macros;
 pub mod document;
 pub mod emmet;
 pub mod find;

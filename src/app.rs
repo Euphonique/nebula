@@ -57,6 +57,7 @@ mod mcp_tools;
 mod inline_ai;
 mod windows;
 mod definition;
+mod macros;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -114,6 +115,8 @@ enum Dialog {
     /// Linking the local project to a server folder.
     PublishSetup { root: PathBuf, target: crate::settings::PublishTarget },
     GotoLine { value: String, focus: bool },
+    /// How often to play the macro.
+    MacroTimes { value: String, focus: bool },
     /// chmod for server files; `recurse` applies to folder contents too.
     Permissions { items: Vec<Item>, mode: u32, octal: String, recurse: Option<remote::Recurse> },
     QuickOpen(quick_open::QuickOpenState),
@@ -221,6 +224,9 @@ pub struct NebulaApp {
     git_bases: gitdiff::GitBases,
     /// Built-in definition search in progress.
     definition_job: Option<definition::DefinitionJob>,
+    /// The last recorded macro, and steps of one being played back.
+    last_macro: Vec<crate::editor::macros::Step>,
+    macro_queue: std::collections::VecDeque<crate::editor::macros::Step>,
     /// Differences shown in the conflict dialog (document id).
     compare: Option<(u64, compare::Compare)>,
     /// Second editor beside the first.
@@ -304,6 +310,8 @@ impl NebulaApp {
             backups: Default::default(),
             git_bases: Default::default(),
             definition_job: None,
+            last_macro: Vec::new(),
+            macro_queue: Default::default(),
             compare: None,
             split: None,
             right_state: right_panel::RightPanelState::new(&cc.egui_ctx),
@@ -1533,6 +1541,20 @@ impl NebulaApp {
                         ui.close();
                     }
                     ui.separator();
+                    let recording = crate::editor::macros::recording();
+                    let label = if recording { t!("Makro-Aufnahme beenden") } else { t!("Makro aufnehmen") };
+                    let macro_items = [
+                        (palette::Command::MacroRecord, label, true),
+                        (palette::Command::MacroPlay, t!("Makro abspielen"), !recording && !self.last_macro.is_empty()),
+                        (palette::Command::MacroPlayTimes, t!("Makro mehrmals abspielen…"), !recording && !self.last_macro.is_empty()),
+                    ];
+                    for (c, label, enabled) in macro_items {
+                        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(self.shortcut_label(c))).clicked() {
+                            self.run_command(&ui.ctx().clone(), c);
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
                     use crate::editor::commands as cmd;
                     let entries: [(&str, &str, fn(&mut Document)); 7] = [
                         (t!("Nächstes Vorkommen auswählen"), &crate::i18n::keys("Strg+D"), cmd::select_next_occurrence),
@@ -2197,6 +2219,10 @@ impl NebulaApp {
                 }
                 if clickable(ui, info).on_hover_text(t!("Gehe zu Zeile (Strg+G)")).clicked() {
                     goto_line = true;
+                }
+                if crate::editor::macros::recording() {
+                    ui.label(RichText::new(t!("● Makro-Aufnahme")).size(11.5).color(theme.danger))
+                        .on_hover_text(t!("Beenden mit Strg+Umschalt+R"));
                 }
 
                 // Problems reported by extensions for this document.
@@ -2881,6 +2907,32 @@ impl NebulaApp {
                 }
                 Dialog::GotoLine { value, focus: false }
             }
+            Dialog::MacroTimes { mut value, focus } => {
+                let mut go = false;
+                modal(ctx, egui::Id::unique("macro-times")).show(ctx, |ui| {
+                    ui.set_width(280.0);
+                    ui.label(t!("Makro wie oft abspielen?"));
+                    let resp = ui.add(egui::TextEdit::singleline(&mut value).desired_width(f32::INFINITY));
+                    if focus {
+                        resp.request_focus();
+                    }
+                    if resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                        go = true;
+                    }
+                    ui.label(RichText::new(t!("Esc hält eine laufende Wiedergabe an.")).small().color(self.theme.text_faint));
+                    if ui.input(|i| i.key_pressed(Key::Escape)) {
+                        keep = false;
+                    }
+                });
+                if go {
+                    keep = false;
+                    match value.trim().parse::<usize>() {
+                        Ok(n) if n > 0 => self.play_macro(n),
+                        _ => self.focus_editor = true,
+                    }
+                }
+                Dialog::MacroTimes { value, focus: false }
+            }
             Dialog::Permissions { items, mut mode, mut octal, mut recurse } => {
                 let mut ok = false;
                 let any_dir = items.iter().any(|i| i.is_dir);
@@ -3142,6 +3194,7 @@ impl eframe::App for NebulaApp {
         self.backup_unsaved(&ctx);
         self.poll_git_bases(&ctx);
         self.poll_definition(&ctx);
+        self.drive_macro(&ctx);
         if self.settings.editor.spell_check {
             crate::spell::init(ctx.clone());
             crate::spell::configure(&self.settings.editor.spell_languages);

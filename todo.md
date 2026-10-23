@@ -7,11 +7,7 @@
 
 Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind alle erledigt).
 
-## Sicherheit und Datenerhalt
-
-
 ## Editor
-- **2** Makros aufnehmen und abspielen.
 - **3** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
 
 ## Suchen und Navigieren
@@ -72,7 +68,7 @@ Runde 4 (alle **1**-Punkte, kleine zuerst) ist komplett:
 Runde 5 (alle **2**-Punkte, der Reihe nach):
 
 1. ~~`.bak`-Kopie auf dem Server~~ (erledigt).
-2. Makros.
+2. ~~Makros~~ (erledigt).
 3. Regex-Ersetzung mit Vorschau.
 4. Suche im Terminal-Verlauf.
 5. Serverdateien offline lesbar.
@@ -156,3 +152,5 @@ Gehe zu Definition ohne Language Server (23.10.): F12/Strg+Klick findet CSS-Klas
 Rechtschreibprüfung (23.10.): Windows-Rechtschreibprüfung (ISpellChecker, eigener Thread) für Kommentare, Markdown-Text (ohne Codeblöcke, Inline-Code, Links), HTML-Text und Textdateien; camelCase, Pfade, Adressen, Zahlen und Großbuchstaben-Kürzel werden übersprungen. Nur sichtbare Zeilen, Ergebnis pro Zeileninhalt zwischengespeichert. Rechtsklick: Vorschläge, „Zum Wörterbuch hinzufügen“, „Ignorieren“. Sprachen automatisch (Windows-Sprache + Englisch, falls installiert) oder wählbar; mehrere Sprachen: falsch nur, wenn keine das Wort kennt. Abschaltbar unter Ansicht und Einstellungen › Editor.
 
 `.bak`-Kopie (23.10.): pro Server „Vor dem Überschreiben eine Kopie als .bak anlegen“ – beim Speichern von Serverdateien und beim Hochladen einzelner Dateien (auch „Beim Speichern hochladen“) wird die vorhandene Datei erst als `name.bak` gesichert; schlägt das fehl, wird nicht überschrieben.
+
+Makros (23.10.): Aufnahme (Strg+Umschalt+R, „● Makro-Aufnahme“ in der Statusleiste) von Tippen, Einfügen, Tasten und Bearbeiten-Befehlen (Weitersuchen, Zeile duplizieren/löschen, Kommentar, Text-Werkzeuge …); Abspielen (Strg+Umschalt+M) über dieselbe Eingabeverarbeitung wie echtes Tippen, „Mehrmals abspielen…“ mit Anzahl, Esc bricht ab. Während Aufnahme und Wiedergabe bleibt die Autovervollständigung zu, damit beide gleich ablaufen. Das letzte Makro gilt bis zum Beenden.

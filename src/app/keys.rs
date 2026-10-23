@@ -68,6 +68,8 @@ pub(super) fn defaults(c: Command) -> Vec<KeyboardShortcut> {
         CursorsAtLineEnds => vec![ks(alt | shift, Key::I)],
         JoinLines => vec![ks(CTRL, Key::J)],
         WrapInTag => vec![ks(alt, Key::W)],
+        MacroRecord => vec![ks(CTRL | shift, Key::R)],
+        MacroPlay => vec![ks(CTRL | shift, Key::M)],
         _ => Vec::new(),
     }
 }
