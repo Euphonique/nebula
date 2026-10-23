@@ -141,6 +141,14 @@ impl NebulaApp {
         let current_match = if matches.is_empty() { None } else { self.find.current };
         self.docs[index].view.find_scope = if self.find.visible { self.find.scope_in(&self.docs[index]) } else { None };
         let doc = &mut self.docs[index];
+        if let Some(view) = doc.db.clone() {
+            let action = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", pane)), |ui| view.show(ui, rect, &self.theme))
+                .inner;
+            let ctx = ui.ctx().clone();
+            self.handle_db_action(&ctx, &view, action);
+            return EditorOutput::default();
+        }
         if let Some(size) = doc.loading {
             ui.scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", pane)), |ui| {
                 super::loading::show_loading(ui, rect, size, &self.theme);

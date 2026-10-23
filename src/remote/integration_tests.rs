@@ -301,6 +301,28 @@ impl russh::server::Handler for SshSession {
         Ok(())
     }
 
+    // Port forwarding for the database tunnel.
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: Channel<Msg>,
+        host: &str,
+        port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: russh::server::ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let target = format!("{host}:{port}");
+        reply.accept().await;
+        tokio::spawn(async move {
+            if let Ok(mut tcp) = tokio::net::TcpStream::connect(target).await {
+                let mut stream = channel.into_stream();
+                let _ = tokio::io::copy_bidirectional(&mut tcp, &mut stream).await;
+            }
+        });
+        Ok(())
+    }
+
     // A tiny shell for the terminal test: a prompt, then echo.
     async fn shell_request(&mut self, id: ChannelId, session: &mut Session) -> Result<(), Self::Error> {
         self.shells.push(id);
@@ -711,3 +733,156 @@ fn serve_sftp() {
         let _ = tokio::time::timeout(Duration::from_secs(600), serve).await;
     });
 }
+
+// ---- database through the SSH tunnel ---------------------------------------------
+
+/// A tiny MySQL server: two tables, a SELECT with a NULL, an UPDATE.
+struct FakeMysql;
+
+#[async_trait::async_trait]
+impl<W: tokio::io::AsyncWrite + Send + Unpin> opensrv_mysql::AsyncMysqlShim<W> for FakeMysql {
+    type Error = std::io::Error;
+
+    async fn on_prepare<'a>(&'a mut self, _: &'a str, info: opensrv_mysql::StatementMetaWriter<'a, W>) -> std::io::Result<()> {
+        info.reply(1, &[], &[]).await
+    }
+
+    async fn on_execute<'a>(&'a mut self, _: u32, _: opensrv_mysql::ParamParser<'a>, results: opensrv_mysql::QueryResultWriter<'a, W>) -> std::io::Result<()> {
+        results.completed(opensrv_mysql::OkResponse::default()).await
+    }
+
+    async fn on_close(&mut self, _: u32) {}
+
+    // A real server confirms the database; without an answer the client waits.
+    async fn on_init<'a>(&'a mut self, _: &'a str, writer: opensrv_mysql::InitWriter<'a, W>) -> std::io::Result<()> {
+        writer.ok().await
+    }
+
+    async fn on_query<'a>(&'a mut self, sql: &'a str, results: opensrv_mysql::QueryResultWriter<'a, W>) -> std::io::Result<()> {
+        use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse};
+        let col = |name: &str, coltype| Column { table: String::new(), column: name.into(), coltype, colflags: ColumnFlags::empty() };
+        if sql == "SHOW TABLES" {
+            let cols = [col("Tables_in_shop", ColumnType::MYSQL_TYPE_VAR_STRING)];
+            let mut w = results.start(&cols).await?;
+            for t in ["wp_options", "wp_posts"] {
+                w.write_row([t]).await?;
+            }
+            w.finish().await
+        } else if sql.contains("@@") {
+            // Server variables the client asks for after logging in (max_allowed_packet, …).
+            let names: Vec<String> = sql.split("@@").skip(1).map(|v| v.split([',', ' ']).next().unwrap_or("").to_string()).collect();
+            let cols: Vec<Column> = names.iter().map(|n| col(&format!("@@{n}"), ColumnType::MYSQL_TYPE_LONGLONG)).collect();
+            let mut w = results.start(&cols).await?;
+            for _ in &names {
+                w.write_col(67_108_864i64)?;
+            }
+            w.end_row().await?;
+            w.finish().await
+        } else if sql.starts_with("SELECT") {
+            let cols = [col("ID", ColumnType::MYSQL_TYPE_LONGLONG), col("post_title", ColumnType::MYSQL_TYPE_VAR_STRING)];
+            let mut w = results.start(&cols).await?;
+            w.write_col(1i64)?;
+            w.write_col("Hallo Welt")?;
+            w.end_row().await?;
+            w.write_col(2i64)?;
+            w.write_col(None::<&str>)?;
+            w.end_row().await?;
+            w.finish().await
+        } else {
+            results.completed(OkResponse { affected_rows: 3, ..Default::default() }).await
+        }
+    }
+
+    async fn authenticate(&self, _plugin: &str, user: &[u8], _salt: &[u8], _auth: &[u8]) -> bool {
+        user == b"dbuser"
+    }
+}
+
+#[test]
+fn database_through_ssh_tunnel() {
+    use crate::remote::db::DbEvent;
+    isolated_config();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    // The database, only reachable from the "server".
+    let mysql = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let mysql_port = mysql.local_addr().unwrap().port();
+    mysql.set_nonblocking(true).unwrap();
+    rt.spawn(async move {
+        let listener = tokio::net::TcpListener::from_std(mysql).unwrap();
+        while let Ok((socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let (r, w) = socket.into_split();
+                let _ = opensrv_mysql::AsyncMysqlIntermediary::run_on(FakeMysql, r, w).await;
+            });
+        }
+    });
+    // The SSH server that forwards to it.
+    let home = tempfile::tempdir().unwrap();
+    let ssh_port = free_port();
+    let root = home.path().to_path_buf();
+    rt.spawn(async move {
+        let config = russh::server::Config { keys: vec![russh::keys::decode_secret_key(HOST_KEY, None).unwrap()], ..Default::default() };
+        let mut server = SshServer { root };
+        let _ = server.run_on_address(Arc::new(config), ("127.0.0.1", ssh_port)).await;
+    });
+    std::thread::sleep(Duration::from_millis(300));
+
+    let site = Site {
+        id: "dbtest".into(),
+        protocol: Protocol::Sftp,
+        host: "127.0.0.1".into(),
+        port: ssh_port,
+        user: "test".into(),
+        db: crate::settings::DbSettings { host: "127.0.0.1".into(), port: mysql_port, user: "dbuser".into(), database: "shop".into() },
+        ..Default::default()
+    };
+    let mut db = crate::remote::db::connect_with(site, Some("secret".into()), "pw".into(), eframe::egui::Context::default());
+    let next = |db: &crate::remote::db::DbSession| db.events.recv_timeout(Duration::from_secs(10)).expect("Antwort");
+    let version = loop {
+        match next(&db) {
+            DbEvent::HostKey(p) => p.answer(true),
+            DbEvent::Connected(v) => break v,
+            DbEvent::Closed(e) => panic!("Verbindung: {e:?}"),
+            _ => {}
+        }
+    };
+    assert_eq!(version, "5.1.10");
+
+    let id = db.query("SELECT * FROM wp_posts LIMIT 200;");
+    let (got, outputs) = match next(&db) {
+        DbEvent::Done(got, outputs) => (got, outputs),
+        DbEvent::Failed(_, e) => panic!("Abfrage: {e}"),
+        DbEvent::Closed(e) => panic!("Geschlossen: {e:?}"),
+        _ => panic!("Ergebnis erwartet"),
+    };
+    assert_eq!(got, id);
+    assert_eq!(outputs[0].columns, ["ID", "post_title"]);
+    assert_eq!(outputs[0].rows, [vec![Some("1".to_string()), Some("Hallo Welt".to_string())], vec![Some("2".to_string()), None]]);
+
+    db.query("UPDATE wp_options SET x = 1");
+    let DbEvent::Done(_, outputs) = next(&db) else { panic!("Ergebnis erwartet") };
+    assert!(outputs[0].columns.is_empty());
+    assert_eq!(outputs[0].affected, 3);
+    drop(db);
+}
+
+/// The fake MySQL server on 127.0.0.1:3307 for UI tests (with `serve_sftp` as
+/// the SSH side): `cargo test serve_mysql -- --ignored`, user `dbuser`.
+#[test]
+#[ignore]
+fn serve_mysql() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:3307").await.unwrap();
+        let serve = async {
+            while let Ok((socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let (r, w) = socket.into_split();
+                    let _ = opensrv_mysql::AsyncMysqlIntermediary::run_on(FakeMysql, r, w).await;
+                });
+            }
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(600), serve).await;
+    });
+}
+

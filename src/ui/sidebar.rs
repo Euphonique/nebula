@@ -203,6 +203,8 @@ pub enum SidebarAction {
     Permissions(Vec<Item>),
     /// Open an SSH terminal on a server.
     OpenTerminal(String),
+    /// The database tab of a server.
+    OpenDatabase(String),
     Publish,
     PublishSetup,
     /// Two-way synchronization of the project with its server folder.
@@ -1214,6 +1216,10 @@ impl Sidebar {
             }
             if ui.button(t!("SSH-Terminal öffnen")).clicked() {
                 actions.push(SidebarAction::OpenTerminal(site.id.clone()));
+                ui.close();
+            }
+            if ui.button(t!("Datenbank öffnen")).clicked() {
+                actions.push(SidebarAction::OpenDatabase(site.id.clone()));
                 ui.close();
             }
             if !site.commands.is_empty() {

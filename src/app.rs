@@ -59,6 +59,7 @@ mod windows;
 mod definition;
 mod macros;
 mod loading;
+mod db_tab;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -1185,6 +1186,7 @@ impl NebulaApp {
             }
             SidebarAction::PickLocalFolder { items, start } => self.pick_local_folder(items, start),
             SidebarAction::OpenTerminal(site_id) => self.open_terminal(ctx, &site_id),
+            SidebarAction::OpenDatabase(site_id) => self.open_db_tab(ctx, &site_id),
             SidebarAction::Permissions(items) => {
                 let items: Vec<Item> = items.into_iter().filter(|i| matches!(i.file, FileRef::Remote { .. })).collect();
                 let Some(first) = items.first() else { return };

@@ -9,6 +9,7 @@ mod ftp;
 mod sftp;
 pub mod terminal;
 pub mod search;
+pub mod db;
 pub mod transfers;
 #[cfg(test)]
 mod integration_tests;

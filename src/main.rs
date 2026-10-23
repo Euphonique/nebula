@@ -11,6 +11,7 @@ mod diff;
 mod highlight;
 mod history;
 mod hex_view;
+mod db_view;
 mod image_view;
 mod fonts;
 mod icon;

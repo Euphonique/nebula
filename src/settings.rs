@@ -468,6 +468,8 @@ pub struct Site {
     pub commands: Vec<ServerCommand>,
     /// Before overwriting a server file, keep the previous version as `<name>.bak`.
     pub backup_on_save: bool,
+    /// MySQL/MariaDB reached through an SSH tunnel to this server.
+    pub db: DbSettings,
     /// Group in the server list; empty = none.
     pub group: String,
 }
@@ -495,6 +497,7 @@ impl Default for Site {
             web_url: String::new(),
             commands: Vec::new(),
             backup_on_save: false,
+            db: DbSettings::default(),
             group: String::new(),
         }
     }
@@ -535,6 +538,47 @@ impl Site {
         if let Ok(entry) = self.keyring_entry() {
             let _ = entry.delete_credential();
         }
+        if let Ok(entry) = self.db_keyring_entry() {
+            let _ = entry.delete_credential();
+        }
+    }
+
+    fn db_keyring_entry(&self) -> Result<keyring::Entry> {
+        keyring::Entry::new(KEYRING_SERVICE, &format!("{}:db:{}", self.id, self.db.user))
+            .context(t!("Zugriff auf die Windows-Anmeldeinformationsverwaltung fehlgeschlagen"))
+    }
+
+    /// Database password from the Windows Credential Manager.
+    pub fn db_password(&self) -> Option<String> {
+        self.db_keyring_entry().ok()?.get_password().ok()
+    }
+
+    pub fn set_db_password(&self, password: &str) -> Result<()> {
+        let entry = self.db_keyring_entry()?;
+        if password.is_empty() {
+            let _ = entry.delete_credential();
+            Ok(())
+        } else {
+            entry
+                .set_password(password)
+                .context(t!("Passwort konnte nicht gespeichert werden"))
+        }
+    }
+}
+
+/// Database behind a server, reached through SSH (host and port as seen from the server).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DbSettings {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub database: String,
+}
+
+impl Default for DbSettings {
+    fn default() -> Self {
+        Self { host: "127.0.0.1".into(), port: 3306, user: String::new(), database: String::new() }
     }
 }
 

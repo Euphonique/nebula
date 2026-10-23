@@ -11,7 +11,6 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 
 ## Server und Veröffentlichen
 
-- **3** Datenbank light: MySQL über SSH-Tunnel, Tabellen ansehen, Abfragen ausführen.
 
 ## Live-Vorschau und Web
 
@@ -69,7 +68,7 @@ Runde 5 (alle **2**-Punkte, der Reihe nach) ist komplett:
 Runde 6 (alle **3**-Punkte, der Reihe nach):
 
 1. ~~Ligaturen~~ (erledigt).
-2. Datenbank light (MySQL über SSH-Tunnel).
+2. ~~Datenbank light (MySQL über SSH-Tunnel)~~ (erledigt).
 3. Gerätebreiten der Vorschau: Querformat und eigene Breiten.
 4. Update-Hinweis.
 5. Barrierefreiheit.
@@ -165,3 +164,5 @@ Große Dateien und Hex-Editor (23.10.): Textdateien ab 16 MB werden im Hintergru
 Absturzbericht für native Abstürze (23.10.): `SetUnhandledExceptionFilter` schreibt bei Zugriffsverletzungen u. ä. einen Bericht im gewohnten Format (Ausnahmecode mit Namen, Modul+Offset, Backtrace) und ein Speicherabbild (`.dmp`, MiniDumpNormal) daneben; der Dialog beim nächsten Start zeigt ihn wie bei Panics. Alte Abbilder werden mit ihren Berichten gelöscht. Testauslöser `NEBULA_CRASH_TEST=native` (ohne Windows-Fehlerdialog).
 
 Ligaturen (23.10.): egui 0.37 formt Text mit harfrust – Ligatur-Schriften (Cascadia Code, Fira Code, JetBrains Mono …) zeigen sie im Editor schon, weil gleich gefärbte Zeichen ein Abschnitt sind. Neu: Einstellung „Ligaturen“ (abgeschaltet bekommt jedes Zeichen einen eigenen Formabschnitt) mit Hinweis auf installierte Ligatur-Schriften; Test gegen Cascadia Code (an/aus).
+
+Datenbank light (23.10.): Tab „DB · Server“ (Server-Kontextmenü, Befehlspalette). Lokaler Port wird per SSH `direct-tcpip` über die Server-Anmeldung zur Datenbank weitergeleitet, Client ist `mysql_async` (minimal-rust, ohne C-Abhängigkeiten) – auf dem Server muss nichts installiert sein. Tabellenliste (SHOW TABLES) mit Filter, Klick = `SELECT * … LIMIT 200`, eigene Abfragen (Strg+Enter, mehrere Ergebnismengen), Raster mit Spaltenbreiten aus dem Inhalt, NULL grau, „Zeile kopieren“, „Als CSV kopieren“ (Semikolon). Nicht-lesende Abfragen erst nach Bestätigung. Einstellungen pro Server (`Site.db`), Passwort im Windows-Tresor; 20 s Zeitgrenze beim Verbinden. Ende-zu-Ende-Test mit SSH-Testserver (jetzt mit direct-tcpip) und MySQL-Fake (opensrv-mysql, nur dev); `cargo test serve_mysql -- --ignored` (Port 3307) für UI-Tests mit `serve_sftp`.

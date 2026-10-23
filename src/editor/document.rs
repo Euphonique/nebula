@@ -376,6 +376,8 @@ pub struct Document {
     pub image: Option<std::sync::Arc<crate::image_view::Image>>,
     /// Binary file shown as hex (the text is empty).
     pub hex: Option<std::sync::Arc<crate::hex_view::HexData>>,
+    /// Database tab of a server (the text is empty).
+    pub db: Option<std::sync::Arc<crate::db_view::DbView>>,
     /// State of the local file when it was loaded or last saved.
     pub disk_stamp: Option<DiskStamp>,
     /// Number of checks in a row that found the local file missing.
@@ -421,6 +423,7 @@ impl Document {
             loading: None,
             image: None,
             hex: None,
+            db: None,
             disk_stamp: None,
             disk_missing: 0,
             pinned: false,
