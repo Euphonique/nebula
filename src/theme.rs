@@ -173,6 +173,28 @@ fn dark_syntax(name: &str) -> Option<Color32> {
     })
 }
 
+/// Syntax colors of the high-contrast themes (hex), grouped by kind.
+fn contrast_syntax(name: &str, dark: bool) -> Option<&'static str> {
+    let pick = |d: &'static str, l: &'static str| Some(if dark { d } else { l });
+    let kind = name.split('.').next().unwrap_or(name);
+    match name {
+        "comment" | "comment.documentation" | "markup.quote" => pick("#7CFF7C", "#006400"),
+        "string" | "tag.attribute.value" | "string.delimiter" | "tag.attribute.value.delimiter" | "string.special" | "string.special.regex" => pick("#FFE066", "#A31515"),
+        "string.escape" | "escape" => pick("#FFB3B3", "#8B0000"),
+        "keyword" | "boolean" | "conditional" | "repeat" | "storageclass" | "type.qualifier" | "constant.builtin" | "variable.builtin" | "value.entity" | "style.at" => pick("#66CCFF", "#0033B3"),
+        "value.number" | "number" | "float" | "style.value.color.hex" | "style.value.number.unit" => pick("#FF9EFF", "#7A1FA2"),
+        "identifier.function" | "function" | "function.builtin" | "function.method" | "method" | "function.macro" | "tag.name" => pick("#FFB86C", "#743E00"),
+        "identifier.type" | "type" | "constructor" | "module" | "style.selector.element" => pick("#66FFE0", "#00605E"),
+        "identifier.property" | "property" | "field" | "tag.attribute.name" | "attribute" | "style.attribute.name" | "style.selector.class" | "style.selector.class.prefix" => pick("#D0B3FF", "#5B2A86"),
+        "error" | "invalid" | "deletion" | "diff.minus" => pick("#FF6B6B", "#B00000"),
+        "addition" | "diff.plus" => pick("#66FF88", "#005A19"),
+        "text.uri" | "markup.link" | "tag.attribute.value.link" => pick("#80D8FF", "#0040A0"),
+        "text.title" | "markup.heading" | "style.selector.id" | "style.selector.id.prefix" => pick("#FFD000", "#7A4A00"),
+        _ if kind == "style" => pick("#D0B3FF", "#5B2A86"),
+        _ => None,
+    }
+}
+
 fn light_syntax(name: &str) -> Option<Color32> {
     Some(match name {
         "boolean" | "conditional" | "repeat" | "storageclass" | "type.qualifier" | "string.special.symbol" => p3(0.139, 0.371, 0.696),
@@ -331,6 +353,46 @@ impl Theme {
         }
     }
 
+    /// High contrast: white on black or black on white, strong syntax colors
+    /// (each at least 7:1 against the background).
+    pub fn contrast(dark: bool) -> Self {
+        let mut t = if dark { Self::dark() } else { Self::light() };
+        let c = |hex: &str| color_from_hex(hex).unwrap();
+        let (bg, fg) = if dark { (Color32::BLACK, Color32::WHITE) } else { (Color32::WHITE, Color32::BLACK) };
+        t.name = (if dark { BUILTIN_CONTRAST_DARK } else { BUILTIN_CONTRAST_LIGHT }).into();
+        t.background = bg;
+        t.foreground = fg;
+        t.gutter_bg = bg;
+        t.gutter_fg = c(if dark { "#C8C8C8" } else { "#3A3A3A" });
+        t.gutter_fg_active = fg;
+        t.gutter_active_bg = c(if dark { "#1E1E1E" } else { "#EDEDED" });
+        t.current_line = t.gutter_active_bg;
+        t.selection = if dark { rgba(255, 255, 0, 0.38) } else { rgba(0, 90, 255, 0.32) };
+        t.selection_inactive = if dark { rgba(255, 255, 255, 0.22) } else { rgba(0, 0, 0, 0.16) };
+        t.cursor = c(if dark { "#FFFF00" } else { "#000000" });
+        t.find_match = if dark { rgba(0, 255, 255, 0.38) } else { rgba(255, 180, 0, 0.55) };
+        t.bracket_match = if dark { rgba(255, 255, 255, 0.3) } else { rgba(0, 0, 0, 0.22) };
+        t.word_highlight = if dark { rgba(255, 255, 255, 0.18) } else { rgba(0, 0, 0, 0.12) };
+        t.indent_guide = if dark { rgba(255, 255, 255, 0.35) } else { rgba(0, 0, 0, 0.3) };
+        t.invisible = if dark { rgba(255, 255, 255, 0.5) } else { rgba(0, 0, 0, 0.45) };
+        t.titlebar_bg = bg;
+        t.sidebar_bg = bg;
+        t.tab_active_bg = c(if dark { "#333333" } else { "#D6D6D6" });
+        t.tab_hover_bg = c(if dark { "#222222" } else { "#E8E8E8" });
+        t.jumpbar_bg = bg;
+        t.separator = fg;
+        t.text_muted = c(if dark { "#E6E6E6" } else { "#1A1A1A" });
+        t.text_faint = c(if dark { "#BDBDBD" } else { "#4A4A4A" });
+        t.hover = if dark { rgba(255, 255, 255, 0.2) } else { rgba(0, 0, 0, 0.12) };
+        t.accent = c(if dark { "#00E5FF" } else { "#0037C8" });
+        t.row_selected = t.accent.gamma_multiply(0.45);
+        t.modified = c(if dark { "#FFD000" } else { "#8A5A00" });
+        t.danger = c(if dark { "#FF6B6B" } else { "#B00000" });
+        t.success = c(if dark { "#66FF88" } else { "#005A19" });
+        t.syntax = HIGHLIGHT_NAMES.iter().map(|n| contrast_syntax(n, dark).map_or(fg, c)).collect();
+        t
+    }
+
     pub fn light() -> Self {
         let accent = system_accent().unwrap_or(Color32::from_rgb(0, 122, 255));
         let fg = p3(0.15, 0.15, 0.15);
@@ -468,6 +530,8 @@ fn brighten(c: Color32, amount: f32) -> Color32 {
 
 pub const BUILTIN_DARK: &str = "Nebula Dunkel";
 pub const BUILTIN_LIGHT: &str = "Nebula Hell";
+pub const BUILTIN_CONTRAST_DARK: &str = "Nebula Kontrast Dunkel";
+pub const BUILTIN_CONTRAST_LIGHT: &str = "Nebula Kontrast Hell";
 
 /// A theme as stored on disk (JSON). Missing colors fall back to the
 /// built-in dark or light theme.
@@ -489,7 +553,7 @@ pub struct ThemeFile {
 
 impl ThemeFile {
     pub fn is_builtin(&self) -> bool {
-        self.name == BUILTIN_DARK || self.name == BUILTIN_LIGHT
+        [BUILTIN_DARK, BUILTIN_LIGHT, BUILTIN_CONTRAST_DARK, BUILTIN_CONTRAST_LIGHT].contains(&self.name.as_str())
     }
 }
 
@@ -611,6 +675,12 @@ impl Theme {
 
     /// The theme selected in the settings, with Mica transparency applied.
     pub fn for_settings(settings: &crate::settings::AppSettings) -> Self {
+        // A Windows contrast theme wins (it is an accessibility setting).
+        if settings.follow_high_contrast
+            && let Some(dark) = crate::win32::high_contrast()
+        {
+            return Self::contrast(dark);
+        }
         let dark = settings.is_dark();
         let wanted = settings.active_theme();
         let mut t = load_themes()
@@ -648,7 +718,12 @@ fn themes_dir() -> std::path::PathBuf {
 /// extensions. A user theme with the name of an extension theme replaces it
 /// (that is where edits to an extension theme are saved).
 pub fn load_themes() -> Vec<ThemeFile> {
-    let mut out = vec![Theme::dark().to_file(BUILTIN_DARK), Theme::light().to_file(BUILTIN_LIGHT)];
+    let mut out = vec![
+        Theme::dark().to_file(BUILTIN_DARK),
+        Theme::light().to_file(BUILTIN_LIGHT),
+        Theme::contrast(true).to_file(BUILTIN_CONTRAST_DARK),
+        Theme::contrast(false).to_file(BUILTIN_CONTRAST_LIGHT),
+    ];
     let mut user: Vec<ThemeFile> = std::fs::read_dir(themes_dir())
         .map(|rd| {
             rd.flatten()
@@ -716,4 +791,37 @@ pub fn save_theme(file: &ThemeFile) -> anyhow::Result<()> {
 
 pub fn delete_theme(name: &str) {
     let _ = std::fs::remove_file(theme_path(name));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// WCAG contrast ratio of two colors.
+    fn ratio(a: Color32, b: Color32) -> f32 {
+        let lum = |c: Color32| {
+            let ch = |v: u8| {
+                let v = v as f32 / 255.0;
+                if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+            };
+            0.2126 * ch(c.r()) + 0.7152 * ch(c.g()) + 0.0722 * ch(c.b())
+        };
+        let (x, y) = (lum(a), lum(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    /// Text in the contrast themes reaches WCAG AAA (7:1) on the background.
+    #[test]
+    fn contrast_themes_reach_aaa() {
+        for dark in [true, false] {
+            let t = Theme::contrast(dark);
+            for (i, c) in t.syntax.iter().enumerate() {
+                assert!(ratio(*c, t.background) >= 7.0, "{} {:?}: {}", HIGHLIGHT_NAMES[i], dark, ratio(*c, t.background));
+            }
+            for (name, c) in [("text_muted", t.text_muted), ("text_faint", t.text_faint), ("gutter_fg", t.gutter_fg), ("foreground", t.foreground)] {
+                assert!(ratio(c, t.background) >= 7.0, "{name} {dark}: {}", ratio(c, t.background));
+            }
+        }
+        assert!(load_themes().iter().filter(|t| t.is_builtin()).count() == 4);
+    }
 }

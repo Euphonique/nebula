@@ -364,7 +364,8 @@ impl NebulaApp {
 
     /// In automatic mode, switches the theme when Windows changes between light and dark.
     pub(super) fn follow_system_theme(&mut self, ctx: &egui::Context) {
-        if self.settings.appearance != Appearance::System {
+        let follow_mode = self.settings.appearance == Appearance::System;
+        if !follow_mode && !self.settings.follow_high_contrast {
             return;
         }
         let now = ctx.input(|i| i.time);
@@ -374,7 +375,10 @@ impl NebulaApp {
             return;
         }
         self.system_theme_check = (now, reported);
-        if crate::win32::refresh_system_dark() {
+        // Both are read again every time (no short-circuit).
+        let mode_changed = follow_mode && crate::win32::refresh_system_dark();
+        let contrast_changed = self.settings.follow_high_contrast && crate::win32::refresh_high_contrast();
+        if mode_changed || contrast_changed {
             self.apply_theme(ctx);
         }
         ctx.request_repaint_after(std::time::Duration::from_secs(3));
@@ -458,6 +462,19 @@ impl NebulaApp {
         if ui.checkbox(&mut mica, t!("Mica-Hintergrund in der Seitenleiste (Windows 11)")).changed() {
             self.settings.mica = mica;
             self.apply_theme(&ctx);
+        }
+        let mut contrast = self.settings.follow_high_contrast;
+        if ui
+            .checkbox(&mut contrast, t!("Kontrastdesign von Windows übernehmen"))
+            .on_hover_text(t!("Ist unter Windows ein Kontrastdesign aktiv, nutzt Nebula „Nebula Kontrast Dunkel“ bzw. „Hell“."))
+            .changed()
+        {
+            self.settings.follow_high_contrast = contrast;
+            crate::win32::refresh_high_contrast();
+            self.apply_theme(&ctx);
+        }
+        if self.settings.follow_high_contrast && crate::win32::high_contrast().is_some() {
+            ui.label(RichText::new(t!("Windows-Kontrastdesign ist aktiv – die Theme-Auswahl gilt, sobald es aus ist.")).small().color(self.theme.modified));
         }
 
         if builtin {

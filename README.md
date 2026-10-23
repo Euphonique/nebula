@@ -109,6 +109,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Gehe zu Definition auch ohne Language Server: CSS-Klassen und IDs aus `class`/`id`-Attributen und Selektor-Strings in Skripten (CSS-, SCSS-, LESS-Dateien und `<style>`-Blöcke), Funktionen und Klassen in PHP, JavaScript/TypeScript und weiteren Sprachen, Dateipfade in Strings (`href`, `src`, `require`, `import`); bei mehreren Treffern eine Auswahlliste. Springt ein, wenn keine Erweiterung eine Definition liefert
 - Formatierer über `onWillSave`, Prüf-Assistenten (Issues) mit Wellenlinien und Problemliste in der Statusleiste
 - Einstellungsseiten werden aus den Manifesten der Erweiterungen erzeugt; Projekteinstellungen liegen wie bei Nova in `.nova/Configuration.json`
+- Bildschirmleser (Sprachausgabe, NVDA): der Editor meldet sich als mehrzeiliges Textfeld mit dem Dateinamen, mit den sichtbaren Zeilen als Text und der Cursorposition/Auswahl darin
 - Clips und Themes aus Erweiterungen (Themes erscheinen automatisch in der Theme-Auswahl); Erweiterungskonsole für Ausgaben und Fehler
 - macOS-typische Aufrufe werden übersetzt (`/usr/bin/env`, Shell-Skripte über Git Bash, npm-Shims). Erweiterungen mit macOS-Programmen oder Tree-sitter-Grammatiken als `.dylib` laufen unter Windows nicht.
 
@@ -124,7 +125,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Seitenleiste mit Dateien, Servern und Projektsuche; Git-Status (Branch, geänderte und neue Dateien)
 - Zuletzt geöffnete Projekte: Klick auf den Projektnamen in der Seitenleiste, Menü, Startseite oder Befehlspalette. Pro Projekt merkt sich Nebula die offenen Dateien. Die Listen der zuletzt geöffneten Projekte und Dateien lassen sich auf der Startseite („Leeren“) und im Datei-Menü leeren.
 - Befehlspalette mit allen Befehlen
-- Themes „Nebula Dunkel“ und „Nebula Hell“ (Paletten nach Novas Themes). Eigene Themes lassen sich bearbeiten, als JSON importieren und exportieren, und Nova-Themes (.css) können importiert werden. Für helles und dunkles Design ist je ein Theme wählbar; umgeschaltet wird in den Einstellungen, im Menü „Ansicht → Erscheinungsbild“ oder per Knopf in der Titelleiste (Sonne, Mond oder automatisch wie Windows).
+- Themes „Nebula Dunkel“ und „Nebula Hell“ (Paletten nach Novas Themes), dazu „Nebula Kontrast Dunkel/Hell“ mit Text in WCAG-AAA-Kontrast (mindestens 7:1); ist unter Windows ein Kontrastdesign aktiv, wird das passende Kontrast-Theme automatisch genutzt (abschaltbar unter Einstellungen › Design). Eigene Themes lassen sich bearbeiten, als JSON importieren und exportieren, und Nova-Themes (.css) können importiert werden. Für helles und dunkles Design ist je ein Theme wählbar; umgeschaltet wird in den Einstellungen, im Menü „Ansicht → Erscheinungsbild“ oder per Knopf in der Titelleiste (Sonne, Mond oder automatisch wie Windows).
 - Einstellungen für Editor, Design und Sprachen (Dateiendungen, Einrückung, eigene Vervollständigungen)
 - Eigene Tastenkürzel (Einstellungen → Tastenkürzel): neue Kombination aufnehmen, weitere hinzufügen, auf Standard zurücksetzen; doppelt belegte Kürzel werden rot markiert
 

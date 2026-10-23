@@ -276,6 +276,47 @@ pub fn refresh_system_dark() -> bool {
     dark != before
 }
 
+/// Windows contrast theme, cached: 0 = not read yet, 1 = off, 2 = on (dark), 3 = on (light).
+static HIGH_CONTRAST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn read_high_contrast() -> u8 {
+    use windows_sys::Win32::Graphics::Gdi::{COLOR_WINDOW, GetSysColor};
+    use windows_sys::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETHIGHCONTRAST, SystemParametersInfoW};
+    let mut hc = HIGHCONTRASTW { cbSize: std::mem::size_of::<HIGHCONTRASTW>() as u32, ..Default::default() };
+    // SAFETY: the structure is sized and outlives the call.
+    let ok = unsafe { SystemParametersInfoW(SPI_GETHIGHCONTRAST, hc.cbSize, (&mut hc as *mut HIGHCONTRASTW).cast(), 0) } != 0;
+    if !ok || hc.dwFlags & HCF_HIGHCONTRASTON == 0 {
+        return 1;
+    }
+    // Dark or light: the brightness of the window background of the contrast theme.
+    // SAFETY: plain value call.
+    let c = unsafe { GetSysColor(COLOR_WINDOW) };
+    let (r, g, b) = (c & 0xFF, (c >> 8) & 0xFF, (c >> 16) & 0xFF);
+    if (r * 299 + g * 587 + b * 114) / 1000 < 128 { 2 } else { 3 }
+}
+
+/// A Windows contrast theme is on: `Some(dark)`.
+pub fn high_contrast() -> Option<bool> {
+    let mut v = HIGH_CONTRAST.load(Ordering::Relaxed);
+    if v == 0 {
+        v = read_high_contrast();
+        HIGH_CONTRAST.store(v, Ordering::Relaxed);
+    }
+    match v {
+        2 => Some(true),
+        3 => Some(false),
+        _ => None,
+    }
+}
+
+/// Reads the contrast theme again; true when it changed.
+pub fn refresh_high_contrast() -> bool {
+    let before = high_contrast();
+    HIGH_CONTRAST.store(read_high_contrast(), Ordering::Relaxed);
+    high_contrast() != before
+}
+
 // ---- file clipboard (interop with Explorer) ---------------------------------
 
 use windows_sys::Win32::System::DataExchange::{

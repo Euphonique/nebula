@@ -370,6 +370,7 @@ impl EditorView<'_> {
                     ui, doc, settings, theme, matches, current_match, &m, origin, visible, focused, &rows,
                 );
 
+                update_accessibility(ui, &response, doc, &rows, origin, text_x0, &m, visible);
                 show_hover(ui, &response, doc, theme, id, &hit, visible, &m);
                 super::colors::show(ui, doc, id);
 
@@ -1089,6 +1090,41 @@ impl Geo<'_> {
         }
         out
     }
+}
+
+/// Screen readers (AccessKit): the editor as a multi-line text field holding
+/// the visible lines, with the cursor and selection in them. Only built while
+/// an accessibility client (Narrator, NVDA, …) is listening.
+#[allow(clippy::too_many_arguments)]
+fn update_accessibility(ui: &Ui, response: &egui::Response, doc: &Document, rows: &Rows, origin: Pos2, text_x0: f32, m: &Metrics, visible: Rect) {
+    let ctx = ui.ctx();
+    response.widget_info(|| egui::WidgetInfo::text_edit(true, "", "", ""));
+    let title = doc.title();
+    let listening = ctx.accesskit_node_builder(response.id, |node| {
+        node.set_role(egui::accesskit::Role::MultilineTextInput);
+        node.set_label(title);
+    });
+    if listening.is_none() || rows.count() == 0 {
+        return;
+    }
+    let last_row = rows.count() - 1;
+    let first_row = (((visible.top() - origin.y) / m.row_h).floor().max(0.0) as usize).min(last_row);
+    let end_row = (((visible.bottom() - origin.y) / m.row_h).ceil().max(0.0) as usize).min(last_row);
+    let (first, last) = (rows.line_of_row(first_row), rows.line_of_row(end_row));
+    let (start, end) = (doc.line_to_char(first), doc.line_end(last));
+    // Tabs as one space each, so char positions stay those of the document.
+    let text = doc.slice(start..end).replace('\t', " ");
+    let mut job = egui::text::LayoutJob::default();
+    let mut format = egui::TextFormat::simple(m.font.clone(), Color32::WHITE);
+    format.line_height = Some(m.row_h);
+    job.append(&text, 0.0, format);
+    let galley = ui.fonts_mut(|f| f.layout_job(job));
+    let sel = doc.primary_selection();
+    let local = |p: usize| egui::text::CCursor::new(p.clamp(start, end) - start);
+    let range = egui::text_selection::CCursorRange::two(local(sel.anchor), local(sel.head));
+    let top = origin.y + rows.row_of_line(first) as f32 * m.row_h;
+    let transform = egui::emath::TSTransform::from_translation(vec2(text_x0, top));
+    egui::text_selection::accesskit_text::update_accesskit_for_text_widget(ctx, response.id, Some(range), transform, &galley);
 }
 
 #[allow(clippy::too_many_arguments)]

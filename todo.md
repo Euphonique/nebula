@@ -14,7 +14,6 @@ Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über 
 ## Oberfläche und Allgemein
 
 - **3** Update-Hinweis (braucht eine Adresse, unter der neue Versionen veröffentlicht werden).
-- **3** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
 
 ## Qualität und Technik
 
@@ -62,7 +61,7 @@ Runde 6 (alle **3**-Punkte, der Reihe nach):
 2. ~~Datenbank light (MySQL über SSH-Tunnel)~~ (erledigt).
 3. ~~Gerätebreiten der Vorschau: Querformat und eigene Breiten~~ (erledigt).
 4. Update-Hinweis.
-5. Barrierefreiheit.
+5. ~~Barrierefreiheit~~ (erledigt).
 
 ## Erledigt
 
@@ -159,3 +158,5 @@ Ligaturen (23.10.): egui 0.37 formt Text mit harfrust – Ligatur-Schriften (Cas
 Datenbank light (23.10.): Tab „DB · Server“ (Server-Kontextmenü, Befehlspalette). Lokaler Port wird per SSH `direct-tcpip` über die Server-Anmeldung zur Datenbank weitergeleitet, Client ist `mysql_async` (minimal-rust, ohne C-Abhängigkeiten) – auf dem Server muss nichts installiert sein. Tabellenliste (SHOW TABLES) mit Filter, Klick = `SELECT * … LIMIT 200`, eigene Abfragen (Strg+Enter, mehrere Ergebnismengen), Raster mit Spaltenbreiten aus dem Inhalt, NULL grau, „Zeile kopieren“, „Als CSV kopieren“ (Semikolon). Nicht-lesende Abfragen erst nach Bestätigung. Einstellungen pro Server (`Site.db`), Passwort im Windows-Tresor; 20 s Zeitgrenze beim Verbinden. Ende-zu-Ende-Test mit SSH-Testserver (jetzt mit direct-tcpip) und MySQL-Fake (opensrv-mysql, nur dev); `cargo test serve_mysql -- --ignored` (Port 3307) für UI-Tests mit `serve_sftp`.
 
 Gerätebreiten (23.10.): Querformat-Schalter im Geräte-Menü der Vorschau (Handy 844 px, Tablet 1024 px, Anzeige „Handy quer · 844 px“), eigene Breiten (200–7680 px) im Menü hinzufügen/entfernen, gespeichert und im Einstellungs-Export enthalten.
+
+Barrierefreiheit (23.10.): Editor meldet sich über AccessKit als mehrzeiliges Textfeld (Name = Dateiname) mit den sichtbaren Zeilen als Textläufe und Cursor/Auswahl (`update_accessibility` in view.rs, nur aktiv wenn ein Bildschirmleser zuhört); per UI-Automation geprüft (Text und Cursorzeile folgen). Themes „Nebula Kontrast Dunkel/Hell“ (alle Textfarben ≥ 7:1, Test), automatisch bei Windows-Kontrastdesign (`win32::high_contrast`, Einstellung unter Design).
