@@ -11,9 +11,6 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 
 Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über ACP, eigener Agent, KI-Befehle, Commit-Nachricht, MCP-Server, Inline-Vorschläge, bearbeitbare Serverdateien, Codex-Limits.
 
-## Oberfläche und Allgemein
-
-
 ## Qualität und Technik
 
 - **4** Automatisierte UI-Tests für die wichtigsten Abläufe (Öffnen, Bearbeiten, Speichern lokal/Server).
