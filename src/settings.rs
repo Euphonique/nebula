@@ -51,6 +51,10 @@ pub struct EditorSettings {
     pub minimap: bool,
     /// Author and date of the last change at the end of the current line (Git).
     pub git_blame: bool,
+    /// Check the spelling of comments and text with the Windows spell checker.
+    pub spell_check: bool,
+    /// Language tags for spell checking (`de-DE`); empty = Windows language and English.
+    pub spell_languages: Vec<String>,
     pub autosave: AutoSave,
     /// Seconds without typing before [`AutoSave::Delay`] saves.
     pub autosave_delay: f32,
@@ -91,6 +95,8 @@ impl Default for EditorSettings {
             line_height: 1.45,
             minimap: true,
             git_blame: true,
+            spell_check: true,
+            spell_languages: Vec::new(),
             autosave: AutoSave::Off,
             autosave_delay: 2.0,
             autosave_remote: false,

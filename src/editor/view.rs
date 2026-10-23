@@ -194,7 +194,53 @@ impl EditorView<'_> {
                 };
                 handle_pointer(ui, &response, doc, id, &hit, &cell, &shown, visible, &m, tab);
 
+                // The misspelled word under a right-click, for suggestions in the menu.
+                let spell_id = id.with("spell_menu");
+                if response.secondary_clicked() {
+                    let word = response.interact_pointer_pos().filter(|_| settings.spell_check).and_then(|p| {
+                        let at = hit(doc, p);
+                        spelling_errors(doc, doc.char_to_line(at)).into_iter().find(|(r, _)| r.start <= at && at <= r.end)
+                    });
+                    ui.data_mut(|d| d.insert_temp(spell_id, word));
+                }
+                let spell_word: Option<(Range<usize>, String)> = ui.data(|d| d.get_temp(spell_id)).flatten();
                 response.context_menu(|ui| {
+                    if let Some((range, word)) = &spell_word {
+                        // The text may have changed since the click.
+                        let current = (range.end <= doc.len_chars()).then(|| doc.rope.slice(range.clone()).to_string());
+                        if current.as_deref() == Some(word.as_str()) {
+                            match crate::spell::suggestions(word) {
+                                None => {
+                                    ui.label(egui::RichText::new("…").weak());
+                                    ui.ctx().request_repaint_after(Duration::from_millis(50));
+                                }
+                                Some(list) if list.is_empty() => {
+                                    ui.label(egui::RichText::new(t!("Keine Vorschläge")).weak());
+                                }
+                                Some(list) => {
+                                    for s in list.iter() {
+                                        if ui.button(egui::RichText::new(s).strong()).clicked() {
+                                            doc.apply(
+                                                vec![super::document::Change::new(range.clone(), s.clone())],
+                                                Some(vec![Selection::cursor(range.start + s.chars().count())]),
+                                                super::document::EditKind::Other,
+                                            );
+                                            ui.close();
+                                        }
+                                    }
+                                }
+                            }
+                            if ui.button(t!("Zum Wörterbuch hinzufügen")).clicked() {
+                                crate::spell::add(word);
+                                ui.close();
+                            }
+                            if ui.button(t!("Ignorieren")).on_hover_text(t!("Bis Nebula beendet wird")).clicked() {
+                                crate::spell::ignore(word);
+                                ui.close();
+                            }
+                            ui.separator();
+                        }
+                    }
                     if ui.button(t!("Ausschneiden")).clicked() {
                         out.copied = Some(cmd::cut(doc));
                         ui.close();
@@ -1057,6 +1103,13 @@ fn paint(
     } else if doc.view.tag_pair.as_ref().is_none_or(|(k, _)| *k != tag_key) {
         doc.view.tag_pair = Some((tag_key, tags::pair_at(doc, head)));
     }
+    if settings.spell_check
+        && doc.language == crate::lang::Language::Markdown
+        && doc.view.code_fences.as_ref().is_none_or(|(v, _)| *v != doc.version)
+    {
+        let fences = crate::spell::code_fences(&doc.text());
+        doc.view.code_fences = Some((doc.version, Arc::new(fences)));
+    }
     let fold_ranges = folding::fold_ranges(doc, settings.tab_size);
     let mut color_hits = Vec::new();
     paint_doc(ui, doc, settings, theme, matches, current_match, m, origin, visible, focused, rows, &fold_ranges, &mut color_hits);
@@ -1376,6 +1429,18 @@ fn paint_doc(
         }
     }
 
+    // Spelling mistakes in comments and text: a dotted wave in a calmer color.
+    if settings.spell_check {
+        let color = theme.accent.gamma_multiply(0.85);
+        for line in (first..last).filter(|&l| shown(l)) {
+            for (range, _) in spelling_errors(doc, line) {
+                for (r, x0, x1, _) in g.spans(doc, range) {
+                    wavy(&painter, x0, x1, g.row_y(r) + m.row_h - 3.0, color);
+                }
+            }
+        }
+    }
+
     // Cursors.
     if focused {
         let time = ui.input(|i| i.time);
@@ -1519,6 +1584,30 @@ fn paint_doc(
             crate::ui::icons::bookmark_filled(&painter, pos2(number.left() - 3.0 - w / 2.0, cy), w, h, theme.bookmark());
         }
     }
+}
+
+/// Misspelled words of a line as document ranges (nothing while it is checked).
+fn spelling_errors(doc: &Document, line: usize) -> Vec<(Range<usize>, String)> {
+    // Very long lines (minified files) are no prose.
+    if doc.line_len(line) > 5_000 {
+        return Vec::new();
+    }
+    if let Some((_, fences)) = &doc.view.code_fences
+        && doc.language == crate::lang::Language::Markdown
+        && fences.iter().any(|f| f.contains(&line))
+    {
+        return Vec::new();
+    }
+    let spans = doc.highlights.get(line).cloned().unwrap_or_else(crate::highlight::empty_line);
+    let segments = crate::spell::segments(&doc.line_text(line), &spans, doc.language);
+    let Some(misses) = crate::spell::check(segments) else { return Vec::new() };
+    let start = doc.line_to_char(line);
+    let end = doc.line_end(line);
+    misses
+        .iter()
+        .filter(|m| start + m.range.end <= end)
+        .map(|m| (start + m.range.start..start + m.range.end, m.word.clone()))
+        .collect()
 }
 
 /// Author, age and message of the last commit that changed the cursor line,

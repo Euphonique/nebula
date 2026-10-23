@@ -3755,6 +3755,7 @@ dependencies = [
  "unftp-sbe-fs",
  "ureq",
  "vt100",
+ "windows",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
  "winresource",

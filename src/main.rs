@@ -25,6 +25,7 @@ mod crash;
 mod remote;
 mod server_import;
 mod snippet_io;
+mod spell;
 mod sync;
 mod settings;
 mod safe_write;

@@ -58,6 +58,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 - Geteilte Ansicht (Knopf rechts in der Pfadleiste, daneben einer für die Minimap; Strg+Alt+T, Tab-Kontextmenü): zwei Dateien oder dieselbe Datei an zwei Stellen nebeneinander
 - Zen-Modus (Strg+Alt+Enter oder F11, Esc beendet): nur der Editor, Vollbild, mittige Textspalte
 - Minimap am rechten Rand des Editors (Token-Farben, sichtbarer Bereich hervorgehoben, Klicken/Ziehen scrollt; abschaltbar unter Einstellungen → Editor)
+- Rechtschreibprüfung mit der Windows-Rechtschreibprüfung: Kommentare in Code, Text in Markdown (ohne Code und Links), HTML und Textdateien; code-artige Wörter (camelCase, Pfade, Adressen) werden übersprungen. Rechtsklick auf ein markiertes Wort zeigt Vorschläge, „Zum Wörterbuch hinzufügen“ und „Ignorieren“. Sprachen automatisch (Windows-Sprache und Englisch, soweit installiert) oder wählbar unter Einstellungen › Editor
 - Editorschrift frei wählbar (alle installierten Schriften, mit Suche) und Zeilenhöhe einstellbar (Einstellungen → Editor)
 - Gehe zu Symbol (Strg+R) als Schnellsuche und Navigationsverlauf: Alt+←/→ springt zu früheren Cursorpositionen, auch über Dateien hinweg
 - Passendes HTML-Tag wird hervorgehoben, beim Umbenennen ändert sich das schließende Tag mit; gleiche Wörter wie das unter dem Cursor werden dezent markiert

@@ -259,6 +259,36 @@ impl NebulaApp {
                 .small()
                 .color(self.theme.text_faint),
         );
+        section(ui, t!("Rechtschreibprüfung"));
+        ui.checkbox(&mut e.spell_check, t!("Kommentare, Markdown und Text prüfen (Windows-Rechtschreibprüfung)"));
+        if e.spell_check {
+            let (available, active) = crate::spell::languages();
+            ui.horizontal_wrapped(|ui| {
+                ui.label(t!("Sprachen:"));
+                if ui.radio(e.spell_languages.is_empty(), t!("Automatisch")).clicked() {
+                    e.spell_languages.clear();
+                }
+                for tag in &available {
+                    let mut on = e.spell_languages.contains(tag);
+                    if ui.checkbox(&mut on, tag.as_str()).changed() {
+                        if e.spell_languages.is_empty() {
+                            // Start from what "automatic" uses.
+                            e.spell_languages = active.clone();
+                        }
+                        e.spell_languages.retain(|t| t != tag);
+                        if on {
+                            e.spell_languages.push(tag.clone());
+                        }
+                    }
+                }
+            });
+            let note = if available.is_empty() {
+                t!("Keine Wörterbücher gefunden – Sprachen lassen sich unter Windows › Einstellungen › Zeit und Sprache hinzufügen.").to_string()
+            } else {
+                t!("Aktiv: {list}. Ein Wort gilt als falsch, wenn es in keiner der Sprachen vorkommt. Weitere Wörterbücher kommen mit den Sprachen von Windows.", list = active.join(", "))
+            };
+            ui.label(RichText::new(note).small().color(self.theme.text_faint));
+        }
         section(ui, t!("Eingabehilfen"));
         ui.checkbox(&mut e.auto_pair, t!("Klammern und Anführungszeichen automatisch schließen"));
         ui.checkbox(&mut e.auto_close_tags, t!("HTML-Tags automatisch schließen"));

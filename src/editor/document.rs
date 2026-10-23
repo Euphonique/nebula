@@ -320,6 +320,8 @@ pub struct ViewState {
     pub git_blame: Option<Arc<crate::ui::git::Blame>>,
     /// Matching tag names around the cursor for (version, cursor).
     pub tag_pair: Option<((u64, usize), Option<(Range<usize>, Range<usize>)>)>,
+    /// Markdown: lines inside code fences (not spell checked), for a document version.
+    pub code_fences: Option<(u64, Arc<Vec<Range<usize>>>)>,
     /// Click areas of the color bars under CSS color values (last frame).
     pub color_hits: Vec<(eframe::egui::Rect, Range<usize>)>,
     /// Open color picker: the value and where the picker sits.

@@ -13,15 +13,11 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 
 ## Editor
 - **2** Makros aufnehmen und abspielen.
-- **1** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
 - **3** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
 
 ## Suchen und Navigieren
 
 - **2** Regex-Ersetzung mit Vorschau.
-
-## Git
-
 
 ## Server und Veröffentlichen
 
@@ -67,12 +63,12 @@ Runde 3 ist damit komplett.
 
 KI: alle abgestimmten Punkte erledigt (siehe oben).
 
-Runde 4 (alle **1**-Punkte, kleine zuerst):
+Runde 4 (alle **1**-Punkte, kleine zuerst) ist komplett:
 
 1. ~~Implizites FTPS (Port 990)~~ (erledigt).
 2. ~~Blame für die aktuelle Zeile~~ (erledigt).
 3. ~~Gehe zu Definition ohne Language Server~~ (erledigt).
-4. Rechtschreibprüfung.
+4. ~~Rechtschreibprüfung~~ (erledigt).
 
 ## Erledigt
 
@@ -147,3 +143,5 @@ Implizites FTPS (23.10.): Protokoll „FTPS (implizites TLS)“ mit Port 990, Fi
 Blame (23.10.): Autor, Alter („vor 3 Tagen“) und Commit-Nachricht der letzten Änderung dezent am Ende der aktuellen Zeile, Tooltip mit Datum und Hash; geänderte/neue Zeilen zeigen „Noch nicht committet“, eingefügte Zeilen verschieben die Zuordnung nicht. Geladen wird nur für den aktiven Tab im Hintergrund (`git blame --porcelain HEAD`), neu nach jedem Commit. Abschaltbar unter Ansicht und Einstellungen › Editor.
 
 Gehe zu Definition ohne Language Server (23.10.): F12/Strg+Klick findet CSS-Klassen und IDs (aus `class`/`id`, `querySelector('.x')`, `getElementById`) in CSS/SCSS/LESS und `<style>`-Blöcken, Funktionen und Klassen über die Gliederungs-Erkennung (PHP, JS/TS und weitere) im Projekt und in offenen Dateien (ungespeicherter Stand), Dateipfade in Strings öffnen die Datei. Mehrere Treffer → Auswahlliste. Läuft im Hintergrund, beachtet `.gitignore`; Erweiterungen haben Vorrang.
+
+Rechtschreibprüfung (23.10.): Windows-Rechtschreibprüfung (ISpellChecker, eigener Thread) für Kommentare, Markdown-Text (ohne Codeblöcke, Inline-Code, Links), HTML-Text und Textdateien; camelCase, Pfade, Adressen, Zahlen und Großbuchstaben-Kürzel werden übersprungen. Nur sichtbare Zeilen, Ergebnis pro Zeileninhalt zwischengespeichert. Rechtsklick: Vorschläge, „Zum Wörterbuch hinzufügen“, „Ignorieren“. Sprachen automatisch (Windows-Sprache + Englisch, falls installiert) oder wählbar; mehrere Sprachen: falsch nur, wenn keine das Wort kennt. Abschaltbar unter Ansicht und Einstellungen › Editor.

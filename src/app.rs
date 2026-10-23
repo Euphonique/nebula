@@ -1587,6 +1587,7 @@ impl NebulaApp {
                 for (on, label) in [
                     (&mut e.minimap, t!("Minimap")),
                     (&mut e.git_blame, t!("Git-Autor der aktuellen Zeile")),
+                    (&mut e.spell_check, t!("Rechtschreibprüfung")),
                     (&mut e.show_invisibles, t!("Unsichtbare Zeichen")),
                     (&mut e.show_indent_guides, t!("Einrückungshilfslinien")),
                     (&mut e.highlight_current_line, t!("Aktuelle Zeile hervorheben")),
@@ -3137,6 +3138,10 @@ impl eframe::App for NebulaApp {
         self.backup_unsaved(&ctx);
         self.poll_git_bases(&ctx);
         self.poll_definition(&ctx);
+        if self.settings.editor.spell_check {
+            crate::spell::init(ctx.clone());
+            crate::spell::configure(&self.settings.editor.spell_languages);
+        }
         self.poll_terminals();
         self.poll_agent();
         self.poll_commit_message();
