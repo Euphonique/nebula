@@ -2072,7 +2072,29 @@ impl NebulaApp {
                         if ui.button(t!("Alle ersetzen")).clicked() {
                             action = Some("replace_all");
                         }
+                        if f.use_regex {
+                            ui.label(RichText::new("$1 \\1 \\n").small().color(self.theme.text_faint))
+                                .on_hover_text(t!("Gruppen mit $1 oder \\1, benannte mit ${name}; \\n Zeilenumbruch, \\t Tab"));
+                        }
                     });
+                    // What the current (or next) match becomes.
+                    if let Some(p) = f.preview(doc) {
+                        let theme = &self.theme;
+                        let font = egui::FontId::monospace(12.0);
+                        let show = |s: &str| s.replace('\n', "⏎").replace('\t', "→");
+                        let mut job = egui::text::LayoutJob::default();
+                        job.append(&t!("Zeile {line}:  ", line = p.line + 1), 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), theme.text_faint));
+                        job.append(&show(p.before.trim_start()), 0.0, egui::TextFormat::simple(font.clone(), theme.text_muted));
+                        let mut old = egui::TextFormat::simple(font.clone(), theme.foreground);
+                        old.background = theme.danger.gamma_multiply(0.25);
+                        old.strikethrough = egui::Stroke::new(1.0, theme.danger);
+                        job.append(&show(&p.old), 0.0, old);
+                        let mut new = egui::TextFormat::simple(font.clone(), theme.foreground);
+                        new.background = theme.success.gamma_multiply(0.3);
+                        job.append(&show(&p.new), 0.0, new);
+                        job.append(&show(&p.after), 0.0, egui::TextFormat::simple(font, theme.text_muted));
+                        ui.add(egui::Label::new(job).truncate());
+                    }
                 }
             });
         match action {

@@ -480,7 +480,8 @@ impl SearchPanel {
             if ui.add_enabled(!files.is_empty() && self.running.is_none(), egui::Button::new(label)).clicked()
                 && let Ok(regex) = self.build_regex()
             {
-                actions.push(SearchAction::ReplaceAll { files, regex, replacement: self.replacement.clone() });
+                let replacement = crate::editor::find::replacement_template(&self.replacement, self.use_regex);
+                actions.push(SearchAction::ReplaceAll { files, regex, replacement });
             }
         }
         if restart {
@@ -516,6 +517,12 @@ impl SearchPanel {
         });
         ui.add_space(4.0);
 
+        // With "replace" open: each match shows what it becomes.
+        let preview = if self.show_replace && !remote {
+            self.build_regex().ok().map(|re| (re, crate::editor::find::replacement_template(&self.replacement, self.use_regex)))
+        } else {
+            None
+        };
         egui::ScrollArea::vertical().id_salt("search-results").auto_shrink([false, false]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 1.0;
             for file in &self.results {
@@ -561,9 +568,23 @@ impl SearchPanel {
                         if r.start > pos {
                             job.append(trim_if(&m.text[pos..r.start], pos == skip), 0.0, egui::TextFormat::simple(font.clone(), theme.text_muted));
                         }
+                        let old = &m.text[r.start..r.end];
                         let mut fmt = egui::TextFormat::simple(font.clone(), theme.foreground);
-                        fmt.background = theme.find_match;
-                        job.append(&m.text[r.start..r.end], 0.0, fmt);
+                        match &preview {
+                            Some((re, template)) => {
+                                fmt.background = theme.danger.gamma_multiply(0.25);
+                                fmt.strikethrough = egui::Stroke::new(1.0, theme.danger);
+                                job.append(old, 0.0, fmt);
+                                let new = re.replace(old, template.as_str());
+                                let mut fmt = egui::TextFormat::simple(font.clone(), theme.foreground);
+                                fmt.background = theme.success.gamma_multiply(0.3);
+                                job.append(&new.replace('\n', "⏎").replace('\t', "→"), 0.0, fmt);
+                            }
+                            None => {
+                                fmt.background = theme.find_match;
+                                job.append(old, 0.0, fmt);
+                            }
+                        }
                         pos = r.end;
                     }
                     if pos < m.text.len() {

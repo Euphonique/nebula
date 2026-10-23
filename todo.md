@@ -10,10 +10,6 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 ## Editor
 - **3** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
 
-## Suchen und Navigieren
-
-- **2** Regex-Ersetzung mit Vorschau.
-
 ## Server und Veröffentlichen
 
 - **2** Suche im Terminal-Verlauf (Strg+F im Terminal, Treffer im Scrollback hervorheben).
@@ -69,7 +65,7 @@ Runde 5 (alle **2**-Punkte, der Reihe nach):
 
 1. ~~`.bak`-Kopie auf dem Server~~ (erledigt).
 2. ~~Makros~~ (erledigt).
-3. Regex-Ersetzung mit Vorschau.
+3. ~~Regex-Ersetzung mit Vorschau~~ (erledigt).
 4. Suche im Terminal-Verlauf.
 5. Serverdateien offline lesbar.
 6. Große Textdateien im Hintergrund laden; Hex-Editor erweitern.
@@ -154,3 +150,5 @@ Rechtschreibprüfung (23.10.): Windows-Rechtschreibprüfung (ISpellChecker, eige
 `.bak`-Kopie (23.10.): pro Server „Vor dem Überschreiben eine Kopie als .bak anlegen“ – beim Speichern von Serverdateien und beim Hochladen einzelner Dateien (auch „Beim Speichern hochladen“) wird die vorhandene Datei erst als `name.bak` gesichert; schlägt das fehl, wird nicht überschrieben.
 
 Makros (23.10.): Aufnahme (Strg+Umschalt+R, „● Makro-Aufnahme“ in der Statusleiste) von Tippen, Einfügen, Tasten und Bearbeiten-Befehlen (Weitersuchen, Zeile duplizieren/löschen, Kommentar, Text-Werkzeuge …); Abspielen (Strg+Umschalt+M) über dieselbe Eingabeverarbeitung wie echtes Tippen, „Mehrmals abspielen…“ mit Anzahl, Esc bricht ab. Während Aufnahme und Wiedergabe bleibt die Autovervollständigung zu, damit beide gleich ablaufen. Das letzte Makro gilt bis zum Beenden.
+
+Regex-Ersetzung mit Vorschau (23.10.): Suchleiste zeigt unter dem Ersetzungsfeld die Zeile des aktuellen (oder nächsten) Treffers mit „alt durchgestrichen → neu“; Projektsuche zeigt bei offenem „Ersetzen“ jeden Treffer so. Ersetzung versteht `$1`/`${name}` und zusätzlich `\1`, `\n`, `\t`. Behoben: Die Projektsuche hat `$` im Ersetzungstext auch ohne Regex als Gruppenverweis gelesen (`$preis` wurde leer).

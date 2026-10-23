@@ -6,6 +6,52 @@ use regex::{Regex, RegexBuilder};
 
 use super::document::{Change, Document, EditKind, Selection};
 
+/// The replacement as the regex crate expects it. Without regex mode it is
+/// literal (`$` stays `$`); with it, `\1`…`\9` mean groups like `$1`, and
+/// `\n`, `\t`, `\\` are a line break, a tab and a backslash.
+pub fn replacement_template(raw: &str, regex: bool) -> String {
+    if !regex {
+        return raw.replace('$', "$$");
+    }
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek().copied() {
+            Some(d @ '0'..='9') => {
+                chars.next();
+                out.push_str(&format!("${{{d}}}"));
+            }
+            Some('n') => {
+                chars.next();
+                out.push('\n');
+            }
+            Some('t') => {
+                chars.next();
+                out.push('\t');
+            }
+            Some('\\') => {
+                chars.next();
+                out.push('\\');
+            }
+            _ => out.push('\\'),
+        }
+    }
+    out
+}
+
+/// A replacement shown before it is made: the line around the match.
+pub struct Preview {
+    pub line: usize,
+    pub before: String,
+    pub old: String,
+    pub new: String,
+    pub after: String,
+}
+
 #[derive(Default)]
 pub struct FindState {
     pub visible: bool,
@@ -156,9 +202,25 @@ impl FindState {
         }
         let text = doc.slice(range);
         match self.regex() {
-            Ok(Some(re)) => re.replace(&text, self.replacement.as_str()).into_owned(),
+            Ok(Some(re)) => re.replace(&text, replacement_template(&self.replacement, true).as_str()).into_owned(),
             _ => self.replacement.clone(),
         }
+    }
+
+    /// What replacing would do at the current match, or else the next one
+    /// after the cursor.
+    pub fn preview(&self, doc: &Document) -> Option<Preview> {
+        let head = doc.primary_selection().range().start;
+        let m = match self.current {
+            Some(c) => self.matches.get(c)?.clone(),
+            None => self.matches.iter().find(|m| m.start >= head).or(self.matches.first())?.clone(),
+        };
+        let line = doc.char_to_line(m.start);
+        let (ls, le) = (doc.line_to_char(line), doc.line_end(line).max(m.start));
+        // Some context around the match, cut at 40 chars each side.
+        let before = doc.slice(m.start.saturating_sub(40).max(ls)..m.start);
+        let after = doc.slice(m.end.min(le)..le.min(m.end + 40).max(m.end.min(le)));
+        Some(Preview { line, before, old: doc.slice(m.clone()), new: self.replacement_for(doc, m), after })
     }
 
     pub fn replace_current(&mut self, doc: &mut Document) {
@@ -212,5 +274,25 @@ mod tests {
         f.set_scope(&d, false);
         f.update(&mut d);
         assert_eq!(f.matches.len(), 4);
+    }
+
+    #[test]
+    fn replacement_templates() {
+        assert_eq!(replacement_template("$preis", false), "$$preis");
+        assert_eq!(replacement_template(r"\2-\1\n\t\\x\q", true), "${2}-${1}\n\t\\x\\q");
+        let re = Regex::new(r"(\w+)@(\w+)").unwrap();
+        assert_eq!(re.replace("anna@web", replacement_template(r"\2: \1", true).as_str()), "web: anna");
+        assert_eq!(re.replace("anna@web", replacement_template("$1 kostet $5", false).as_str()), "$1 kostet $5");
+    }
+
+    #[test]
+    fn preview_and_regex_replace() {
+        let mut d = Document::new(DocSource::Untitled(1), "<p>Datum: 2026-10-23</p>\nund 2025-01-02\n");
+        let mut f = FindState { query: r"(\d{4})-(\d\d)-(\d\d)".into(), replacement: r"\3.\2.\1".into(), use_regex: true, ..Default::default() };
+        f.update(&mut d);
+        let p = f.preview(&d).unwrap();
+        assert_eq!((p.line, p.before.as_str(), p.old.as_str(), p.new.as_str(), p.after.as_str()), (0, "<p>Datum: ", "2026-10-23", "23.10.2026", "</p>"));
+        assert_eq!(f.replace_all(&mut d), 2);
+        assert_eq!(d.rope.to_string(), "<p>Datum: 23.10.2026</p>\nund 02.01.2025\n");
     }
 }
