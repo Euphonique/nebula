@@ -151,6 +151,10 @@ pub struct AppSettings {
     pub preview_split: f32,
     /// Simulated device width of the preview.
     pub preview_device: PreviewDevice,
+    /// Phone and tablet widths in landscape.
+    pub preview_landscape: bool,
+    /// The user's own preview widths (CSS pixels).
+    pub preview_widths: Vec<u32>,
     /// Panel right of the editor (preview, outline), its tab and width.
     pub right_panel: bool,
     pub right_tab: RightTab,
@@ -318,6 +322,8 @@ impl Default for AppSettings {
             right_panel: false,
             right_tab: RightTab::Preview,
             preview_device: PreviewDevice::Fit,
+            preview_landscape: false,
+            preview_widths: Vec::new(),
             right_width: 460.0,
             disabled_extensions: Vec::new(),
             keybindings: Default::default(),
@@ -749,19 +755,29 @@ pub enum PreviewDevice {
     Phone,
     Tablet,
     Desktop,
+    /// A width of the user's list (CSS pixels).
+    Custom(u32),
 }
 
 impl PreviewDevice {
     pub const ALL: [PreviewDevice; 4] = [PreviewDevice::Fit, PreviewDevice::Phone, PreviewDevice::Tablet, PreviewDevice::Desktop];
 
-    /// Viewport width in CSS pixels.
-    pub fn width(self) -> Option<f32> {
-        match self {
-            PreviewDevice::Fit => None,
-            PreviewDevice::Phone => Some(390.0),
-            PreviewDevice::Tablet => Some(768.0),
-            PreviewDevice::Desktop => Some(1440.0),
+    /// Viewport width in CSS pixels; phone and tablet turn wider in landscape.
+    pub fn width(self, landscape: bool) -> Option<f32> {
+        match (self, landscape) {
+            (PreviewDevice::Fit, _) => None,
+            (PreviewDevice::Phone, false) => Some(390.0),
+            (PreviewDevice::Phone, true) => Some(844.0),
+            (PreviewDevice::Tablet, false) => Some(768.0),
+            (PreviewDevice::Tablet, true) => Some(1024.0),
+            (PreviewDevice::Desktop, _) => Some(1440.0),
+            (PreviewDevice::Custom(w), _) => Some(w as f32),
         }
+    }
+
+    /// Whether the device has a landscape form.
+    pub fn turns(self) -> bool {
+        matches!(self, PreviewDevice::Phone | PreviewDevice::Tablet)
     }
 
     pub fn label(self) -> &'static str {
@@ -770,6 +786,7 @@ impl PreviewDevice {
             PreviewDevice::Phone => t!("Handy"),
             PreviewDevice::Tablet => t!("Tablet"),
             PreviewDevice::Desktop => t!("Desktop"),
+            PreviewDevice::Custom(_) => t!("Eigene Breite"),
         }
     }
 }
@@ -790,6 +807,21 @@ pub enum RightTab {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn preview_widths() {
+        use super::PreviewDevice::*;
+        assert_eq!(Phone.width(false), Some(390.0));
+        assert_eq!(Phone.width(true), Some(844.0));
+        assert_eq!(Tablet.width(true), Some(1024.0));
+        assert_eq!(Desktop.width(true), Some(1440.0));
+        assert_eq!(Custom(1280).width(true), Some(1280.0));
+        assert_eq!(Fit.width(true), None);
+        // Stored and read back, also the old form.
+        let json = serde_json::to_string(&Custom(1280)).unwrap();
+        assert_eq!(serde_json::from_str::<super::PreviewDevice>(&json).unwrap(), Custom(1280));
+        assert_eq!(serde_json::from_str::<super::PreviewDevice>("\"Tablet\"").unwrap(), Tablet);
+    }
+
     #[test]
     fn sites_without_commands_still_load() {
         let old = r#"{"sites":[{"id":"a","name":"Alt","protocol":"Sftp","host":"h","port":22,"user":"u","root_path":"/"}]}"#;

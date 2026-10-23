@@ -407,18 +407,57 @@ impl NebulaApp {
         if button(ui, t!("Im Browser öffnen"), false, icons::external).clicked() {
             self.open_in_browser(&ui.ctx().clone());
         }
+        let landscape = self.settings.preview_landscape;
         let devices = button(ui, t!("Gerätebreite"), device != PreviewDevice::Fit, icons::devices);
-        egui::Popup::menu(&devices).show(|ui| {
-            for d in PreviewDevice::ALL {
-                let label = match d.width() {
-                    Some(w) => t!("{label} ({w} px)", label = d.label(), w = w),
-                    None => d.label().to_string(),
+        egui::Popup::menu(&devices).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+            let mut choices: Vec<PreviewDevice> = PreviewDevice::ALL.to_vec();
+            choices.extend(self.settings.preview_widths.iter().map(|&w| PreviewDevice::Custom(w)));
+            let mut remove = None;
+            for d in choices {
+                let label = match (d, d.width(landscape)) {
+                    (PreviewDevice::Custom(w), _) => t!("{w} px", w = w),
+                    (_, Some(w)) => t!("{label} ({w} px)", label = d.label(), w = w),
+                    (_, None) => d.label().to_string(),
                 };
-                if ui.selectable_label(device == d, label).clicked() {
-                    self.settings.preview_device = d;
-                    ui.close();
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(device == d, label).clicked() {
+                        self.settings.preview_device = d;
+                        ui.close();
+                    }
+                    if let PreviewDevice::Custom(w) = d
+                        && ui.small_button("×").on_hover_text(t!("Breite entfernen")).clicked()
+                    {
+                        remove = Some(w);
+                    }
+                });
+            }
+            if let Some(w) = remove {
+                self.settings.preview_widths.retain(|&x| x != w);
+                if self.settings.preview_device == PreviewDevice::Custom(w) {
+                    self.settings.preview_device = PreviewDevice::Fit;
                 }
             }
+            ui.separator();
+            ui.checkbox(&mut self.settings.preview_landscape, t!("Querformat (Handy, Tablet)"));
+            // A new width: typed in, added with Enter or the button.
+            ui.horizontal(|ui| {
+                let id = egui::Id::unique("preview-new-width");
+                let mut text: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+                let field = ui.add(egui::TextEdit::singleline(&mut text).hint_text(t!("Breite in px")).desired_width(90.0));
+                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let value = text.trim().trim_end_matches("px").trim().parse::<u32>().ok().filter(|w| (200..=7680).contains(w));
+                if (ui.add_enabled(value.is_some(), egui::Button::new(t!("Hinzufügen"))).clicked() || enter)
+                    && let Some(w) = value
+                {
+                    if !self.settings.preview_widths.contains(&w) {
+                        self.settings.preview_widths.push(w);
+                        self.settings.preview_widths.sort_unstable();
+                    }
+                    self.settings.preview_device = PreviewDevice::Custom(w);
+                    text.clear();
+                }
+                ui.data_mut(|d| d.insert_temp(id, text));
+            });
         });
         if button(ui, t!("Neu laden"), false, icons::refresh).clicked() {
             self.preview_state.cache.clear();
@@ -445,7 +484,7 @@ impl NebulaApp {
             );
             return None;
         }
-        let Some(width) = device.width() else {
+        let Some(width) = device.width(landscape) else {
             self.preview.set_zoom(1.0);
             return Some(body);
         };
@@ -460,7 +499,8 @@ impl NebulaApp {
         let painter = ui.painter();
         painter.rect_filled(body, 0.0, theme.hover.gamma_multiply(0.6));
         painter.rect_stroke(view.expand(1.0), 2.0, egui::Stroke::new(1.0, theme.gutter_fg.gamma_multiply(0.5)), egui::StrokeKind::Outside);
-        let mut info = t!("{label} · {width} px", label = device.label(), width = width);
+        let label = if device.turns() && landscape { t!("{device} quer", device = device.label()) } else { device.label().to_string() };
+        let mut info = t!("{label} · {width} px", label = label, width = width);
         if zoom < 0.999 {
             info.push_str(&format!(" · {} %", (zoom * 100.0).round()));
         }

@@ -85,7 +85,7 @@ Das Ergebnis ist eine einzelne Datei ohne weitere Abhängigkeiten: `target\relea
 **Live-Vorschau**
 - HTML-, PHP- und Markdown-Seiten sowie Bilder im rechten Panel (Knopf rechts in der Titelleiste, Strg+Umschalt+V; WebView2), aktualisiert beim Tippen, auch mit ungespeicherten Änderungen
 - Geänderte CSS-Dateien werden ohne Neuladen der Seite übernommen, die Scrollposition bleibt erhalten
-- Gerätebreiten: Panelbreite, Handy (390 px), Tablet (768 px) oder Desktop (1440 px) über den Geräte-Knopf der Vorschau; ist das Panel schmaler, wird die Seite verkleinert dargestellt, Media Queries greifen wie auf dem Gerät
+- Gerätebreiten: Panelbreite, Handy (390 px), Tablet (768 px) oder Desktop (1440 px) über den Geräte-Knopf der Vorschau, Handy und Tablet auch im Querformat (844 bzw. 1024 px), dazu eigene Breiten (im Menü hinzufügen und entfernen); ist das Panel schmaler, wird die Seite verkleinert dargestellt, Media Queries greifen wie auf dem Gerät
 - Funktioniert auch für Dateien auf dem Server: Bilder, CSS und Skripte werden über die Serververbindung geladen
 - PHP-Dateien mit hinterlegter Web-URL zeigen die Live-Seite und laden nach dem Speichern neu
 - Zurück/Vor nach gefolgten Links, Neu laden

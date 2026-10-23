@@ -169,6 +169,8 @@ impl NebulaApp {
                         self.settings.theme_dark = e.theme_dark;
                         self.settings.mica = e.mica;
                         self.settings.preview_device = e.preview_device;
+                        self.settings.preview_landscape = e.preview_landscape;
+                        self.settings.preview_widths = e.preview_widths;
                         self.settings.terminal_shell = e.terminal_shell;
                     }
                 }

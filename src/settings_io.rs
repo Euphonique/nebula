@@ -48,6 +48,10 @@ pub struct EditorPart {
     pub theme_dark: String,
     pub mica: bool,
     pub preview_device: PreviewDevice,
+    #[serde(default)]
+    pub preview_landscape: bool,
+    #[serde(default)]
+    pub preview_widths: Vec<u32>,
     pub terminal_shell: String,
 }
 
@@ -123,6 +127,8 @@ impl Bundle {
                         theme_dark: s.theme_dark.clone(),
                         mica: s.mica,
                         preview_device: s.preview_device,
+                        preview_landscape: s.preview_landscape,
+                        preview_widths: s.preview_widths.clone(),
                         terminal_shell: s.terminal_shell.clone(),
                     })
                 }
