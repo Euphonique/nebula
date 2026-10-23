@@ -1422,6 +1422,10 @@ fn paint_doc(
         }
     }
 
+    if settings.git_blame && focused {
+        blame_annotation(ui, &painter, doc, theme, m, &g, visible, &shown);
+    }
+
     // Gutter, drawn last so horizontally scrolled text slides under it.
     let gutter = Rect::from_min_size(visible.min, vec2(m.gutter_w, visible.height()));
     painter.rect_filled(gutter, 0.0, theme.gutter_bg);
@@ -1515,6 +1519,65 @@ fn paint_doc(
             crate::ui::icons::bookmark_filled(&painter, pos2(number.left() - 3.0 - w / 2.0, cy), w, h, theme.bookmark());
         }
     }
+}
+
+/// Author, age and message of the last commit that changed the cursor line,
+/// faintly after its end; details when the pointer rests on it.
+#[allow(clippy::too_many_arguments)]
+fn blame_annotation(
+    ui: &Ui,
+    painter: &egui::Painter,
+    doc: &Document,
+    theme: &Theme,
+    m: &Metrics,
+    g: &Geo,
+    visible: Rect,
+    shown: &dyn Fn(usize) -> bool,
+) {
+    let (Some(blame), Some(lines)) = (&doc.view.git_blame, &doc.view.git_lines) else { return };
+    if doc.selections.len() != 1 {
+        return;
+    }
+    let line = doc.char_to_line(doc.primary_selection().head);
+    if !shown(line) || doc.live_ghost().is_some_and(|gh| doc.char_to_line(gh.at) == line) {
+        return;
+    }
+    let commit = match lines.get(line) {
+        Some(&l) if l != u32::MAX => blame.line(l as usize),
+        _ => None,
+    };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    let text = match commit {
+        Some(c) => {
+            let mut summary: String = c.summary.chars().take(70).collect();
+            if summary.len() < c.summary.len() {
+                summary.push('…');
+            }
+            format!("{}, {} • {}", c.author, c.ago(now), summary)
+        }
+        None => t!("Noch nicht committet").into(),
+    };
+    let end = g.at(doc, doc.line_end(line));
+    let font = FontId::proportional(m.font.size * 0.86);
+    let color = theme.text_faint.gamma_multiply(0.75);
+    let rect = painter.text(pos2(end.x + m.char_w * 3.0, end.y + m.row_h / 2.0), egui::Align2::LEFT_CENTER, text, font, color);
+    let Some(c) = commit else { return };
+    let Some(p) = ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p) && visible.contains(*p)) else { return };
+    egui::Area::new(editor_id(doc.id, 0).with("blame_tip"))
+        .fixed_pos(p + vec2(10.0, 18.0))
+        .order(egui::Order::Tooltip)
+        .interactable(false)
+        .show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style()).inner_margin(10.0).show(ui, |ui| {
+                ui.set_max_width(520.0);
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                    ui.label(egui::RichText::new(&c.author).strong());
+                    ui.label(egui::RichText::new(c.date()).color(theme.text_faint));
+                });
+                ui.add(egui::Label::new(&c.summary).wrap());
+                ui.label(egui::RichText::new(&c.hash[..c.hash.len().min(10)]).monospace().color(theme.text_faint));
+            });
+        });
 }
 
 /// The +/− box in the gutter for a foldable block.
@@ -1768,6 +1831,7 @@ const GIT_MARKS_PAUSE: std::time::Duration = std::time::Duration::from_millis(50
 pub(crate) fn update_git_marks(doc: &mut Document) -> bool {
     let Some(base) = doc.view.git_base.clone() else {
         doc.view.git_marks = None;
+        doc.view.git_lines = None;
         return true;
     };
     if doc.view.git_marks.as_ref().is_some_and(|(v, _)| *v == doc.version) {
@@ -1783,7 +1847,9 @@ pub(crate) fn update_git_marks(doc: &mut Document) -> bool {
     let text = doc.text();
     let new = crate::diff::lines(&text);
     let mut marks = vec![0u8; doc.len_lines()];
-    for h in crate::diff::hunks(&crate::diff::lines(&base), &new) {
+    let hunks = crate::diff::hunks(&crate::diff::lines(&base), &new);
+    doc.view.git_lines = Some(Arc::new(crate::diff::old_lines(&hunks, marks.len())));
+    for h in hunks {
         if h.new.is_empty() {
             let last = marks.len().saturating_sub(1);
             if let Some(m) = marks.get_mut(h.new.start.min(last)) {

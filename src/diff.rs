@@ -57,6 +57,21 @@ pub fn hunks(old: &[&str], new: &[&str]) -> Vec<Hunk> {
     out
 }
 
+/// For each of `count` new lines, the old line it is unchanged from
+/// (`u32::MAX` if it was changed or added).
+pub fn old_lines(hunks: &[Hunk], count: usize) -> Vec<u32> {
+    let mut out = Vec::with_capacity(count);
+    let (mut old, mut new) = (0usize, 0usize);
+    for h in hunks {
+        out.extend((old..).take(h.new.start - new).map(|l| l as u32));
+        out.extend(std::iter::repeat_n(u32::MAX, h.new.len()));
+        (old, new) = (h.old.end, h.new.end);
+    }
+    out.extend((old..).take(count.saturating_sub(new)).map(|l| l as u32));
+    out.truncate(count);
+    out
+}
+
 /// Splits text into lines without line breaks (CRLF and LF).
 pub fn lines(text: &str) -> Vec<&str> {
     let text = text.strip_suffix('\n').unwrap_or(text);
@@ -226,6 +241,16 @@ pub fn patch(old: &str, new: &str, old_label: &str, new_label: &str, context: us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maps_new_lines_to_old() {
+        let old = ["a", "b", "c", "d"];
+        let new = ["a", "x", "y", "b", "C", "d"];
+        let h = hunks(&old, &new);
+        assert_eq!(old_lines(&h, new.len()), [0, u32::MAX, u32::MAX, 1, u32::MAX, 3]);
+        let new = ["b", "c"];
+        assert_eq!(old_lines(&hunks(&old, &new), 2), [1, 2]);
+    }
 
     #[test]
     fn patch_format() {

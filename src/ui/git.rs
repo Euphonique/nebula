@@ -159,17 +159,21 @@ fn repo_top(root: &Path, cdup: &str) -> PathBuf {
     top
 }
 
-/// Contents of `path` in the current commit (`None` if it is not tracked).
-pub fn head_file(top: &Path, path: &Path) -> Option<Vec<u8>> {
+/// `path` relative to the repository at `top`, with `/`.
+fn repo_rel(top: &Path, path: &Path) -> Option<String> {
     // Windows paths compare without regard to case (git may report "a:/" for "A:\").
     let (p, t) = (path.to_string_lossy(), top.to_string_lossy());
     let t = t.trim_end_matches('\\');
     if !p.get(..t.len()).is_some_and(|prefix| prefix.eq_ignore_ascii_case(t)) || p.len() <= t.len() {
         return None;
     }
-    let rel = p[t.len()..].trim_start_matches('\\').replace('\\', "/");
+    Some(p[t.len()..].trim_start_matches('\\').replace('\\', "/"))
+}
+
+/// Runs git in `top` and returns its raw output if it succeeded.
+fn git_bytes(top: &Path, args: &[&str]) -> Option<Vec<u8>> {
     let mut cmd = std::process::Command::new("git");
-    cmd.args(["show", &format!("HEAD:{rel}")]).current_dir(top);
+    cmd.args(args).current_dir(top);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -177,6 +181,106 @@ pub fn head_file(top: &Path, path: &Path) -> Option<Vec<u8>> {
     }
     let out = cmd.output().ok()?;
     out.status.success().then_some(out.stdout)
+}
+
+/// Contents of `path` in the current commit (`None` if it is not tracked).
+pub fn head_file(top: &Path, path: &Path) -> Option<Vec<u8>> {
+    let rel = repo_rel(top, path)?;
+    git_bytes(top, &["show", &format!("HEAD:{rel}")])
+}
+
+/// A commit that last changed some lines of a file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlameCommit {
+    pub hash: String,
+    pub author: String,
+    /// Seconds since 1970.
+    pub time: i64,
+    pub summary: String,
+}
+
+/// Who last changed each line of a file as of HEAD.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Blame {
+    pub commits: Vec<BlameCommit>,
+    /// Index into `commits` per line of the HEAD version.
+    pub lines: Vec<u32>,
+}
+
+impl Blame {
+    pub fn line(&self, line: usize) -> Option<&BlameCommit> {
+        self.commits.get(*self.lines.get(line)? as usize)
+    }
+}
+
+impl BlameCommit {
+    /// "vor 3 Tagen" and the like, relative to `now` (seconds since 1970).
+    pub fn ago(&self, now: i64) -> String {
+        let s = (now - self.time).max(0);
+        let (min, hour, day) = (60, 3600, 86_400);
+        match s {
+            _ if s < min => t!("gerade eben").into(),
+            _ if s < hour => t!("vor {value} Min.", value = s / min),
+            _ if s < day => t!("vor {value} Std.", value = s / hour),
+            _ if s < 2 * day => t!("gestern").into(),
+            _ if s < 30 * day => t!("vor {value} Tagen", value = s / day),
+            _ if s < 60 * day => t!("vor einem Monat").into(),
+            _ if s < 365 * day => t!("vor {value} Monaten", value = s / (30 * day)),
+            _ if s < 2 * 365 * day => t!("vor einem Jahr").into(),
+            _ => t!("vor {value} Jahren", value = s / (365 * day)),
+        }
+    }
+
+    /// Date and time of the commit in local time.
+    pub fn date(&self) -> String {
+        let t = crate::win32::local_time(self.time.max(0) as u64 * 1000);
+        format!("{:02}.{:02}.{} {:02}:{:02}", t.day, t.month, t.year, t.hour, t.minute)
+    }
+}
+
+/// Blame of `path` as of HEAD (`None` if it is not tracked).
+pub fn blame(top: &Path, path: &Path) -> Option<Blame> {
+    let rel = repo_rel(top, path)?;
+    let out = git_bytes(top, &["blame", "--porcelain", "HEAD", "--", &rel])?;
+    Some(parse_blame(&out))
+}
+
+/// Parses `git blame --porcelain`: a header line per line of the file
+/// ("<hash> <orig> <final> [<count>]"), commit details the first time a
+/// commit appears, then the line itself after a tab.
+fn parse_blame(out: &[u8]) -> Blame {
+    let mut blame = Blame::default();
+    let mut index: HashMap<String, u32> = HashMap::new();
+    let mut current: Option<u32> = None;
+    for raw in out.split(|&b| b == b'\n') {
+        if raw.first() == Some(&b'\t') {
+            if let Some(c) = current.take() {
+                blame.lines.push(c);
+            }
+            continue;
+        }
+        let line = String::from_utf8_lossy(raw);
+        let (key, value) = line.split_once(' ').unwrap_or((&line, ""));
+        if current.is_none() {
+            if key.len() == 40 && key.bytes().all(|b| b.is_ascii_hexdigit()) {
+                let next = blame.commits.len() as u32;
+                let i = *index.entry(key.to_string()).or_insert_with(|| {
+                    blame.commits.push(BlameCommit { hash: key.to_string(), author: String::new(), time: 0, summary: String::new() });
+                    next
+                });
+                current = Some(i);
+            }
+            continue;
+        }
+        let commit = &mut blame.commits[current.unwrap() as usize];
+        match key {
+            "author" => commit.author = value.to_string(),
+            "author-time" => commit.time = value.parse().unwrap_or(0),
+            "summary" => commit.summary = value.to_string(),
+            _ => {}
+        }
+    }
+    blame
 }
 
 /// One changed file from `git status`: index (staged) and worktree letters.
@@ -376,6 +480,24 @@ mod tests {
         assert_eq!(files[&PathBuf::from(r"C:\p\b.js")], FileState::Renamed);
         assert_eq!(files[&PathBuf::from(r"C:\p\c.php")], FileState::Added);
         assert_eq!(files.len(), 4);
+    }
+
+    #[test]
+    fn parses_blame_porcelain() {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        let out = format!(
+            "{a} 1 1 2\nauthor Anna\nauthor-mail <a@x>\nauthor-time 1700000000\nsummary Erster Stand\nfilename f\n\tzeile 1\n\
+             {a} 2 2\n\tsummary looks like a header\n\
+             {b} 3 3 1\nauthor Bert\nauthor-time 1710000000\nsummary Fix\nprevious {a} f\nfilename f\n\t{a} 9 9\n"
+        );
+        let blame = parse_blame(out.as_bytes());
+        assert_eq!(blame.lines, [0, 0, 1]);
+        assert_eq!(blame.commits[0].author, "Anna");
+        assert_eq!(blame.commits[0].summary, "Erster Stand");
+        assert_eq!(blame.line(2).unwrap().author, "Bert");
+        assert_eq!(blame.line(2).unwrap().time, 1_710_000_000);
+        assert!(blame.line(3).is_none());
     }
 
     #[test]

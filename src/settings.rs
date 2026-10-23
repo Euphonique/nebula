@@ -49,6 +49,8 @@ pub struct EditorSettings {
     pub line_height: f32,
     /// Shrunken document view on the right edge.
     pub minimap: bool,
+    /// Author and date of the last change at the end of the current line (Git).
+    pub git_blame: bool,
     pub autosave: AutoSave,
     /// Seconds without typing before [`AutoSave::Delay`] saves.
     pub autosave_delay: f32,
@@ -88,6 +90,7 @@ impl Default for EditorSettings {
             font_family: String::new(),
             line_height: 1.45,
             minimap: true,
+            git_blame: true,
             autosave: AutoSave::Off,
             autosave_delay: 2.0,
             autosave_remote: false,

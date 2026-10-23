@@ -23,7 +23,6 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 
 ## Git
 
-- **1** Blame für die aktuelle Zeile (Autor/Datum dezent am Zeilenende).
 
 ## Server und Veröffentlichen
 
@@ -72,7 +71,7 @@ KI: alle abgestimmten Punkte erledigt (siehe oben).
 Runde 4 (alle **1**-Punkte, kleine zuerst):
 
 1. ~~Implizites FTPS (Port 990)~~ (erledigt).
-2. Blame für die aktuelle Zeile.
+2. ~~Blame für die aktuelle Zeile~~ (erledigt).
 3. Gehe zu Definition ohne Language Server.
 4. Rechtschreibprüfung.
 
@@ -145,3 +144,5 @@ Mehrere Fenster (22.10.): „Neues Fenster“ (Strg+Umschalt+N), „Ordner in ne
 Performance (22.10.): Highlighting großer Dateien (ab 256 KB) inkrementell – der Syntaxbaum wird weitergeführt, nur geänderte Zeilen neu gefärbt (3 MB: 1,2 s → 30 ms pro Tastendruck), Farben jetzt bis 16 MB statt 4 MB; minifizierte Dateien mit einer 5-MB-Zeile hängen nicht mehr (Wort- und Suchmarkierungen nur im sichtbaren Ausschnitt, schnellere Spaltenberechnung); Wortvervollständigung, Gliederung (im Hintergrund), Zeilenumbruch, Git-Markierungen und Breitenmessung belasten das Tippen in großen Dateien nicht mehr. Getestet mit 3/5/20/50 MB und 120 Tabs. Zeitmessung pro Frame mit `NEBULA_PERF=1`. Dabei behoben: Code-Blöcke in Markdown wurden falsch gefärbt (Satzzeichen fehlten im eingebetteten Code, CSS-Eigenschaften erschienen als Selektoren).
 
 Implizites FTPS (23.10.): Protokoll „FTPS (implizites TLS)“ mit Port 990, FileZilla-Import übernimmt es jetzt richtig; FTP-Verbindungen probieren alle Adressen eines Hosts (IPv6 und IPv4) statt nur der ersten. Tests für explizites und implizites FTPS.
+
+Blame (23.10.): Autor, Alter („vor 3 Tagen“) und Commit-Nachricht der letzten Änderung dezent am Ende der aktuellen Zeile, Tooltip mit Datum und Hash; geänderte/neue Zeilen zeigen „Noch nicht committet“, eingefügte Zeilen verschieben die Zuordnung nicht. Geladen wird nur für den aktiven Tab im Hintergrund (`git blame --porcelain HEAD`), neu nach jedem Commit. Abschaltbar unter Ansicht und Einstellungen › Editor.

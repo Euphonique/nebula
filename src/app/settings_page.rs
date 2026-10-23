@@ -206,6 +206,9 @@ impl NebulaApp {
             ui.label("");
             ui.checkbox(&mut e.minimap, t!("Minimap am rechten Rand"));
             ui.end_row();
+            ui.label("");
+            ui.checkbox(&mut e.git_blame, t!("Autor und Datum der letzten Änderung am Ende der aktuellen Zeile (Git)"));
+            ui.end_row();
         });
         section(ui, t!("Einrückung (Standard)"));
         egui::Grid::new("indent-grid").num_columns(2).spacing([16.0, 10.0]).show(ui, |ui| {

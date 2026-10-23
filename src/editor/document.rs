@@ -314,6 +314,10 @@ pub struct ViewState {
     pub git_marks: Option<(u64, Arc<Vec<u8>>)>,
     /// When the marks were last computed (large files: at most twice a second).
     pub git_marks_at: Option<Instant>,
+    /// Line in `git_base` per line of the text (`u32::MAX`: changed or added), with `git_marks`.
+    pub git_lines: Option<Arc<Vec<u32>>>,
+    /// Who last changed each line of `git_base`.
+    pub git_blame: Option<Arc<crate::ui::git::Blame>>,
     /// Matching tag names around the cursor for (version, cursor).
     pub tag_pair: Option<((u64, usize), Option<(Range<usize>, Range<usize>)>)>,
     /// Click areas of the color bars under CSS color values (last frame).
