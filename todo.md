@@ -13,7 +13,6 @@ Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über 
 
 ## Oberfläche und Allgemein
 
-- **3** Update-Hinweis (braucht eine Adresse, unter der neue Versionen veröffentlicht werden).
 
 ## Qualität und Technik
 
@@ -55,12 +54,12 @@ Runde 5 (alle **2**-Punkte, der Reihe nach) ist komplett:
 6. ~~Große Textdateien im Hintergrund laden; Hex-Editor erweitern~~ (erledigt).
 7. ~~Absturzbericht für native Abstürze~~ (erledigt).
 
-Runde 6 (alle **3**-Punkte, der Reihe nach):
+Runde 6 (alle **3**-Punkte) ist komplett:
 
 1. ~~Ligaturen~~ (erledigt).
 2. ~~Datenbank light (MySQL über SSH-Tunnel)~~ (erledigt).
 3. ~~Gerätebreiten der Vorschau: Querformat und eigene Breiten~~ (erledigt).
-4. Update-Hinweis.
+4. ~~Update-Hinweis~~ (erledigt).
 5. ~~Barrierefreiheit~~ (erledigt).
 
 ## Erledigt
@@ -160,3 +159,5 @@ Datenbank light (23.10.): Tab „DB · Server“ (Server-Kontextmenü, Befehlspa
 Gerätebreiten (23.10.): Querformat-Schalter im Geräte-Menü der Vorschau (Handy 844 px, Tablet 1024 px, Anzeige „Handy quer · 844 px“), eigene Breiten (200–7680 px) im Menü hinzufügen/entfernen, gespeichert und im Einstellungs-Export enthalten.
 
 Barrierefreiheit (23.10.): Editor meldet sich über AccessKit als mehrzeiliges Textfeld (Name = Dateiname) mit den sichtbaren Zeilen als Textläufe und Cursor/Auswahl (`update_accessibility` in view.rs, nur aktiv wenn ein Bildschirmleser zuhört); per UI-Automation geprüft (Text und Cursorzeile folgen). Themes „Nebula Kontrast Dunkel/Hell“ (alle Textfarben ≥ 7:1, Test), automatisch bei Windows-Kontrastdesign (`win32::high_contrast`, Einstellung unter Design).
+
+Update-Hinweis (23.10.): `src/update.rs` fragt `api.github.com/repos/Euphonique/nebula/releases/latest` ab (404 = nichts, z. B. solange privat), Versionsvergleich numerisch (`v0.2.0` > `0.1.9`); Prüfung beim Start höchstens einmal am Tag im Hintergrund (nur Hauptfenster), Hinweis „⬆ Version x verfügbar“ in der Statusleiste (Klick = Release-Seite, Rechtsklick = überspringen), Einstellungen › Windows: Schalter und „Jetzt prüfen“ mit Ergebnis darunter. Live geprüft gegen GitHub (privates Repo → nichts, ripgrep → 15.2.0). Nebenbei im Kontrast-Theme: Primärknöpfe mit schwarzer Schrift auf hellem Akzent, dunklere Auswahl.

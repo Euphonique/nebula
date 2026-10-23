@@ -128,6 +128,12 @@ pub struct AppSettings {
     pub mica: bool,
     /// Use the high-contrast theme while Windows has a contrast theme on.
     pub follow_high_contrast: bool,
+    /// Look for a newer version on GitHub once a day.
+    pub check_updates: bool,
+    /// Last check (seconds since 1970).
+    pub update_checked: i64,
+    /// Version the user does not want to hear about.
+    pub update_skipped: String,
     /// Keep copies of server files and folders to read them while offline.
     pub offline_cache: bool,
     pub sidebar_width: f32,
@@ -306,6 +312,9 @@ impl Default for AppSettings {
             legacy_theme: None,
             mica: true,
             follow_high_contrast: true,
+            check_updates: true,
+            update_checked: 0,
+            update_skipped: String::new(),
             offline_cache: true,
             sidebar_width: 260.0,
             last_folder: None,

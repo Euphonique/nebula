@@ -465,6 +465,10 @@ impl Theme {
         v.text_edit_bg_color = Some(v.extreme_bg_color);
         v.faint_bg_color = self.hover;
         v.selection.bg_fill = self.accent.gamma_multiply(if self.dark { 0.6 } else { 0.35 });
+        if self.name == BUILTIN_CONTRAST_DARK {
+            // White text stays readable (about 9:1).
+            v.selection.bg_fill = Color32::from_rgb(0, 70, 90);
+        }
         v.selection.stroke = Stroke::new(1.0, if self.dark { Color32::WHITE } else { self.foreground });
         v.hyperlink_color = self.accent;
         v.widgets.noninteractive.fg_stroke.color = self.text_muted;

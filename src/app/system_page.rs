@@ -96,5 +96,24 @@ impl NebulaApp {
         ui.label(RichText::new(t!("Fenster")).strong());
         ui.add_space(4.0);
         ui.label(faint(t!("Läuft Nebula schon, öffnen sich Dateien aus dem Explorer im vorhandenen Fenster. Ein zweites Fenster erzwingt der Start mit --new-instance.")));
+
+        ui.add_space(18.0);
+        ui.label(RichText::new(t!("Updates")).strong());
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.settings.check_updates, t!("Einmal am Tag nach einer neuen Version suchen"));
+            if ui.button(t!("Jetzt prüfen")).clicked() {
+                let ctx = ui.ctx().clone();
+                self.check_for_update(&ctx, true);
+            }
+        });
+        ui.label(faint(&t!(
+            "Version {version}. Gesucht wird in den Releases von github.com/{repo}; eine neue Version erscheint als Hinweis in der Statusleiste.",
+            version = env!("CARGO_PKG_VERSION"),
+            repo = crate::update::REPO
+        )));
+        if let Some(status) = &self.updates.status {
+            ui.label(RichText::new(status).color(theme.foreground));
+        }
     }
 }

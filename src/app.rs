@@ -60,6 +60,7 @@ mod definition;
 mod macros;
 mod loading;
 mod db_tab;
+mod updates;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -231,6 +232,7 @@ pub struct NebulaApp {
     macro_queue: std::collections::VecDeque<crate::editor::macros::Step>,
     /// Large files being loaded in the background.
     loadings: Vec<loading::Loading>,
+    updates: updates::Updates,
     /// Differences shown in the conflict dialog (document id).
     compare: Option<(u64, compare::Compare)>,
     /// Second editor beside the first.
@@ -319,6 +321,7 @@ impl NebulaApp {
             last_macro: Vec::new(),
             macro_queue: Default::default(),
             loadings: Vec::new(),
+            updates: Default::default(),
             compare: None,
             split: None,
             right_state: right_panel::RightPanelState::new(&cc.egui_ctx),
@@ -2245,6 +2248,7 @@ impl NebulaApp {
                 let site = self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_default();
                 ui.label(small(if connected { t!("Verbunden mit {site}", site = site) } else { site }));
             }
+            self.update_badge(ui);
             let Some(i) = self.active else { return };
             // Cursor, encoding and language mean nothing for a picture.
             if self.docs[i].image.is_some() || self.docs[i].hex.is_some() {
@@ -3332,6 +3336,7 @@ impl eframe::App for NebulaApp {
         self.poll_definition(&ctx);
         self.drive_macro(&ctx);
         self.poll_loadings(&ctx);
+        self.poll_updates(&ctx);
         if self.settings.editor.spell_check {
             crate::spell::init(ctx.clone());
             crate::spell::configure(&self.settings.editor.spell_languages);
@@ -3683,7 +3688,9 @@ fn menu_check(ui: &mut egui::Ui, checked: bool, label: &str, shortcut: &str) -> 
 
 /// Filled button for the main action of a dialog.
 fn primary_button(text: &str, fill: Color32) -> egui::Button<'static> {
-    egui::Button::new(RichText::new(text.to_string()).color(Color32::WHITE))
+    // Black on light fills (e.g. the cyan of the contrast theme), else white.
+    let light = (fill.r() as u32 * 299 + fill.g() as u32 * 587 + fill.b() as u32 * 114) / 1000 > 150;
+    egui::Button::new(RichText::new(text.to_string()).color(if light { Color32::BLACK } else { Color32::WHITE }))
         .fill(fill)
         .stroke(egui::Stroke::NONE)
         .min_size(vec2(84.0, 28.0))
