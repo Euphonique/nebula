@@ -12,7 +12,6 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 
 ## Server und Veröffentlichen
 
-- **2** Suche im Terminal-Verlauf (Strg+F im Terminal, Treffer im Scrollback hervorheben).
 - **3** Datenbank light: MySQL über SSH-Tunnel, Tabellen ansehen, Abfragen ausführen.
 - **2** Serverdateien zwischenspeichern, damit sie offline lesbar bleiben.
 
@@ -66,7 +65,7 @@ Runde 5 (alle **2**-Punkte, der Reihe nach):
 1. ~~`.bak`-Kopie auf dem Server~~ (erledigt).
 2. ~~Makros~~ (erledigt).
 3. ~~Regex-Ersetzung mit Vorschau~~ (erledigt).
-4. Suche im Terminal-Verlauf.
+4. ~~Suche im Terminal-Verlauf~~ (erledigt).
 5. Serverdateien offline lesbar.
 6. Große Textdateien im Hintergrund laden; Hex-Editor erweitern.
 7. Absturzbericht für native Abstürze.
@@ -152,3 +151,5 @@ Rechtschreibprüfung (23.10.): Windows-Rechtschreibprüfung (ISpellChecker, eige
 Makros (23.10.): Aufnahme (Strg+Umschalt+R, „● Makro-Aufnahme“ in der Statusleiste) von Tippen, Einfügen, Tasten und Bearbeiten-Befehlen (Weitersuchen, Zeile duplizieren/löschen, Kommentar, Text-Werkzeuge …); Abspielen (Strg+Umschalt+M) über dieselbe Eingabeverarbeitung wie echtes Tippen, „Mehrmals abspielen…“ mit Anzahl, Esc bricht ab. Während Aufnahme und Wiedergabe bleibt die Autovervollständigung zu, damit beide gleich ablaufen. Das letzte Makro gilt bis zum Beenden.
 
 Regex-Ersetzung mit Vorschau (23.10.): Suchleiste zeigt unter dem Ersetzungsfeld die Zeile des aktuellen (oder nächsten) Treffers mit „alt durchgestrichen → neu“; Projektsuche zeigt bei offenem „Ersetzen“ jeden Treffer so. Ersetzung versteht `$1`/`${name}` und zusätzlich `\1`, `\n`, `\t`. Behoben: Die Projektsuche hat `$` im Ersetzungstext auch ohne Regex als Gruppenverweis gelesen (`$preis` wurde leer).
+
+Suche im Terminal-Verlauf (23.10.): Strg+F im Terminal öffnet oben rechts ein Suchfeld (vorbelegt mit der Auswahl); durchsucht Verlauf und Bildschirm ohne Groß-/Kleinschreibung, markiert alle Treffer, springt zum neuesten und scrollt mit Enter/Umschalt+Enter oder ▲/▼ zu älteren/neueren; Treffer folgen neuer Ausgabe; Esc schließt und gibt den Fokus ans Terminal zurück.

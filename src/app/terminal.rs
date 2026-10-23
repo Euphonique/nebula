@@ -27,6 +27,76 @@ pub(super) struct TermTab {
     want_focus: bool,
     /// Saved commands to run once the session is in the start folder.
     queued: Vec<String>,
+    /// Search in the scrollback (Ctrl+F), while open.
+    search: Option<TermSearch>,
+}
+
+/// Search in a terminal's history and screen.
+#[derive(Default)]
+struct TermSearch {
+    query: String,
+    focus: bool,
+    /// Matches as (line, start column, end column); line 0 is the oldest kept line.
+    matches: Vec<(usize, usize, usize)>,
+    current: Option<usize>,
+    /// What the matches were computed for, and when (new output shifts lines).
+    computed: Option<(String, std::time::Instant)>,
+}
+
+/// Case-insensitive matches of `query` in `lines` (columns in chars).
+fn find_in_lines(lines: &[String], query: &str) -> Vec<(usize, usize, usize)> {
+    let fold = |c: char| c.to_lowercase().next().unwrap_or(c);
+    let q: Vec<char> = query.chars().map(fold).collect();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (n, line) in lines.iter().enumerate() {
+        let l: Vec<char> = line.chars().map(fold).collect();
+        let mut i = 0;
+        while i + q.len() <= l.len() {
+            if l[i..i + q.len()] == q[..] {
+                out.push((n, i, i + q.len()));
+                i += q.len();
+            } else {
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+
+/// Lines in the history right now (vt100 only tells its capacity).
+fn history_len(screen: &mut vt100::Screen) -> usize {
+    let keep = screen.scrollback();
+    screen.set_scrollback(usize::MAX);
+    let n = screen.scrollback();
+    screen.set_scrollback(keep);
+    n
+}
+/// All lines of the history and the screen, oldest first, and how many
+/// belong to the history. Leaves the view where it was.
+fn all_lines(parser: &mut vt100::Parser, rows: u16, cols: u16) -> (Vec<String>, usize) {
+    let screen = parser.screen_mut();
+    let keep = screen.scrollback();
+    let hist = history_len(screen);
+    let total = hist + rows as usize;
+    let mut lines = Vec::with_capacity(total);
+    while lines.len() < total {
+        // At scrollback s the view starts at line hist - s.
+        let start = lines.len();
+        let s = hist.saturating_sub(start);
+        screen.set_scrollback(s);
+        let skip = start - (hist - s);
+        let before = lines.len();
+        lines.extend(screen.rows(0, cols).skip(skip).take(total - start));
+        if lines.len() == before {
+            break;
+        }
+    }
+    screen.set_scrollback(keep);
+    (lines, hist)
 }
 
 #[derive(Default)]
@@ -62,7 +132,7 @@ impl NebulaApp {
         let title = if same == 0 { name } else { format!("{name} ({})", same + 1) };
         let mut term = Terminal::open(&site, ctx, 24, 80);
         term.site_id = site.id.clone();
-        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: false, local: None, want_focus: true, queued: Vec::new() });
+        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: false, local: None, want_focus: true, queued: Vec::new(), search: None });
         self.terminals.active = self.terminals.tabs.len() - 1;
         self.terminals.visible = true;
         let id = self.terminals.tabs[self.terminals.active].term.id;
@@ -113,7 +183,7 @@ impl NebulaApp {
         let same = self.terminals.tabs.iter().filter(|t| t.local.as_ref().is_some_and(|(s, _)| s.name == shell.name)).count();
         let title = if same == 0 { shell.name.clone() } else { format!("{} ({})", shell.name, same + 1) };
         let term = Terminal::open_local(&shell, cwd.as_deref(), ctx, 24, 80);
-        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: true, local: Some((shell, cwd)), want_focus: true, queued: Vec::new() });
+        self.terminals.tabs.push(TermTab { term, title, scroll: 0, selection: None, entered_root: true, local: Some((shell, cwd)), want_focus: true, queued: Vec::new(), search: None });
         self.terminals.active = self.terminals.tabs.len() - 1;
         self.terminals.visible = true;
         let id = self.terminals.tabs[self.terminals.active].term.id;
@@ -155,7 +225,10 @@ impl NebulaApp {
     /// True while a terminal has keyboard focus (app shortcuts stay out of its way).
     pub(super) fn terminal_focused(&self, ctx: &egui::Context) -> bool {
         self.terminals.visible
-            && self.terminals.tabs.get(self.terminals.active).is_some_and(|t| ctx.memory(|m| m.has_focus(term_id(t.term.id))))
+            && self.terminals.tabs.get(self.terminals.active).is_some_and(|t| {
+                // The search field counts too: Ctrl+F there must not open the editor's search.
+                ctx.memory(|m| m.has_focus(term_id(t.term.id)) || m.has_focus(term_id(t.term.id).with("search")))
+            })
     }
 
     /// Connection events of all terminals.
@@ -422,6 +495,28 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
     let sel = tab.selection.filter(|(a, b)| a != b).map(|(a, b)| if a <= b { (a, b) } else { (b, a) });
     let in_sel = |r: u16, c: u16| sel.is_some_and(|(s, e)| (r, c) >= s && (r, c) < e);
     let mut parser = tab.term.parser.lock().unwrap();
+    // Search: matches over history and screen, refreshed as output arrives.
+    let hist = history_len(parser.screen_mut());
+    if let Some(se) = &mut tab.search {
+        let changed = se.computed.as_ref().is_none_or(|(q, _)| *q != se.query);
+        if changed || se.computed.as_ref().is_some_and(|(_, t)| t.elapsed() > std::time::Duration::from_millis(300)) {
+            let (lines, _) = all_lines(&mut parser, rows, cols);
+            se.matches = find_in_lines(&lines, &se.query);
+            se.computed = Some((se.query.clone(), std::time::Instant::now()));
+            if changed {
+                // The newest match first, like searching upwards from the prompt.
+                se.current = se.matches.len().checked_sub(1);
+                if let Some(&(line, ..)) = se.current.and_then(|c| se.matches.get(c)) {
+                    tab.scroll = scroll_to_line(line, hist, rows);
+                }
+            } else {
+                se.current = se.current.map(|c| c.min(se.matches.len().saturating_sub(1))).filter(|_| !se.matches.is_empty());
+            }
+        }
+        if !se.query.is_empty() {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
+        }
+    }
     parser.screen_mut().set_scrollback(tab.scroll);
     // Clamped to the available history.
     tab.scroll = parser.screen().scrollback();
@@ -459,6 +554,7 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
     // Keyboard.
     let mut reconnect = false;
     let mut copy = None;
+    let mut open_search = false;
     if focused {
         ui.memory_mut(|m| {
             m.set_focus_lock_filter(id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true })
@@ -486,6 +582,8 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
                 Event::Key { key, pressed: true, modifiers, .. } => {
                     if closed && key == Key::Enter {
                         reconnect = true;
+                    } else if modifiers.ctrl && !modifiers.shift && key == Key::F {
+                        open_search = true;
                     } else if modifiers.ctrl && modifiers.shift && key == Key::C {
                         copy = selected_text.clone();
                     } else if let Some(b) = key_bytes(key, modifiers, app_cursor) {
@@ -503,6 +601,13 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
     }
     if let Some(t) = copy {
         ui.ctx().copy_text(t.trim_end().to_string());
+    }
+    if open_search {
+        let se = tab.search.get_or_insert_with(TermSearch::default);
+        if let Some(t) = selected_text.as_deref().map(str::trim).filter(|t| !t.is_empty() && !t.contains('\n')) {
+            se.query = t.to_string();
+        }
+        se.focus = true;
     }
     resp.context_menu(|ui| {
         if ui.add_enabled(selected_text.is_some(), egui::Button::new(t!("Kopieren")).shortcut_text(&crate::i18n::keys("Strg+C"))).clicked() {
@@ -546,6 +651,20 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
         }
     };
     let glyph_y = (row_h - ui.fonts_mut(|f| f.row_height(&font))) / 2.0;
+    // Search matches in view (behind the text).
+    if let Some(se) = &tab.search {
+        let top = hist - tab.scroll;
+        let first = se.matches.partition_point(|m| m.0 < top);
+        for (n, &(line, a, b)) in se.matches.iter().enumerate().skip(first).take_while(|(_, m)| m.0 < top + rows as usize) {
+            let y = inner.top() + (line - top) as f32 * row_h;
+            let r = Rect::from_min_max(pos2(inner.left() + a as f32 * char_w, y), pos2(inner.left() + b as f32 * char_w, y + row_h));
+            let current = se.current == Some(n);
+            painter.rect_filled(r, 2.0, if current { theme.find_match } else { theme.find_match.gamma_multiply(0.55) });
+            if current {
+                painter.rect_stroke(r, 2.0, Stroke::new(1.0, theme.accent), egui::StrokeKind::Outside);
+            }
+        }
+    }
     for run in &runs {
         let y = inner.top() + run.row as f32 * row_h;
         let l = run.look;
@@ -590,7 +709,9 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
     // Scroll position and connection state.
     if tab.scroll > 0 {
         let label = t!("↑ {scroll} Zeilen zurück", scroll = tab.scroll);
-        painter.text(pos2(body.right() - 12.0, body.top() + 8.0), egui::Align2::RIGHT_TOP, label, FontId::proportional(11.5), theme.text_faint);
+        // Below the search field while it is open.
+        let y = if tab.search.is_some() { 44.0 } else { 8.0 };
+        painter.text(pos2(body.right() - 12.0, body.top() + y), egui::Align2::RIGHT_TOP, label, FontId::proportional(11.5), theme.text_faint);
     }
     let note = match &tab.term.status {
         TermStatus::Connecting => Some(t!("Verbinde …").to_string()),
@@ -609,7 +730,69 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
         // Keep the blinking-free cursor current while output arrives.
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
     }
+    search_bar(ui, tab, body, theme, hist, rows);
     reconnect
+}
+
+/// The view position (lines scrolled back) that shows `line` in the middle.
+fn scroll_to_line(line: usize, hist: usize, rows: u16) -> usize {
+    let top = line.saturating_sub(rows as usize / 2).min(hist);
+    hist - top
+}
+
+/// The search field at the top right of the terminal (Ctrl+F).
+fn search_bar(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate::theme::Theme, hist: usize, rows: u16) {
+    let Some(se) = &mut tab.search else { return };
+    let field_id = term_id(tab.term.id).with("search");
+    let mut close = false;
+    let mut step: isize = 0;
+    egui::Area::new(term_id(tab.term.id).with("search-area"))
+        .fixed_pos(pos2(body.right() - 380.0, body.top() + 6.0))
+        .order(egui::Order::Foreground)
+        .show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let resp = ui.add(egui::TextEdit::singleline(&mut se.query).id(field_id).hint_text(t!("Im Verlauf suchen")).desired_width(180.0));
+                    if std::mem::take(&mut se.focus) {
+                        resp.request_focus();
+                    }
+                    if resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                        step = if ui.input(|i| i.modifiers.shift) { 1 } else { -1 };
+                        resp.request_focus();
+                    }
+                    // The field gives up its focus on Escape by itself.
+                    if (resp.has_focus() || resp.lost_focus()) && ui.input(|i| i.key_pressed(Key::Escape)) {
+                        close = true;
+                    }
+                    let count = match (se.matches.len(), se.current) {
+                        (0, _) if se.query.is_empty() => String::new(),
+                        (0, _) => t!("Keine Treffer").to_string(),
+                        (n, Some(c)) => t!("{value} von {n}", value = c + 1, n = n),
+                        (n, None) => t!("{n} Treffer", n = n),
+                    };
+                    ui.label(egui::RichText::new(count).small().color(theme.text_faint));
+                    if ui.small_button("▲").on_hover_text(t!("Älterer Treffer (Enter)")).clicked() {
+                        step = -1;
+                    }
+                    if ui.small_button("▼").on_hover_text(t!("Neuerer Treffer (Umschalt+Enter)")).clicked() {
+                        step = 1;
+                    }
+                    if ui.small_button("×").on_hover_text(t!("Schließen (Esc)")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        });
+    if step != 0 && !se.matches.is_empty() {
+        let n = se.matches.len() as isize;
+        let c = se.current.map_or(if step < 0 { n - 1 } else { 0 }, |c| (c as isize + step).rem_euclid(n));
+        se.current = Some(c as usize);
+        tab.scroll = scroll_to_line(se.matches[c as usize].0, hist, rows);
+    }
+    if close {
+        tab.search = None;
+        tab.want_focus = true;
+    }
 }
 
 /// Screen modes read along with the cells.
@@ -690,6 +873,28 @@ fn indexed(i: u8, palette: &[Color32; 16]) -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_in_history() {
+        let mut p = vt100::Parser::new(4, 40, 100);
+        for n in 0..10 {
+            p.process(format!("Zeile {n} ERROR x\r\n").as_bytes());
+        }
+        let (lines, hist) = all_lines(&mut p, 4, 40);
+        assert_eq!(hist, 7);
+        assert_eq!(lines.len(), 11);
+        assert_eq!(lines[0], "Zeile 0 ERROR x");
+        assert_eq!(lines[9], "Zeile 9 ERROR x");
+        // The view stays where it was.
+        assert_eq!(p.screen().scrollback(), 0);
+        let m = find_in_lines(&lines, "error");
+        assert_eq!(m.len(), 10);
+        assert_eq!(m[3], (3, 8, 13));
+        assert_eq!(find_in_lines(&["aaaa".into()], "aa"), [(0, 0, 2), (0, 2, 4)]);
+        // Line 3 in the middle of a 4-row view.
+        assert_eq!(scroll_to_line(3, 7, 4), 6);
+        assert_eq!(scroll_to_line(10, 7, 4), 0);
+    }
 
     #[test]
     fn indexed_colors() {
