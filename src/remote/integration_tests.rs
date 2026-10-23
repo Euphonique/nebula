@@ -143,6 +143,30 @@ fn ftp_roundtrip() {
 }
 
 #[test]
+fn backup_before_overwrite() {
+    isolated_config();
+    let home = tempfile::tempdir().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let port = spawn_ftp(&rt, home.path().to_path_buf(), 43000..=43999, false);
+    let site = Site { protocol: Protocol::Ftp, host: "127.0.0.1".into(), port, user: "test".into(), ..Default::default() };
+    let mut b = FtpBackend::connect(&site, "secret").unwrap();
+    let file = super::join(&b.home().unwrap(), "index.php");
+    // A file that does not exist yet gets no copy.
+    super::backup_file(&mut b, &file).unwrap();
+    assert!(!home.path().join("index.php.bak").exists());
+    b.write(&file, b"v1").unwrap();
+    super::backup_file(&mut b, &file).unwrap();
+    b.write(&file, b"v2").unwrap();
+    super::backup_file(&mut b, &file).unwrap();
+    b.write(&file, b"v3").unwrap();
+    assert_eq!(std::fs::read(home.path().join("index.php.bak")).unwrap(), b"v2");
+    assert_eq!(std::fs::read(home.path().join("index.php")).unwrap(), b"v3");
+    // No copies of copies.
+    super::backup_file(&mut b, &format!("{file}.bak")).unwrap();
+    assert!(!home.path().join("index.php.bak.bak").exists());
+}
+
+#[test]
 fn ftps_explicit_roundtrip() {
     isolated_config();
     let home = tempfile::tempdir().unwrap();

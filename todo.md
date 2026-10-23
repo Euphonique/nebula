@@ -9,7 +9,6 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 
 ## Sicherheit und Datenerhalt
 
-- **2** `.bak`-Kopie auf dem Server vor dem Überschreiben (eine lokale Kopie leistet schon der lokale Verlauf).
 
 ## Editor
 - **2** Makros aufnehmen und abspielen.
@@ -69,6 +68,16 @@ Runde 4 (alle **1**-Punkte, kleine zuerst) ist komplett:
 2. ~~Blame für die aktuelle Zeile~~ (erledigt).
 3. ~~Gehe zu Definition ohne Language Server~~ (erledigt).
 4. ~~Rechtschreibprüfung~~ (erledigt).
+
+Runde 5 (alle **2**-Punkte, der Reihe nach):
+
+1. ~~`.bak`-Kopie auf dem Server~~ (erledigt).
+2. Makros.
+3. Regex-Ersetzung mit Vorschau.
+4. Suche im Terminal-Verlauf.
+5. Serverdateien offline lesbar.
+6. Große Textdateien im Hintergrund laden; Hex-Editor erweitern.
+7. Absturzbericht für native Abstürze.
 
 ## Erledigt
 
@@ -145,3 +154,5 @@ Blame (23.10.): Autor, Alter („vor 3 Tagen“) und Commit-Nachricht der letzte
 Gehe zu Definition ohne Language Server (23.10.): F12/Strg+Klick findet CSS-Klassen und IDs (aus `class`/`id`, `querySelector('.x')`, `getElementById`) in CSS/SCSS/LESS und `<style>`-Blöcken, Funktionen und Klassen über die Gliederungs-Erkennung (PHP, JS/TS und weitere) im Projekt und in offenen Dateien (ungespeicherter Stand), Dateipfade in Strings öffnen die Datei. Mehrere Treffer → Auswahlliste. Läuft im Hintergrund, beachtet `.gitignore`; Erweiterungen haben Vorrang.
 
 Rechtschreibprüfung (23.10.): Windows-Rechtschreibprüfung (ISpellChecker, eigener Thread) für Kommentare, Markdown-Text (ohne Codeblöcke, Inline-Code, Links), HTML-Text und Textdateien; camelCase, Pfade, Adressen, Zahlen und Großbuchstaben-Kürzel werden übersprungen. Nur sichtbare Zeilen, Ergebnis pro Zeileninhalt zwischengespeichert. Rechtsklick: Vorschläge, „Zum Wörterbuch hinzufügen“, „Ignorieren“. Sprachen automatisch (Windows-Sprache + Englisch, falls installiert) oder wählbar; mehrere Sprachen: falsch nur, wenn keine das Wort kennt. Abschaltbar unter Ansicht und Einstellungen › Editor.
+
+`.bak`-Kopie (23.10.): pro Server „Vor dem Überschreiben eine Kopie als .bak anlegen“ – beim Speichern von Serverdateien und beim Hochladen einzelner Dateien (auch „Beim Speichern hochladen“) wird die vorhandene Datei erst als `name.bak` gesichert; schlägt das fehl, wird nicht überschrieben.

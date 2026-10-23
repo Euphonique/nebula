@@ -2509,6 +2509,10 @@ impl NebulaApp {
                                 }
                             }
                         }
+                        ui.label("");
+                        ui.checkbox(&mut s.backup_on_save, t!("Vor dem Überschreiben eine Kopie als .bak anlegen"))
+                            .on_hover_text(t!("Beim Speichern und Hochladen wird die vorhandene Datei erst als „name.bak“ gesichert (eine ältere Kopie wird ersetzt)."));
+                        ui.end_row();
                     });
                     if form.site.protocol == Protocol::Ftp {
                         ui.add_space(4.0);

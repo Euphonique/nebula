@@ -460,6 +460,8 @@ pub struct Site {
     pub web_url: String,
     /// Commands run in the SSH terminal with one click (cache, deploy, …).
     pub commands: Vec<ServerCommand>,
+    /// Before overwriting a server file, keep the previous version as `<name>.bak`.
+    pub backup_on_save: bool,
     /// Group in the server list; empty = none.
     pub group: String,
 }
@@ -486,6 +488,7 @@ impl Default for Site {
             accept_invalid_certs: false,
             web_url: String::new(),
             commands: Vec::new(),
+            backup_on_save: false,
             group: String::new(),
         }
     }

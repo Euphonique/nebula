@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui;
 
@@ -516,6 +516,7 @@ impl Worker {
         if self.backend.is_none() {
             self.open()?;
         }
+        let backup = self.site.backup_on_save;
         let b = self.backend.as_mut().unwrap();
         Ok(match request {
             Request::List(path) => {
@@ -539,11 +540,17 @@ impl Worker {
                 {
                     return Ok(Reply::Conflict { path: path.clone() });
                 }
+                if backup {
+                    backup_file(b.as_mut(), path)?;
+                }
                 b.write(path, data)?;
                 let stamp = b.stat(path).ok().flatten();
                 Reply::Written { path: path.clone(), bytes: data.len(), stamp }
             }
             Request::Upload { local, remote } => {
+                if backup && local.is_file() {
+                    backup_file(b.as_mut(), remote)?;
+                }
                 let n = upload_recursive(b.as_mut(), local, remote, progress)?;
                 Reply::Transferred {
                     message: t!("{n} Datei(en) hochgeladen", n = n),
@@ -673,6 +680,18 @@ fn scan_recursive(b: &mut dyn Backend, dir: &str, rel: &str, exclude: &[String],
         }
     }
     Ok(false)
+}
+
+/// Copies an existing server file to `<name>.bak` before it is overwritten
+/// (replacing an older copy). Nothing happens if the file does not exist yet.
+fn backup_file(b: &mut dyn Backend, path: &str) -> Result<()> {
+    // A failing stat (e.g. the folder does not exist yet) means: nothing to keep.
+    if path.ends_with(".bak") || !matches!(b.stat(path), Ok(Some(_))) {
+        return Ok(());
+    }
+    let old = b.read(path)?;
+    b.write(&format!("{path}.bak"), &old)
+        .with_context(|| t!("Sicherungskopie {path}.bak konnte nicht angelegt werden", path = path))
 }
 
 fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str, p: &mut Progress) -> Result<usize> {
