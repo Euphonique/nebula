@@ -24,6 +24,7 @@ mod print;
 mod crash;
 mod remote;
 mod server_import;
+mod offline;
 mod snippet_io;
 mod spell;
 mod sync;

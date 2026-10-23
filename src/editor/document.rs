@@ -368,6 +368,8 @@ pub struct Document {
     pub suggested_name: Option<String>,
     /// Generated content (e.g. a comparison) that edits must not change.
     pub read_only: bool,
+    /// Server file shown from the offline copy of this time (read-only until reconnected).
+    pub offline: Option<std::time::SystemTime>,
     /// Image tab: the decoded picture (the text is empty).
     pub image: Option<std::sync::Arc<crate::image_view::Image>>,
     /// Binary file shown as hex (the text is empty).
@@ -413,6 +415,7 @@ impl Document {
             remote_stamp: None,
             suggested_name: None,
             read_only: false,
+            offline: None,
             image: None,
             hex: None,
             disk_stamp: None,

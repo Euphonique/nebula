@@ -27,7 +27,7 @@ use crate::settings::{Protocol, Site};
 /// Idle time after which a connection is pinged to keep it alive.
 const KEEPALIVE: Duration = Duration::from_secs(45);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RemoteEntry {
     pub name: String,
     pub path: String,

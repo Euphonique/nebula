@@ -13,7 +13,6 @@ Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind al
 ## Server und Veröffentlichen
 
 - **3** Datenbank light: MySQL über SSH-Tunnel, Tabellen ansehen, Abfragen ausführen.
-- **2** Serverdateien zwischenspeichern, damit sie offline lesbar bleiben.
 
 ## Live-Vorschau und Web
 
@@ -66,7 +65,7 @@ Runde 5 (alle **2**-Punkte, der Reihe nach):
 2. ~~Makros~~ (erledigt).
 3. ~~Regex-Ersetzung mit Vorschau~~ (erledigt).
 4. ~~Suche im Terminal-Verlauf~~ (erledigt).
-5. Serverdateien offline lesbar.
+5. ~~Serverdateien offline lesbar~~ (erledigt).
 6. Große Textdateien im Hintergrund laden; Hex-Editor erweitern.
 7. Absturzbericht für native Abstürze.
 
@@ -153,3 +152,5 @@ Makros (23.10.): Aufnahme (Strg+Umschalt+R, „● Makro-Aufnahme“ in der Stat
 Regex-Ersetzung mit Vorschau (23.10.): Suchleiste zeigt unter dem Ersetzungsfeld die Zeile des aktuellen (oder nächsten) Treffers mit „alt durchgestrichen → neu“; Projektsuche zeigt bei offenem „Ersetzen“ jeden Treffer so. Ersetzung versteht `$1`/`${name}` und zusätzlich `\1`, `\n`, `\t`. Behoben: Die Projektsuche hat `$` im Ersetzungstext auch ohne Regex als Gruppenverweis gelesen (`$preis` wurde leer).
 
 Suche im Terminal-Verlauf (23.10.): Strg+F im Terminal öffnet oben rechts ein Suchfeld (vorbelegt mit der Auswahl); durchsucht Verlauf und Bildschirm ohne Groß-/Kleinschreibung, markiert alle Treffer, springt zum neuesten und scrollt mit Enter/Umschalt+Enter oder ▲/▼ zu älteren/neueren; Treffer folgen neuer Ausgabe; Esc schließt und gibt den Fokus ans Terminal zurück.
+
+Serverdateien offline (23.10.): Kopien geöffneter/gespeicherter Serverdateien, Ordnerlisten und Startordner unter `offline\<Server>` im Einstellungsordner (Dateien bis 10 MB, gesamt 500 MB, älteste zuerst entfernt). Bei Verbindungsfehler zeigt die Seitenleiste „Offline – Stand vom …“ mit den gemerkten Ordnern, Dateien (auch Sitzungs-Tabs beim Start) öffnen schreibgeschützt aus der Kopie mit Hinweis in der Statusleiste; nach „Erneut versuchen“ bzw. Wiederverbinden werden sie frisch geladen. Einstellung und „Leeren“ unter Einstellungen › Editor; beim Entfernen eines Servers wird sein Zwischenspeicher gelöscht.

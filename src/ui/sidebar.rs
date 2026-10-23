@@ -232,6 +232,10 @@ pub struct RemoteTree {
     pub dirs: HashMap<String, Vec<RemoteEntry>>,
     pub expanded: HashSet<String>,
     pub loading: HashSet<String>,
+    /// Unreachable: folders come from the offline copies of this time.
+    pub offline: Option<std::time::SystemTime>,
+    /// Offline folders that were never listed (shown as such, not as empty).
+    pub uncached: HashSet<String>,
 }
 
 impl RemoteTree {
@@ -242,6 +246,8 @@ impl RemoteTree {
             dirs: HashMap::new(),
             expanded: HashSet::new(),
             loading: HashSet::new(),
+            offline: None,
+            uncached: HashSet::new(),
         }
     }
 }
@@ -1271,7 +1277,16 @@ impl Sidebar {
             }
             RemoteStatus::Failed(msg) => {
                 let msg = msg.clone();
-                indent_label(ui, 1, &msg, theme.danger);
+                match tree.offline {
+                    Some(when) => {
+                        let label = t!("Offline – Stand vom {date}", date = crate::offline::format_time(when));
+                        ui.horizontal(|ui| {
+                            ui.add_space(28.0);
+                            ui.label(egui::RichText::new(label).small().color(theme.modified)).on_hover_text(&msg);
+                        });
+                    }
+                    None => indent_label(ui, 1, &msg, theme.danger),
+                }
                 ui.horizontal(|ui| {
                     ui.add_space(28.0);
                     if ui.small_button(t!("Erneut versuchen")).clicked() {
@@ -1303,6 +1318,18 @@ impl Sidebar {
         actions: &mut Vec<SidebarAction>,
     ) {
         let Some(tree) = self.remote.get_mut(site_id) else { return };
+        if tree.offline.is_some() && !tree.dirs.contains_key(dir) {
+            // Offline: folders come from the kept listings.
+            let cached = crate::offline::load_listing(site_id, dir);
+            if cached.is_none() {
+                tree.uncached.insert(dir.to_string());
+            }
+            tree.dirs.insert(dir.to_string(), cached.unwrap_or_default());
+        }
+        if tree.uncached.contains(dir) {
+            indent_label(ui, depth, t!("(offline nicht verfügbar)"), rc.theme.gutter_fg);
+            return;
+        }
         let Some(entries) = tree.dirs.get(dir).cloned() else {
             if !tree.loading.contains(dir) {
                 tree.loading.insert(dir.to_string());

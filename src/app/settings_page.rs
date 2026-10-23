@@ -259,6 +259,23 @@ impl NebulaApp {
                 .small()
                 .color(self.theme.text_faint),
         );
+        section(ui, t!("Offline"));
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.settings.offline_cache, t!("Serverdateien und -ordner für die Offline-Ansicht zwischenspeichern"));
+            if ui.small_button(t!("Leeren")).clicked() {
+                let mb = crate::offline::total_size() as f64 / 1024.0 / 1024.0;
+                match crate::offline::clear() {
+                    Ok(()) => self.info(t!("Zwischenspeicher geleert ({mb} MB).", mb = format!("{mb:.1}"))),
+                    Err(e) => self.error(t!("Zwischenspeicher konnte nicht geleert werden: {e}", e = e)),
+                }
+            }
+        });
+        ui.label(
+            RichText::new(t!("Ist ein Server nicht erreichbar, zeigt die Seitenleiste den zuletzt gesehenen Stand, und Dateien öffnen sich schreibgeschützt aus der Kopie. Nach dem Wiederverbinden werden sie neu geladen."))
+                .small()
+                .color(self.theme.text_faint),
+        );
+        let e = &mut self.settings.editor;
         section(ui, t!("Rechtschreibprüfung"));
         ui.checkbox(&mut e.spell_check, t!("Kommentare, Markdown und Text prüfen (Windows-Rechtschreibprüfung)"));
         if e.spell_check {

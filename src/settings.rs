@@ -123,6 +123,8 @@ pub struct AppSettings {
     legacy_theme: Option<String>,
     /// Windows 11 Mica backdrop behind sidebar and title bar.
     pub mica: bool,
+    /// Keep copies of server files and folders to read them while offline.
+    pub offline_cache: bool,
     pub sidebar_width: f32,
     pub last_folder: Option<PathBuf>,
     pub recent_files: Vec<PathBuf>,
@@ -294,6 +296,7 @@ impl Default for AppSettings {
             legacy_dark: None,
             legacy_theme: None,
             mica: true,
+            offline_cache: true,
             sidebar_width: 260.0,
             last_folder: None,
             recent_files: Vec::new(),

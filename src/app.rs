@@ -249,6 +249,8 @@ pub struct NebulaApp {
 impl NebulaApp {
     pub fn new(cc: &eframe::CreationContext<'_>, open_paths: Vec<PathBuf>) -> Self {
         let settings = AppSettings::load();
+        // Old offline copies of server files beyond the size limit go.
+        std::thread::spawn(crate::offline::prune);
         crate::i18n::load();
         crate::i18n::set_language(&settings.ui_language);
         settings.apply_languages();
@@ -536,9 +538,40 @@ impl NebulaApp {
             return;
         }
         let Some(site) = self.sites.get(site_id).cloned() else { return };
+        // Known to be offline: show the kept copy instead of waiting for a timeout.
+        if self.sidebar.remote.get(site_id).is_some_and(|t| t.offline.is_some()) && self.open_offline(site_id, path) {
+            return;
+        }
         self.ensure_tree(&site);
         let tag = self.remote.send(&site, Request::Read(path.to_string()));
         self.pending_opens.insert(tag, (site_id.to_string(), path.to_string()));
+    }
+
+    /// Opens the offline copy of a server file, read-only; false if there is none.
+    fn open_offline(&mut self, site_id: &str, path: &str) -> bool {
+        if !self.settings.offline_cache {
+            return false;
+        }
+        let Some((data, when)) = crate::offline::load_file(site_id, path) else { return false };
+        let source = DocSource::Remote { site_id: site_id.to_string(), path: path.to_string() };
+        if self.docs.iter().any(|d| d.source == source) {
+            return true;
+        }
+        if crate::image_view::is_image_name(path) {
+            self.open_image(source, &data);
+        } else {
+            let mut doc = Document::from_bytes(source, &data);
+            if is_binary(&data) {
+                doc = Document::new(doc.source.clone(), "");
+                doc.hex = Some(Arc::new(crate::hex_view::HexData::memory(data.to_vec())));
+            }
+            doc.read_only = true;
+            doc.offline = Some(when);
+            self.add_doc(doc);
+        }
+        let name = path.rsplit('/').next().unwrap_or(path);
+        self.info(t!("{name}: Offline-Kopie vom {date} (schreibgeschützt)", name = name, date = crate::offline::format_time(when)));
+        true
     }
 
     fn pick_and_open_file(&mut self) {
@@ -762,14 +795,40 @@ impl NebulaApp {
                         .entry(ev.site_id.clone())
                         .or_insert_with(RemoteTree::new);
                     tree.status = RemoteStatus::Connected;
+                    if tree.offline.take().is_some() {
+                        // Back online: folders are listed fresh.
+                        tree.dirs.clear();
+                        tree.uncached.clear();
+                        tree.home = None;
+                    }
+                    if self.settings.offline_cache {
+                        crate::offline::store_home(&ev.site_id, &home);
+                    }
                     if tree.home.is_none() {
                         tree.home = Some(home);
+                    }
+                    // Tabs shown from offline copies load the current version.
+                    let offline: Vec<u64> = self
+                        .docs
+                        .iter()
+                        .filter(|d| d.offline.is_some() && matches!(&d.source, DocSource::Remote { site_id, .. } if *site_id == ev.site_id))
+                        .map(|d| d.id)
+                        .collect();
+                    for id in offline {
+                        self.reload_remote(id);
                     }
                 }
                 Reply::ConnectFailed { message } => {
                     if let Some(tree) = self.sidebar.remote.get_mut(&ev.site_id) {
                         tree.status = RemoteStatus::Failed(message.clone());
                         tree.loading.clear();
+                        // Show what was kept from earlier visits.
+                        if self.settings.offline_cache
+                            && let Some((home, when)) = crate::offline::load_home(&ev.site_id)
+                        {
+                            tree.offline = Some(when);
+                            tree.home.get_or_insert(home);
+                        }
                     }
                     self.remote.forget(&ev.site_id);
                     self.error(format!("{site_name}: {message}"));
@@ -780,6 +839,9 @@ impl NebulaApp {
                     self.sidebar.remote.remove(&ev.site_id);
                 }
                 Reply::Listed { path, entries } => {
+                    if self.settings.offline_cache {
+                        crate::offline::store_listing(&ev.site_id, &path, &entries);
+                    }
                     if let Some(tree) = self.sidebar.remote.get_mut(&ev.site_id) {
                         tree.loading.remove(&path);
                         tree.dirs.insert(path, entries);
@@ -798,6 +860,9 @@ impl NebulaApp {
                     }
                     if self.diff_read_done(ev.tag, Ok(&data)) {
                         continue;
+                    }
+                    if self.settings.offline_cache && (self.pending_opens.contains_key(&ev.tag) || self.pending_reloads.contains_key(&ev.tag)) {
+                        crate::offline::store_file(&ev.site_id, &path, &data);
                     }
                     if let Some((doc_id, encoding)) = self.pending_reloads.remove(&ev.tag) {
                         if let Some(i) = self.doc_index(doc_id) {
@@ -872,6 +937,9 @@ impl NebulaApp {
                         let source = DocSource::Remote { site_id: ev.site_id.clone(), path: path.clone() };
                         let data = save.data.clone();
                         self.record_history(&source, &data, crate::history::Kind::Saved);
+                        if self.settings.offline_cache {
+                            crate::offline::store_file(&ev.site_id, &path, &data);
+                        }
                     }
                     if let Some(save) = self.pending_saves.remove(&ev.tag)
                         && let Some(i) = self.doc_index(save.doc_id)
@@ -1035,7 +1103,12 @@ impl NebulaApp {
     }
 
     fn fail_pending_for_site(&mut self, site_id: &str) {
+        // Files that were being opened come from their offline copies if there are any.
+        let waiting: Vec<String> = self.pending_opens.values().filter(|(s, _)| s == site_id).map(|(_, p)| p.clone()).collect();
         self.pending_opens.retain(|_, (s, _)| s != site_id);
+        for path in waiting {
+            self.open_offline(site_id, &path);
+        }
         self.backup_open_failed(site_id, None);
         let ids: Vec<u64> = self.pending_saves.values().map(|s| s.doc_id).collect();
         for id in ids {
@@ -2242,6 +2315,10 @@ impl NebulaApp {
                 if clickable(ui, info).on_hover_text(t!("Gehe zu Zeile (Strg+G)")).clicked() {
                     goto_line = true;
                 }
+                if let Some(when) = doc.offline {
+                    ui.label(RichText::new(t!("Offline-Kopie vom {date}", date = crate::offline::format_time(when))).size(11.5).color(theme.modified))
+                        .on_hover_text(t!("Der Server war nicht erreichbar. Schreibgeschützt, bis die Verbindung wieder steht."));
+                }
                 if crate::editor::macros::recording() {
                     ui.label(RichText::new(t!("● Makro-Aufnahme")).size(11.5).color(theme.danger))
                         .on_hover_text(t!("Beenden mit Strg+Umschalt+R"));
@@ -2702,6 +2779,7 @@ impl NebulaApp {
                     if let Some(site) = self.sites.get(&id) {
                         site.delete_password();
                     }
+                    crate::offline::forget_site(&id);
                     self.sites.sites.retain(|s| s.id != id);
                     let _ = self.sites.save();
                 }
