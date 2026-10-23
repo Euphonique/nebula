@@ -2490,11 +2490,11 @@ impl NebulaApp {
                                 });
                                 ui.end_row();
                             }
-                            Protocol::Ftp | Protocol::Ftps => {
+                            Protocol::Ftp | Protocol::Ftps | Protocol::FtpsImplicit => {
                                 ui.label("");
                                 ui.checkbox(&mut s.passive, t!("Passiver Modus"));
                                 ui.end_row();
-                                if s.protocol == Protocol::Ftps {
+                                if s.protocol.is_tls_ftp() {
                                     ui.label("");
                                     ui.checkbox(&mut s.accept_invalid_certs, t!("Ungültige Zertifikate akzeptieren"));
                                     ui.end_row();

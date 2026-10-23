@@ -390,16 +390,19 @@ pub enum Protocol {
     Ftp,
     /// FTP with explicit TLS (AUTH TLS).
     Ftps,
+    /// FTP with implicit TLS (TLS from the first byte, usually port 990).
+    FtpsImplicit,
     Sftp,
 }
 
 impl Protocol {
-    pub const ALL: [Protocol; 3] = [Protocol::Sftp, Protocol::Ftp, Protocol::Ftps];
+    pub const ALL: [Protocol; 4] = [Protocol::Sftp, Protocol::Ftp, Protocol::Ftps, Protocol::FtpsImplicit];
 
     pub fn label(self) -> &'static str {
         match self {
             Protocol::Ftp => "FTP",
             Protocol::Ftps => t!("FTPS (explizites TLS)"),
+            Protocol::FtpsImplicit => t!("FTPS (implizites TLS)"),
             Protocol::Sftp => "SFTP",
         }
     }
@@ -408,7 +411,7 @@ impl Protocol {
     pub fn scheme(self) -> &'static str {
         match self {
             Protocol::Ftp => "ftp",
-            Protocol::Ftps => "ftps",
+            Protocol::Ftps | Protocol::FtpsImplicit => "ftps",
             Protocol::Sftp => "sftp",
         }
     }
@@ -416,8 +419,14 @@ impl Protocol {
     pub fn default_port(self) -> u16 {
         match self {
             Protocol::Ftp | Protocol::Ftps => 21,
+            Protocol::FtpsImplicit => 990,
             Protocol::Sftp => 22,
         }
+    }
+
+    /// FTPS in either mode.
+    pub fn is_tls_ftp(self) -> bool {
+        matches!(self, Protocol::Ftps | Protocol::FtpsImplicit)
     }
 }
 

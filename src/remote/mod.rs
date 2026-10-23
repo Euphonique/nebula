@@ -414,7 +414,7 @@ impl Worker {
     fn open(&mut self) -> Result<()> {
         let password = self.password.clone().unwrap_or_default();
         let mut backend: Box<dyn Backend> = match self.site.protocol {
-            Protocol::Ftp | Protocol::Ftps => Box::new(ftp::FtpBackend::connect(&self.site, &password)?),
+            Protocol::Ftp | Protocol::Ftps | Protocol::FtpsImplicit => Box::new(ftp::FtpBackend::connect(&self.site, &password)?),
             Protocol::Sftp => {
                 let events = self.events.clone();
                 let ctx = self.ctx.clone();

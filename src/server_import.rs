@@ -105,10 +105,7 @@ fn filezilla_server(node: roxmltree::Node, group: &str) -> Option<Imported> {
     let protocol = match text("Protocol").as_str() {
         "1" => Protocol::Sftp,
         "4" => Protocol::Ftps,
-        "3" => {
-            notes.push(t!("Implizites FTPS wird nicht unterstützt – als FTPS mit explizitem TLS übernommen."));
-            Protocol::Ftps
-        }
+        "3" => Protocol::FtpsImplicit,
         "0" => {
             notes.push(t!("FileZilla nutzt hier TLS, wenn verfügbar – falls der Server es kann, auf FTPS umstellen."));
             Protocol::Ftp
@@ -282,6 +279,14 @@ mod tests {
         assert_eq!((c.site.protocol, c.site.port), (Protocol::Ftp, 21));
         assert!(!c.site.passive);
         assert!(c.note.as_deref().unwrap().contains("Passwort"));
+    }
+
+    #[test]
+    fn filezilla_implicit_ftps() {
+        let xml = r#"<FileZilla3><Servers><Server><Host>h</Host><Protocol>3</Protocol><Name>I</Name></Server></Servers></FileZilla3>"#;
+        let list = parse(xml.as_bytes()).unwrap();
+        assert_eq!((list[0].site.protocol, list[0].site.port), (Protocol::FtpsImplicit, 990));
+        assert!(list[0].note.is_none());
     }
 
     #[test]

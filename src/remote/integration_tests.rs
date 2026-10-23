@@ -102,25 +102,33 @@ fn exercise(b: &mut dyn Backend, root: &str) {
     assert!(b.list(root).unwrap().iter().all(|e| e.name != "site"));
 }
 
-#[test]
-fn ftp_roundtrip() {
-    isolated_config();
-    let home = tempfile::tempdir().unwrap();
+/// Starts an FTP server on a free port; with `tls`, it also offers FTPS.
+fn spawn_ftp(rt: &tokio::runtime::Runtime, root: PathBuf, passive: std::ops::RangeInclusive<u16>, tls: bool) -> u16 {
     let port = free_port();
-    let root = home.path().to_path_buf();
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let testdata = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/remote/testdata");
     rt.spawn(async move {
-        let server = libunftp::ServerBuilder::new(Box::new(move || {
+        let mut builder = libunftp::ServerBuilder::new(Box::new(move || {
             unftp_sbe_fs::Filesystem::new(root.clone()).unwrap()
         }))
         // Below the range Windows hands out for random ports (49152+), which
         // other tests running at the same time use.
-        .passive_ports(40000..=40999)
-        .build()
-        .unwrap();
+        .passive_ports(passive);
+        if tls {
+            builder = builder.ftps(testdata.join("cert.pem"), testdata.join("key.pem"));
+        }
+        let server = builder.build().unwrap();
         server.listen(format!("127.0.0.1:{port}")).await.unwrap();
     });
     std::thread::sleep(Duration::from_millis(300));
+    port
+}
+
+#[test]
+fn ftp_roundtrip() {
+    isolated_config();
+    let home = tempfile::tempdir().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let port = spawn_ftp(&rt, home.path().to_path_buf(), 40000..=40999, false);
 
     let site = Site {
         protocol: Protocol::Ftp,
@@ -130,6 +138,94 @@ fn ftp_roundtrip() {
         ..Default::default()
     };
     let mut b = FtpBackend::connect(&site, "secret").expect("ftp connect");
+    let home_dir = b.home().unwrap();
+    exercise(&mut b, &home_dir);
+}
+
+#[test]
+fn ftps_explicit_roundtrip() {
+    isolated_config();
+    let home = tempfile::tempdir().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let port = spawn_ftp(&rt, home.path().to_path_buf(), 42000..=42999, true);
+    let site = Site {
+        protocol: Protocol::Ftps,
+        host: "localhost".into(),
+        port,
+        user: "test".into(),
+        accept_invalid_certs: true,
+        ..Default::default()
+    };
+    let mut b = FtpBackend::connect(&site, "secret").expect("explicit ftps connect");
+    let home_dir = b.home().unwrap();
+    exercise(&mut b, &home_dir);
+}
+
+/// Implicit FTPS: libunftp only speaks explicit TLS, so a TLS terminator in front
+/// of its control port plays the implicit server; data connections go straight to
+/// libunftp, which secures them after PROT P.
+#[test]
+fn ftps_implicit_roundtrip() {
+    use std::io::{Read, Write};
+    use suppaftp::native_tls::{Identity, TlsAcceptor};
+
+    isolated_config();
+    let home = tempfile::tempdir().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let ftp_port = spawn_ftp(&rt, home.path().to_path_buf(), 41000..=41999, true);
+
+    let testdata = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/remote/testdata");
+    let identity = Identity::from_pkcs8(
+        &std::fs::read(testdata.join("cert.pem")).unwrap(),
+        &std::fs::read(testdata.join("key.pem")).unwrap(),
+    )
+    .unwrap();
+    let acceptor = Arc::new(TlsAcceptor::new(identity).unwrap());
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for client in listener.incoming() {
+            let Ok(client) = client else { continue };
+            let acceptor = acceptor.clone();
+            std::thread::spawn(move || {
+                // Connections that close before the handshake (the connect check) end here.
+                let Ok(mut tls) = acceptor.accept(client) else { return };
+                let mut server = std::net::TcpStream::connect(("127.0.0.1", ftp_port)).unwrap();
+                // Poll both directions on one thread; TlsStream can't be split.
+                tls.get_ref().set_read_timeout(Some(Duration::from_millis(10))).unwrap();
+                server.set_read_timeout(Some(Duration::from_millis(10))).unwrap();
+                let mut buf = [0u8; 8192];
+                loop {
+                    match tls.read(&mut buf) {
+                        Ok(0) => return,
+                        Ok(n) => server.write_all(&buf[..n]).unwrap(),
+                        Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                        Err(_) => return,
+                    }
+                    match server.read(&mut buf) {
+                        Ok(0) => return,
+                        Ok(n) => {
+                            if tls.write_all(&buf[..n]).is_err() {
+                                return;
+                            }
+                        }
+                        Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                        Err(_) => return,
+                    }
+                }
+            });
+        }
+    });
+
+    let site = Site {
+        protocol: Protocol::FtpsImplicit,
+        host: "localhost".into(),
+        port,
+        user: "test".into(),
+        accept_invalid_certs: true,
+        ..Default::default()
+    };
+    let mut b = FtpBackend::connect(&site, "secret").expect("implicit ftps connect");
     let home_dir = b.home().unwrap();
     exercise(&mut b, &home_dir);
 }

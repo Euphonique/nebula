@@ -1,4 +1,4 @@
-//! FTP and FTPS (explicit TLS via Windows SChannel).
+//! FTP and FTPS (explicit or implicit TLS via Windows SChannel).
 
 use std::io::Cursor;
 use std::net::ToSocketAddrs;
@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use suppaftp::list::{File, ListParser, PosixPexQuery};
 use suppaftp::native_tls::TlsConnector;
 use suppaftp::types::FileType;
-use suppaftp::{Mode, NativeTlsConnector, NativeTlsFtpStream};
+use suppaftp::{Mode, NativeTlsConnector, NativeTlsFtpStream, Status};
 
 use super::{Backend, RemoteEntry, Stamp, join};
 use crate::settings::{Protocol, Site};
@@ -23,22 +23,48 @@ pub struct FtpBackend {
 
 impl FtpBackend {
     pub fn connect(site: &Site, password: &str) -> Result<Self> {
-        let addr = (site.host.as_str(), site.port)
+        let addrs: Vec<_> = (site.host.as_str(), site.port)
             .to_socket_addrs()
             .with_context(|| t!("Host {host} nicht gefunden", host = site.host))?
-            .next()
-            .ok_or_else(|| anyhow!(t!("Host {host} nicht gefunden", host = site.host)))?;
-        let mut stream = NativeTlsFtpStream::connect_timeout(addr, TIMEOUT)
+            .collect();
+        if addrs.is_empty() {
+            return Err(anyhow!(t!("Host {host} nicht gefunden", host = site.host)));
+        }
+        // Hosts often resolve to IPv6 and IPv4; take the first that answers.
+        let mut last_err = None;
+        let (tcp, addr) = addrs
+            .iter()
+            .find_map(|a| match std::net::TcpStream::connect_timeout(a, TIMEOUT) {
+                Ok(s) => Some((s, *a)),
+                Err(e) => {
+                    last_err = Some(e);
+                    None
+                }
+            })
+            .ok_or_else(|| last_err.unwrap())
             .with_context(|| t!("Verbindung zu {host}:{port} fehlgeschlagen", host = site.host, port = site.port))?;
-
-        if site.protocol == Protocol::Ftps {
+        let connector = || -> Result<NativeTlsConnector> {
             let connector = TlsConnector::builder()
                 .danger_accept_invalid_certs(site.accept_invalid_certs)
                 .danger_accept_invalid_hostnames(site.accept_invalid_certs)
                 .build()
                 .context(t!("TLS konnte nicht initialisiert werden"))?;
+            Ok(NativeTlsConnector::from(connector))
+        };
+
+        let mut stream = if site.protocol == Protocol::FtpsImplicit {
+            // TLS from the first byte. suppaftp opens its own connection for that,
+            // so the probe above only picked the address (with a timeout).
+            drop(tcp);
+            NativeTlsFtpStream::connect_secure_implicit(addr, connector()?, &site.host)
+                .context(t!("TLS-Aushandlung fehlgeschlagen"))?
+        } else {
+            NativeTlsFtpStream::connect_with_stream(tcp)
+                .with_context(|| t!("Verbindung zu {host}:{port} fehlgeschlagen", host = site.host, port = site.port))?
+        };
+        if site.protocol == Protocol::Ftps {
             stream = stream
-                .into_secure(NativeTlsConnector::from(connector), &site.host)
+                .into_secure(connector()?, &site.host)
                 .context(t!("TLS-Aushandlung fehlgeschlagen"))?;
         }
 
@@ -46,6 +72,12 @@ impl FtpBackend {
         stream
             .login(user, password)
             .context(t!("Anmeldung fehlgeschlagen (Benutzername oder Passwort falsch?)"))?;
+        if site.protocol == Protocol::FtpsImplicit {
+            // Explicit mode negotiates this during `into_secure`; without PROT P the
+            // server would expect plain data connections.
+            stream.custom_command("PBSZ 0", &[Status::CommandOk])?;
+            stream.custom_command("PROT P", &[Status::CommandOk])?;
+        }
         stream.transfer_type(FileType::Binary)?;
         if site.passive {
             stream.set_mode(Mode::Passive);

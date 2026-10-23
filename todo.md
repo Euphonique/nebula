@@ -5,36 +5,35 @@
 
 # Nebula – offene Ideen
 
-Priorität: **A** = fehlt spürbar im Alltag, **B** = deutlicher Komfortgewinn, **C** = nice to have.
+Reihenfolge: **1** = als Nächstes, dann **2**, **3**, **4** (A/B-Punkte sind alle erledigt).
 
 ## Sicherheit und Datenerhalt
 
-- **C** `.bak`-Kopie auf dem Server vor dem Überschreiben (eine lokale Kopie leistet schon der lokale Verlauf).
+- **2** `.bak`-Kopie auf dem Server vor dem Überschreiben (eine lokale Kopie leistet schon der lokale Verlauf).
 
 ## Editor
-- **C** Makros aufnehmen und abspielen.
-- **C** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
-- **C** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
+- **2** Makros aufnehmen und abspielen.
+- **1** Rechtschreibprüfung für Texte, Kommentare und Markdown (Windows-Rechtschreibprüfung nutzen).
+- **3** Ligaturen in der Editorschrift (egui formt keine Ligaturen; bräuchte eigenes Text-Shaping).
 
 ## Suchen und Navigieren
 
-- **C** Regex-Ersetzung mit Vorschau.
-- **C** Gehe zu Definition ohne Language Server für einfache Fälle (CSS-Klassen, PHP-Funktionen im Projekt).
+- **2** Regex-Ersetzung mit Vorschau.
+- **1** Gehe zu Definition ohne Language Server für einfache Fälle (CSS-Klassen, PHP-Funktionen im Projekt).
 
 ## Git
 
-- **C** Blame für die aktuelle Zeile (Autor/Datum dezent am Zeilenende).
+- **1** Blame für die aktuelle Zeile (Autor/Datum dezent am Zeilenende).
 
 ## Server und Veröffentlichen
 
-- **C** Implizites FTPS (Port 990) – wird beim FileZilla-Import bisher als explizites FTPS übernommen.
-- **C** Suche im Terminal-Verlauf (Strg+F im Terminal, Treffer im Scrollback hervorheben).
-- **C** Datenbank light: MySQL über SSH-Tunnel, Tabellen ansehen, Abfragen ausführen.
-- **C** Serverdateien zwischenspeichern, damit sie offline lesbar bleiben.
+- **2** Suche im Terminal-Verlauf (Strg+F im Terminal, Treffer im Scrollback hervorheben).
+- **3** Datenbank light: MySQL über SSH-Tunnel, Tabellen ansehen, Abfragen ausführen.
+- **2** Serverdateien zwischenspeichern, damit sie offline lesbar bleiben.
 
 ## Live-Vorschau und Web
 
-- **C** Gerätebreiten der Vorschau: Querformat und eigene Breiten.
+- **3** Gerätebreiten der Vorschau: Querformat und eigene Breiten.
 
 ## KI-Unterstützung (wie in VS Code)
 
@@ -42,14 +41,14 @@ Alle abgestimmten KI-Punkte sind erledigt (siehe „Erledigt“): Agenten über 
 
 ## Oberfläche und Allgemein
 
-- **C** Update-Hinweis (braucht eine Adresse, unter der neue Versionen veröffentlicht werden).
-- **C** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
+- **3** Update-Hinweis (braucht eine Adresse, unter der neue Versionen veröffentlicht werden).
+- **3** Barrierefreiheit: Bildschirmleser im Editor (AccessKit ist schon eingebunden), hoher Kontrast.
 
 ## Qualität und Technik
 
-- **C** Große Textdateien im Hintergrund laden (bei ~70 MB blockiert das Öffnen die Oberfläche kurz); Hex-Editor: „Gehe zu Offset“, Suche, Bytes einfügen/löschen (Größe ändern).
-- **C** Absturzbericht auch für harte Abstürze in nativem Code (Zugriffsverletzung in WebView/wgpu), z. B. per `SetUnhandledExceptionFilter` – bisher nur Rust-Panics.
-- **C** Automatisierte UI-Tests für die wichtigsten Abläufe (Öffnen, Bearbeiten, Speichern lokal/Server).
+- **2** Große Textdateien im Hintergrund laden (bei ~70 MB blockiert das Öffnen die Oberfläche kurz); Hex-Editor: „Gehe zu Offset“, Suche, Bytes einfügen/löschen (Größe ändern).
+- **2** Absturzbericht auch für harte Abstürze in nativem Code (Zugriffsverletzung in WebView/wgpu), z. B. per `SetUnhandledExceptionFilter` – bisher nur Rust-Panics.
+- **4** Automatisierte UI-Tests für die wichtigsten Abläufe (Öffnen, Bearbeiten, Speichern lokal/Server).
 
 ## Nächste Schritte
 
@@ -69,6 +68,13 @@ Vorschlag für Runde 3 (kleinere B-Punkte zuerst):
 Runde 3 ist damit komplett.
 
 KI: alle abgestimmten Punkte erledigt (siehe oben).
+
+Runde 4 (alle **1**-Punkte, kleine zuerst):
+
+1. ~~Implizites FTPS (Port 990)~~ (erledigt).
+2. Blame für die aktuelle Zeile.
+3. Gehe zu Definition ohne Language Server.
+4. Rechtschreibprüfung.
 
 ## Erledigt
 
@@ -137,3 +143,5 @@ Codex-Limits (22.10.): verbleibende Limits des ChatGPT-Abos (5 Stunden, Woche) u
 Mehrere Fenster (22.10.): „Neues Fenster“ (Strg+Umschalt+N), „Ordner in neuem Fenster öffnen…“ (Menü Datei, Projekt-Umschalter, Befehlspalette), Strg+Klick auf zuletzt geöffnete Projekte; jedes Fenster ist ein eigener Prozess mit eigenem Projekt. settings.json und sites.json werden beim Speichern dreiseitig zusammengeführt (jedes Fenster schreibt nur, was es selbst geändert hat) und von den anderen Fenstern binnen einer Sekunde neu eingelesen; Sitzung und letzter Ordner gehören dem Hauptfenster, weitere Fenster merken sich ihre Tabs pro Projekt. Fenstertitel nennt das Projekt.
 
 Performance (22.10.): Highlighting großer Dateien (ab 256 KB) inkrementell – der Syntaxbaum wird weitergeführt, nur geänderte Zeilen neu gefärbt (3 MB: 1,2 s → 30 ms pro Tastendruck), Farben jetzt bis 16 MB statt 4 MB; minifizierte Dateien mit einer 5-MB-Zeile hängen nicht mehr (Wort- und Suchmarkierungen nur im sichtbaren Ausschnitt, schnellere Spaltenberechnung); Wortvervollständigung, Gliederung (im Hintergrund), Zeilenumbruch, Git-Markierungen und Breitenmessung belasten das Tippen in großen Dateien nicht mehr. Getestet mit 3/5/20/50 MB und 120 Tabs. Zeitmessung pro Frame mit `NEBULA_PERF=1`. Dabei behoben: Code-Blöcke in Markdown wurden falsch gefärbt (Satzzeichen fehlten im eingebetteten Code, CSS-Eigenschaften erschienen als Selektoren).
+
+Implizites FTPS (23.10.): Protokoll „FTPS (implizites TLS)“ mit Port 990, FileZilla-Import übernimmt es jetzt richtig; FTP-Verbindungen probieren alle Adressen eines Hosts (IPv6 und IPv4) statt nur der ersten. Tests für explizites und implizites FTPS.
