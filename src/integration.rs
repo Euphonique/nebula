@@ -9,13 +9,15 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use winreg::RegKey;
-use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, KEY_ALL_ACCESS, KEY_READ};
+use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS, KEY_READ};
 
 const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Nebula";
 /// The shared program ID of older versions (all types with the Nebula logo).
 const LEGACY_PROG_ID: &str = "Nebula.Datei";
 /// What Windows' default apps settings list for Nebula.
 const CAPABILITIES_KEY: &str = r"Software\Nebula\Capabilities";
+/// Other programs' defaults Nebula replaced, restored when a type is unchecked.
+const PREVIOUS_KEY: &str = r"Software\Nebula\PreviousDefaults";
 
 /// Explorer context menus: files, folders, the background of a folder.
 const MENU_KEYS: [(&str, &str); 3] = [
@@ -177,33 +179,52 @@ pub fn registered_types() -> BTreeSet<String> {
 }
 
 /// Which program Windows opens a file type with.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Handler {
     Nebula,
     /// Nebula, chosen with an older version: still shows the Nebula logo.
     NebulaLegacy,
-    Other,
+    /// Another program (its name).
+    Other(String),
+    /// No working program: Windows asks on a double-click.
+    Ask,
 }
 
-/// Who opens `.ext` now: the user's choice, or without one the registration.
+/// Who opens `.ext` now, as Windows resolves a double-click.
 pub fn handler_of(ext: &str) -> Handler {
-    let choice = hkcu()
-        .open_subkey_with_flags(format!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.{ext}\UserChoice"), KEY_READ)
-        .and_then(|k| k.get_value::<String, _>("ProgId"));
-    let prog = match choice {
-        Ok(p) => p,
-        Err(_) => RegKey::predef(HKEY_CLASSES_ROOT)
-            .open_subkey_with_flags(format!(".{ext}"), KEY_READ)
-            .and_then(|k| k.get_value::<String, _>(""))
-            .unwrap_or_default(),
-    };
-    if prog == LEGACY_PROG_ID {
-        Handler::NebulaLegacy
-    } else if prog.starts_with("Nebula.") || prog.eq_ignore_ascii_case(r"Applications\nebula.exe") {
-        Handler::Nebula
-    } else {
-        Handler::Other
+    let Some(h) = crate::win32::file_type_handler(ext) else { return Handler::Ask };
+    let file = Path::new(&h.exe).file_name().map(|f| f.to_string_lossy().to_lowercase()).unwrap_or_default();
+    match file.as_str() {
+        "nebula.exe" if h.prog_id == LEGACY_PROG_ID => Handler::NebulaLegacy,
+        "nebula.exe" => Handler::Nebula,
+        "openwith.exe" | "" => Handler::Ask,
+        _ => {
+            let name = if h.name.trim().is_empty() {
+                Path::new(&h.exe).file_stem().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
+            } else {
+                h.name
+            };
+            Handler::Other(name)
+        }
     }
+}
+
+/// Nebula's page under Settings › Apps › Default apps, listing its types.
+pub const DEFAULT_APPS_PAGE: &str = "ms-settings:defaultapps?registeredAppUser=Nebula";
+
+/// Whether the user never chose a program for `.ext` in Windows (then the
+/// registered default applies, which Nebula may set).
+pub fn has_no_user_choice(ext: &str) -> bool {
+    hkcu()
+        .open_subkey_with_flags(format!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.{ext}\UserChoice"), KEY_READ)
+        .and_then(|k| k.get_value::<String, _>("ProgId"))
+        .is_err()
+}
+
+/// Whether this is the program the registrations point to (the installed
+/// copy, or this one when Nebula isn't installed).
+pub fn runs_registered_program() -> bool {
+    std::env::current_exe().is_ok_and(|exe| same_file(&exe, &target_exe()))
 }
 
 /// Registers Nebula for exactly the file types in `wanted` (in "Open with",
@@ -243,9 +264,14 @@ fn register(wanted: &BTreeSet<String>, redraw: bool) -> Result<()> {
             let (e, _) = hkcu().create_subkey(&ext_key)?;
             let (with, _) = e.create_subkey("OpenWithProgids")?;
             with.set_value(&prog, &"")?;
-            // Only where nobody chose before: the user's choice (UserChoice)
-            // and other programs' entries stay untouched.
-            if e.get_value::<String, _>("").unwrap_or_default().is_empty() {
+            // The registered default (what applies without a choice of the
+            // user in Windows). Another program's entry is kept for later.
+            let current = e.get_value::<String, _>("").unwrap_or_default();
+            if current != prog {
+                if !current.is_empty() && !current.starts_with("Nebula.") {
+                    let (previous, _) = hkcu().create_subkey(PREVIOUS_KEY)?;
+                    previous.set_value(ext, &current)?;
+                }
                 e.set_value("", &prog)?;
             }
         } else {
@@ -255,8 +281,15 @@ fn register(wanted: &BTreeSet<String>, redraw: bool) -> Result<()> {
                     let _ = with.delete_value(&prog);
                 }
                 if e.get_value::<String, _>("").ok().as_deref() == Some(prog.as_str()) {
-                    let _ = e.delete_value("");
+                    let previous = hkcu().open_subkey_with_flags(PREVIOUS_KEY, KEY_READ).and_then(|k| k.get_value::<String, _>(ext));
+                    let _ = match previous {
+                        Ok(p) => e.set_value("", &p),
+                        Err(_) => e.delete_value(""),
+                    };
                 }
+            }
+            if let Ok(k) = hkcu().open_subkey_with_flags(PREVIOUS_KEY, KEY_ALL_ACCESS) {
+                let _ = k.delete_value(ext);
             }
             let _ = std::fs::remove_file(crate::file_icons::dir().join(format!("{ext}.ico")));
         }

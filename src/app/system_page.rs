@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::Receiver;
 use eframe::egui::{self, RichText, Sense, Ui, vec2};
 
-use super::{Dialog, NebulaApp, primary_button};
+use super::{NebulaApp, primary_button};
 use crate::integration::{self, Handler};
 
 /// The registered file types as Windows sees them; read again every few
@@ -15,6 +15,8 @@ use crate::integration::{self, Handler};
 pub(super) struct FileTypes {
     registered: BTreeSet<String>,
     handlers: HashMap<&'static str, Handler>,
+    /// Checked types Windows opens with another program (and its name).
+    conflicts: Vec<(&'static str, String)>,
     read: Instant,
     /// Registering runs in the background (it draws the icons).
     job: Option<Receiver<Result<(), String>>>,
@@ -22,12 +24,20 @@ pub(super) struct FileTypes {
 
 impl FileTypes {
     fn read() -> Self {
-        Self {
-            registered: integration::registered_types(),
-            handlers: integration::FILE_TYPES.iter().map(|ext| (*ext, integration::handler_of(ext))).collect(),
-            read: Instant::now(),
-            job: None,
-        }
+        let registered = integration::registered_types();
+        let handlers: HashMap<&'static str, Handler> =
+            integration::FILE_TYPES.iter().map(|ext| (*ext, integration::handler_of(ext))).collect();
+        let conflicts = integration::FILE_TYPES
+            .iter()
+            .filter(|ext| registered.contains(**ext))
+            .filter_map(|ext| match &handlers[ext] {
+                Handler::Nebula => None,
+                Handler::NebulaLegacy => Some((*ext, t!("Nebula (altes Symbol)").to_string())),
+                Handler::Other(name) => Some((*ext, name.clone())),
+                Handler::Ask => Some((*ext, t!("keins – Windows fragt nach").to_string())),
+            })
+            .collect();
+        Self { registered, handlers, conflicts, read: Instant::now(), job: None }
     }
 }
 
@@ -114,16 +124,6 @@ impl NebulaApp {
         ui.label(RichText::new(t!("Fenster")).strong());
         ui.add_space(4.0);
         ui.label(faint(t!("Läuft Nebula schon, öffnen sich Dateien aus dem Explorer im vorhandenen Fenster. Ein zweites Fenster erzwingt der Start mit --new-instance.")));
-
-        ui.add_space(18.0);
-        ui.label(RichText::new(t!("Updates")).strong());
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label(faint(t!("Version und Suche nach Updates stehen unter „Über Nebula“.")));
-            if ui.button(t!("Über Nebula…")).clicked() {
-                self.dialog = Some(Dialog::About);
-            }
-        });
     }
 
     /// The list of file types with checkboxes; returns whether any is registered.
@@ -153,7 +153,6 @@ impl NebulaApp {
         ui.label(RichText::new(t!("Dateitypen")).strong());
         ui.add_space(4.0);
         ui.label(faint(t!("Angehakte Typen öffnet Nebula per Doppelklick und zeigt sie im Explorer mit demselben Symbol wie in der Dateiliste.")));
-        ui.label(faint(t!("Hast du in Windows für einen Typ schon ein anderes Programm gewählt, bleibt es dabei – ändern lässt sich das über „Öffnen mit“ oder die Standard-Apps.")));
         ui.add_space(6.0);
 
         let mut wanted: Option<BTreeSet<String>> = None;
@@ -167,7 +166,7 @@ impl NebulaApp {
                 }
             });
             if ui.add_enabled(!types.registered.is_empty(), egui::Button::new(t!("Standard-Apps öffnen…"))).clicked() {
-                crate::win32::open_url("ms-settings:defaultapps?registeredAppUser=Nebula");
+                crate::win32::open_url(integration::DEFAULT_APPS_PAGE);
             }
             if busy {
                 ui.spinner();
@@ -196,22 +195,9 @@ impl NebulaApp {
                         let (r, _) = ui.allocate_exact_size(vec2(15.0, 18.0), Sense::hover());
                         crate::ui::icons::file(ui.painter(), r.center(), &format!("x.{ext}"));
                         ui.label(format!(".{ext}"));
-                        match types.handlers.get(ext) {
-                            Some(Handler::Nebula) => {
-                                ui.label(RichText::new("●").small().color(theme.accent))
-                                    .on_hover_text(t!("Windows öffnet .{ext} mit Nebula.", ext = ext));
-                            }
-                            Some(Handler::NebulaLegacy) => {
-                                ui.label(RichText::new("●").small().color(theme.modified)).on_hover_text(t!(
-                                    "Windows öffnet .{ext} mit Nebula, aber noch mit dem alten Symbol. Einmal neu wählen: Rechtsklick auf eine Datei › Öffnen mit › Nebula, „Immer“.",
-                                    ext = ext
-                                ));
-                            }
-                            _ if on => {
-                                ui.label(RichText::new("○").small().color(theme.text_faint))
-                                    .on_hover_text(t!("Für .{ext} ist in Windows ein anderes Programm gewählt.", ext = ext));
-                            }
-                            _ => {}
+                        if types.handlers.get(ext) == Some(&Handler::Nebula) {
+                            ui.label(RichText::new("✓").small().color(theme.accent))
+                                .on_hover_text(t!("Windows öffnet .{ext} mit Nebula.", ext = ext));
                         }
                     });
                     if (i + 1) % columns == 0 {
@@ -220,10 +206,50 @@ impl NebulaApp {
                 }
             });
         });
-        ui.add_space(4.0);
-        ui.label(faint(t!("● öffnet mit Nebula   ○ in Windows ist ein anderes Programm gewählt")));
+
+        // Checked types Windows still opens with another program: only the
+        // user may change that, on Nebula's page in Windows' settings.
+        if !busy && !types.conflicts.is_empty() {
+            ui.add_space(12.0);
+            egui::Frame::new().fill(theme.hover).corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(RichText::new(t!("⚠ Diese Typen öffnet Windows noch mit einem anderen Programm:")).color(theme.modified));
+                ui.add_space(6.0);
+                egui::Grid::new("file-type-conflicts").spacing(vec2(18.0, 4.0)).show(ui, |ui| {
+                    for (ext, program) in &types.conflicts {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            let (r, _) = ui.allocate_exact_size(vec2(15.0, 18.0), Sense::hover());
+                            crate::ui::icons::file(ui.painter(), r.center(), &format!("x.{ext}"));
+                            ui.label(format!(".{ext}"));
+                        });
+                        ui.label(RichText::new(program).color(theme.text_muted));
+                        ui.end_row();
+                    }
+                });
+                ui.add_space(10.0);
+                if ui.add(primary_button(t!("In den Windows-Einstellungen umstellen…"), theme.accent)).clicked() {
+                    crate::win32::open_url(integration::DEFAULT_APPS_PAGE);
+                }
+                ui.add_space(4.0);
+                ui.label(faint(t!("Dort öffnet sich die Seite von Nebula unter Standard-Apps: beim jeweiligen Typ auf das Programm klicken und Nebula wählen. Programme dürfen diese Wahl aus Sicherheitsgründen nicht selbst ändern.")));
+            });
+        }
 
         let any = !types.registered.is_empty();
+        // Registrations of an older version left other programs' defaults
+        // in place: apply the current rules once per session (only from the
+        // program the registrations point to).
+        static REAPPLIED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if wanted.is_none()
+            && !busy
+            && any
+            && types.conflicts.iter().any(|(ext, _)| integration::has_no_user_choice(ext))
+            && integration::runs_registered_program()
+            && !REAPPLIED.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            wanted = Some(types.registered.clone());
+        }
         if let Some(set) = wanted {
             let (tx, rx) = crossbeam_channel::bounded(1);
             let ctx = ui.ctx().clone();

@@ -499,6 +499,34 @@ fn browser_exe() -> Option<String> {
     (!exe.is_empty() && std::path::Path::new(&exe).is_file()).then_some(exe)
 }
 
+/// What a double-click on a `.ext` file starts, as Windows resolves it
+/// (the user's choice, else the registered default).
+pub struct FileTypeHandler {
+    /// "Visual Studio Code"
+    pub name: String,
+    /// Path of the program; `OpenWith.exe` when Windows would ask.
+    pub exe: String,
+    pub prog_id: String,
+}
+
+pub fn file_type_handler(ext: &str) -> Option<FileTypeHandler> {
+    use windows_sys::Win32::UI::Shell::{ASSOCF_INIT_IGNOREUNKNOWN, ASSOCSTR, ASSOCSTR_FRIENDLYAPPNAME, ASSOCSTR_PROGID};
+    let assoc = wide(&format!(".{ext}"));
+    let query = |what: ASSOCSTR| -> Option<String> {
+        let mut buf = vec![0u16; 1024];
+        let mut len = buf.len() as u32;
+        // SAFETY: the buffer length is passed along; no verb (the default one).
+        let hr = unsafe { AssocQueryStringW(ASSOCF_INIT_IGNOREUNKNOWN, what, assoc.as_ptr(), std::ptr::null(), buf.as_mut_ptr(), &mut len) };
+        (hr == 0).then(|| String::from_utf16_lossy(&buf[..(len as usize).saturating_sub(1).min(buf.len())]))
+    };
+    let exe = query(ASSOCSTR_EXECUTABLE)?;
+    Some(FileTypeHandler {
+        name: query(ASSOCSTR_FRIENDLYAPPNAME).unwrap_or_default(),
+        prog_id: query(ASSOCSTR_PROGID).unwrap_or_default(),
+        exe,
+    })
+}
+
 /// Opens a web address or a `file://` URL in the default browser. Local
 /// files go to the browser explicitly; handing them to the shell would open
 /// e.g. a .php file in its editor.
