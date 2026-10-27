@@ -13,6 +13,7 @@ mod history;
 mod hex_view;
 mod db_view;
 mod image_view;
+mod file_icons;
 mod fonts;
 mod icon;
 mod integration;
@@ -93,6 +94,9 @@ fn main() -> eframe::Result {
     let forwarded = !window && !args.iter().any(|a| a == "--new-instance") && win32::forward_to_running(&open_paths);
     if forwarded {
         return Ok(());
+    }
+    if !window {
+        std::thread::spawn(integration::migrate_file_types);
     }
     let icon = egui::IconData {
         rgba: icon::render_icon(64),

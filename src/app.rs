@@ -50,6 +50,7 @@ mod snippets_panel;
 mod settings_transfer;
 mod sync_ui;
 mod system_page;
+mod about;
 mod folder_pick;
 mod ai_commands;
 mod commit_msg;
@@ -127,6 +128,8 @@ enum Dialog {
     /// Several definitions found: choose one.
     Definitions(Box<definition::DefinitionList>),
     Settings,
+    /// "Über Nebula" with the update check.
+    About,
 }
 
 /// Work that depends on a transfer finishing first.
@@ -215,6 +218,8 @@ pub struct NebulaApp {
     sync: Option<sync_ui::SyncRun>,
     /// The settings page asks whether to uninstall.
     confirm_uninstall: bool,
+    /// Registered file types and who opens them (Settings › Windows), read now and then.
+    file_types: Option<system_page::FileTypes>,
     /// Print job running in the background; yields the number of pages.
     printing: Option<std::thread::JoinHandle<Result<usize, String>>>,
     /// SSH terminals in the bottom panel.
@@ -312,6 +317,7 @@ impl NebulaApp {
             reinstall: None,
             sync: None,
             confirm_uninstall: false,
+            file_types: None,
             printing: None,
             terminals: Default::default(),
             disk: Default::default(),
@@ -1841,6 +1847,18 @@ impl NebulaApp {
                     ui.close();
                 }
             });
+            ui.menu_button(t!("Über"), |ui| {
+                if ui.button(t!("Nach Updates suchen…")).clicked() {
+                    self.dialog = Some(Dialog::About);
+                    self.check_for_update(ui.ctx(), true);
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button(t!("Über Nebula…")).clicked() {
+                    self.dialog = Some(Dialog::About);
+                    ui.close();
+                }
+            });
         }
     }
 
@@ -3187,6 +3205,10 @@ impl NebulaApp {
             Dialog::Settings => {
                 keep = self.settings_window(ctx);
                 Dialog::Settings
+            }
+            Dialog::About => {
+                keep = self.about_dialog(ctx);
+                Dialog::About
             }
             Dialog::CommandPalette(mut state) => {
                 keep = self.command_palette(ctx, &mut state);

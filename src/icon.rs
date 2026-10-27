@@ -98,10 +98,28 @@ pub fn render_icon(size: u32) -> Vec<u8> {
 /// Encodes several sizes into a Windows .ico (32-bit BMP entries).
 #[allow(dead_code)]
 pub fn encode_ico(sizes: &[u32]) -> Vec<u8> {
-    let images: Vec<(u32, Vec<u8>)> = sizes
+    let images: Vec<(u32, Vec<u8>)> = sizes.iter().map(|&size| (size, render_icon(size))).collect();
+    ico_from_rgba(&images, false)
+}
+
+/// Builds a .ico from square straight-RGBA images (size, pixels); with
+/// `png_large` the 256 px entry is stored as PNG (much smaller).
+#[allow(dead_code)]
+pub fn ico_from_rgba(images: &[(u32, Vec<u8>)], png_large: bool) -> Vec<u8> {
+    let images: Vec<(u32, Vec<u8>)> = images
         .iter()
-        .map(|&size| {
-            let rgba = render_icon(size);
+        .map(|(size, rgba)| {
+            let size = *size;
+            if png_large && size >= 256 {
+                let mut out = Vec::new();
+                let mut encoder = png::Encoder::new(&mut out, size, size);
+                encoder.set_color(png::ColorType::Rgba);
+                encoder.set_depth(png::BitDepth::Eight);
+                let mut writer = encoder.write_header().expect("png header");
+                writer.write_image_data(rgba).expect("png data");
+                writer.finish().expect("png end");
+                return (size, out);
+            }
             let mut bmp = Vec::new();
             // BITMAPINFOHEADER; height counts XOR + AND masks.
             bmp.extend_from_slice(&40u32.to_le_bytes());

@@ -1,16 +1,21 @@
 //! Windows integration for the current user, without an installer tool and
 //! without admin rights: install into `%LOCALAPPDATA%\Programs\Nebula` with a
 //! start menu entry and an entry under "Apps", "Open with Nebula" in
-//! Explorer's context menu, and Nebula in "Open with" for text file types.
+//! Explorer's context menu, and Nebula for chosen file types (each with the
+//! file list's badge as its icon).
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use winreg::RegKey;
-use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+use winreg::enums::{HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, KEY_ALL_ACCESS, KEY_READ};
 
 const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Nebula";
-const PROG_ID: &str = "Nebula.Datei";
+/// The shared program ID of older versions (all types with the Nebula logo).
+const LEGACY_PROG_ID: &str = "Nebula.Datei";
+/// What Windows' default apps settings list for Nebula.
+const CAPABILITIES_KEY: &str = r"Software\Nebula\Capabilities";
 
 /// Explorer context menus: files, folders, the background of a folder.
 const MENU_KEYS: [(&str, &str); 3] = [
@@ -19,10 +24,10 @@ const MENU_KEYS: [(&str, &str); 3] = [
     (r"Software\Classes\Directory\Background\shell\Nebula", "%V"),
 ];
 
-/// File types Nebula offers itself for in "Open with".
+/// File types Nebula can be registered for (chosen in Settings › Windows).
 pub const FILE_TYPES: &[&str] = &[
-    "txt", "md", "markdown", "html", "htm", "css", "scss", "less", "js", "mjs", "ts", "tsx", "jsx", "php", "json", "xml", "svg",
-    "yml", "yaml", "toml", "ini", "conf", "cfg", "env", "htaccess", "log", "sql", "sh", "bat", "ps1", "py", "rb", "rs", "go",
+    "txt", "md", "markdown", "html", "htm", "css", "scss", "sass", "less", "js", "mjs", "cjs", "ts", "tsx", "jsx", "php", "phtml", "json", "jsonc", "xml", "svg",
+    "yml", "yaml", "toml", "ini", "conf", "cfg", "env", "htaccess", "log", "sql", "sh", "bat", "cmd", "ps1", "py", "rb", "rs", "go",
     "java", "c", "h", "cpp", "hpp", "cs", "lua", "csv", "diff", "patch",
 ];
 
@@ -96,9 +101,7 @@ pub fn install() -> Result<PathBuf> {
     if context_menu_enabled() {
         set_context_menu(true)?;
     }
-    if file_types_registered() {
-        set_file_types(true)?;
-    }
+    refresh_file_types()?;
     crate::win32::notify_associations_changed();
     Ok(exe)
 }
@@ -118,7 +121,7 @@ pub fn is_installed() -> bool {
 /// is deleted shortly after Nebula exits (a running program can't delete itself).
 pub fn uninstall() -> Result<()> {
     let _ = set_context_menu(false);
-    let _ = set_file_types(false);
+    let _ = remove_file_types();
     let _ = std::fs::remove_file(start_menu_link());
     let _ = hkcu().delete_subkey_all(UNINSTALL_KEY);
     crate::win32::notify_associations_changed();
@@ -159,42 +162,183 @@ pub fn set_context_menu(on: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn file_types_registered() -> bool {
-    hkcu().open_subkey_with_flags(format!(r"Software\Classes\{PROG_ID}"), KEY_READ).is_ok()
+/// Program ID of one file type; each has its own icon (the file list badge).
+fn prog_id(ext: &str) -> String {
+    format!("Nebula.{ext}")
 }
 
-/// Nebula as a program for the text file types (in "Open with"; the default
-/// app is chosen by the user in Windows).
-pub fn set_file_types(on: bool) -> Result<()> {
+/// The file types Nebula is registered for.
+pub fn registered_types() -> BTreeSet<String> {
+    FILE_TYPES
+        .iter()
+        .filter(|ext| hkcu().open_subkey_with_flags(format!(r"Software\Classes\{}", prog_id(ext)), KEY_READ).is_ok())
+        .map(|ext| ext.to_string())
+        .collect()
+}
+
+/// Which program Windows opens a file type with.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Handler {
+    Nebula,
+    /// Nebula, chosen with an older version: still shows the Nebula logo.
+    NebulaLegacy,
+    Other,
+}
+
+/// Who opens `.ext` now: the user's choice, or without one the registration.
+pub fn handler_of(ext: &str) -> Handler {
+    let choice = hkcu()
+        .open_subkey_with_flags(format!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.{ext}\UserChoice"), KEY_READ)
+        .and_then(|k| k.get_value::<String, _>("ProgId"));
+    let prog = match choice {
+        Ok(p) => p,
+        Err(_) => RegKey::predef(HKEY_CLASSES_ROOT)
+            .open_subkey_with_flags(format!(".{ext}"), KEY_READ)
+            .and_then(|k| k.get_value::<String, _>(""))
+            .unwrap_or_default(),
+    };
+    if prog == LEGACY_PROG_ID {
+        Handler::NebulaLegacy
+    } else if prog.starts_with("Nebula.") || prog.eq_ignore_ascii_case(r"Applications\nebula.exe") {
+        Handler::Nebula
+    } else {
+        Handler::Other
+    }
+}
+
+/// Registers Nebula for exactly the file types in `wanted` (in "Open with",
+/// in Windows' default apps, and as default where the user hasn't chosen
+/// another program yet). Each type gets its own icon.
+pub fn set_file_types(wanted: &BTreeSet<String>) -> Result<()> {
+    register(wanted, false)
+}
+
+/// `redraw`: draw existing icons again (after an update of Nebula).
+fn register(wanted: &BTreeSet<String>, redraw: bool) -> Result<()> {
     let exe = target_exe();
-    let classes = format!(r"Software\Classes\{PROG_ID}");
+    let open = format!("\"{}\" \"%1\"", exe.display());
     let app = r"Software\Classes\Applications\nebula.exe";
-    if on {
-        let (k, _) = hkcu().create_subkey(&classes)?;
-        k.set_value("", &t!("Textdatei (Nebula)"))?;
-        let (icon, _) = k.create_subkey("DefaultIcon")?;
-        icon.set_value("", &format!("\"{}\",0", exe.display()))?;
-        let (cmd, _) = k.create_subkey(r"shell\open\command")?;
-        cmd.set_value("", &format!("\"{}\" \"%1\"", exe.display()))?;
+    let mut painter: Option<crate::file_icons::IconPainter> = None;
+    remove_legacy();
+    for ext in FILE_TYPES {
+        let prog = prog_id(ext);
+        let classes = format!(r"Software\Classes\{prog}");
+        let ext_key = format!(r"Software\Classes\.{ext}");
+        if wanted.contains(*ext) {
+            let mut icon = crate::file_icons::dir().join(format!("{ext}.ico"));
+            if redraw || !icon.is_file() {
+                icon = painter
+                    .get_or_insert_with(crate::file_icons::IconPainter::new)
+                    .write(ext)
+                    .with_context(|| t!("Symbol für .{ext} konnte nicht angelegt werden", ext = ext))?;
+            }
+            let (k, _) = hkcu().create_subkey(&classes)?;
+            k.set_value("", &t!("{ext}-Datei", ext = ext.to_uppercase()))?;
+            let (i, _) = k.create_subkey("DefaultIcon")?;
+            i.set_value("", &icon.display().to_string())?;
+            let (shell, _) = k.create_subkey(r"shell\open")?;
+            shell.set_value("FriendlyAppName", &"Nebula")?;
+            let (cmd, _) = shell.create_subkey("command")?;
+            cmd.set_value("", &open)?;
+            let (e, _) = hkcu().create_subkey(&ext_key)?;
+            let (with, _) = e.create_subkey("OpenWithProgids")?;
+            with.set_value(&prog, &"")?;
+            // Only where nobody chose before: the user's choice (UserChoice)
+            // and other programs' entries stay untouched.
+            if e.get_value::<String, _>("").unwrap_or_default().is_empty() {
+                e.set_value("", &prog)?;
+            }
+        } else {
+            let _ = hkcu().delete_subkey_all(&classes);
+            if let Ok(e) = hkcu().open_subkey_with_flags(&ext_key, KEY_ALL_ACCESS) {
+                if let Ok(with) = e.open_subkey_with_flags("OpenWithProgids", KEY_ALL_ACCESS) {
+                    let _ = with.delete_value(&prog);
+                }
+                if e.get_value::<String, _>("").ok().as_deref() == Some(prog.as_str()) {
+                    let _ = e.delete_value("");
+                }
+            }
+            let _ = std::fs::remove_file(crate::file_icons::dir().join(format!("{ext}.ico")));
+        }
+    }
+    if wanted.is_empty() {
+        let _ = hkcu().delete_subkey_all(app);
+        let _ = hkcu().delete_subkey_all(CAPABILITIES_KEY);
+        if let Ok(k) = hkcu().open_subkey_with_flags(r"Software\RegisteredApplications", KEY_ALL_ACCESS) {
+            let _ = k.delete_value("Nebula");
+        }
+        let _ = std::fs::remove_dir_all(crate::file_icons::dir());
+        let _ = hkcu().delete_subkey_all(format!(r"Software\Classes\{LEGACY_PROG_ID}"));
+    } else {
+        let _ = hkcu().delete_subkey_all(format!(r"{app}\SupportedTypes"));
         let (a, _) = hkcu().create_subkey(app)?;
         a.set_value("FriendlyAppName", &"Nebula")?;
         let (acmd, _) = a.create_subkey(r"shell\open\command")?;
-        acmd.set_value("", &format!("\"{}\" \"%1\"", exe.display()))?;
+        acmd.set_value("", &open)?;
         let (types, _) = a.create_subkey("SupportedTypes")?;
-        for ext in FILE_TYPES {
+        // Windows' default apps list Nebula with these types.
+        let _ = hkcu().delete_subkey_all(CAPABILITIES_KEY);
+        let (caps, _) = hkcu().create_subkey(CAPABILITIES_KEY)?;
+        caps.set_value("ApplicationName", &"Nebula")?;
+        caps.set_value("ApplicationDescription", &t!("Nebula – Code-Editor"))?;
+        caps.set_value("ApplicationIcon", &format!("\"{}\",0", exe.display()))?;
+        let (assoc, _) = caps.create_subkey("FileAssociations")?;
+        for ext in wanted {
             types.set_value(format!(".{ext}"), &"")?;
-            let (open_with, _) = hkcu().create_subkey(format!(r"Software\Classes\.{ext}\OpenWithProgids"))?;
-            open_with.set_value(PROG_ID, &"")?;
+            assoc.set_value(format!(".{ext}"), &prog_id(ext))?;
         }
-    } else {
-        let _ = hkcu().delete_subkey_all(&classes);
-        let _ = hkcu().delete_subkey_all(app);
-        for ext in FILE_TYPES {
-            if let Ok(k) = hkcu().open_subkey_with_flags(format!(r"Software\Classes\.{ext}\OpenWithProgids"), winreg::enums::KEY_ALL_ACCESS) {
-                let _ = k.delete_value(PROG_ID);
-            }
-        }
+        let (reg, _) = hkcu().create_subkey(r"Software\RegisteredApplications")?;
+        reg.set_value("Nebula", &CAPABILITIES_KEY)?;
     }
     crate::win32::notify_associations_changed();
     Ok(())
+}
+
+/// Before each type had its own icon, one program ID served all types.
+/// It is no longer offered; the key itself stays while Nebula is registered,
+/// so a default chosen back then keeps working until it is chosen again
+/// (removed together with the last type).
+fn remove_legacy() {
+    for ext in FILE_TYPES {
+        if let Ok(with) = hkcu().open_subkey_with_flags(format!(r"Software\Classes\.{ext}\OpenWithProgids"), KEY_ALL_ACCESS) {
+            let _ = with.delete_value(LEGACY_PROG_ID);
+        }
+    }
+}
+
+/// Removes every file type registration, including the old shared one.
+pub fn remove_file_types() -> Result<()> {
+    set_file_types(&BTreeSet::new())
+}
+
+/// Older versions registered all types under one program ID with the Nebula
+/// logo: switches them to the per-type icons, once and only when that
+/// registration points to the running program.
+pub fn migrate_file_types() {
+    let command = hkcu()
+        .open_subkey_with_flags(format!(r"Software\Classes\{LEGACY_PROG_ID}\shell\open\command"), KEY_READ)
+        .and_then(|k| k.get_value::<String, _>(""));
+    let (Ok(command), Ok(exe)) = (command, std::env::current_exe()) else { return };
+    if !command.to_lowercase().contains(&exe.display().to_string().to_lowercase()) || !registered_types().is_empty() {
+        return;
+    }
+    let _ = set_file_types(&FILE_TYPES.iter().map(|e| e.to_string()).collect());
+}
+
+/// Re-registers the current types (after an update: new icons, new program path).
+pub fn refresh_file_types() -> Result<()> {
+    let types = registered_types();
+    if types.is_empty() { Ok(()) } else { register(&types, true) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_types_have_icons_and_are_unique() {
+        let set: BTreeSet<&str> = FILE_TYPES.iter().copied().collect();
+        assert_eq!(set.len(), FILE_TYPES.len(), "duplicate file type");
+        assert!(FILE_TYPES.iter().all(|e| e.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())));
+    }
 }

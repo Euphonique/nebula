@@ -22,6 +22,12 @@ fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
+impl Updates {
+    pub fn is_checking(&self) -> bool {
+        self.job.is_some()
+    }
+}
+
 impl NebulaApp {
     /// Starts a check; `manual` reports the result also when there is nothing new.
     pub(super) fn check_for_update(&mut self, ctx: &egui::Context, manual: bool) {

@@ -50,6 +50,8 @@ pub enum Command {
     ExportSnippets,
     ExportSettings,
     ImportSettings,
+    About,
+    CheckUpdates,
     Publish,
     PublishSetup,
     SyncProject,
@@ -178,6 +180,8 @@ impl Command {
             (ExportSnippets, t!("Snippets: Exportieren…")),
             (ExportSettings, t!("Einstellungen: Alles exportieren…")),
             (ImportSettings, t!("Einstellungen: Importieren…")),
+            (About, t!("Über Nebula…")),
+            (CheckUpdates, t!("Nach Updates suchen…")),
             (Publish, t!("Projekt: Veröffentlichen")),
             (PublishSetup, t!("Projekt: Veröffentlichen einrichten…")),
             (SyncProject, t!("Projekt: Synchronisieren…")),
@@ -443,6 +447,11 @@ impl NebulaApp {
             Command::ExportSnippets => self.export_snippets(),
             Command::ExportSettings => self.open_settings_export(),
             Command::ImportSettings => self.open_settings_import(),
+            Command::About => self.dialog = Some(super::Dialog::About),
+            Command::CheckUpdates => {
+                self.dialog = Some(super::Dialog::About);
+                self.check_for_update(ctx, true);
+            }
             Command::Publish => self.publish(),
             Command::PublishSetup => self.open_publish_setup(),
             Command::SyncProject => self.start_sync(),
