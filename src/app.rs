@@ -196,7 +196,8 @@ pub struct NebulaApp {
     /// Line and column to jump to once a remote file from the search arrives.
     pending_lines: HashMap<(String, String), (usize, usize)>,
     /// Publish uploads in flight: tag -> (project, relative path, mtime).
-    pending_publish: HashMap<u64, (String, String, u64)>,
+    /// Publish uploads: project root and (server path, relative path, mtime) per file.
+    pending_publish: HashMap<u64, (String, Vec<(String, String, u64)>)>,
     /// Scroll the tab strip so the active tab is visible.
     reveal_active_tab: bool,
     /// Jump bar symbols for (doc id, version, cursor).
@@ -938,7 +939,7 @@ impl NebulaApp {
                 }
                 Reply::Transferred { message, remote_dir, local_dir } => {
                     if self.pending_publish.contains_key(&ev.tag) {
-                        self.mark_published(ev.tag);
+                        self.mark_published(ev.tag, None);
                         if self.pending_publish.is_empty() {
                             self.info(t!("Veröffentlicht auf {site_name}", site_name = site_name));
                         }
@@ -995,6 +996,7 @@ impl NebulaApp {
                 Reply::Synced { done, failed } => {
                     self.sync_done(ev.tag, done, failed);
                 }
+                Reply::Published { done, failed } => self.published(&ev.site_id, ev.tag, done, failed),
                 Reply::UndoConflict { entry, paths } => self.upload_undo_conflict(&ev.site_id, entry, paths),
                 Reply::Undone { restored, skipped, failed, paths } => self.upload_undone(&ev.site_id, restored, skipped, failed, paths),
                 Reply::Changed { dir, message } => {
@@ -1043,6 +1045,9 @@ impl NebulaApp {
                             self.pending_publish.remove(&ev.tag);
                         }
                         Request::Undo { .. } => self.upload_undo_failed(&ev.site_id),
+                        Request::Publish { .. } => {
+                            self.pending_publish.remove(&ev.tag);
+                        }
                         Request::Rename { from, to } => {
                             // Tabs followed the rename already; send them back.
                             self.retarget_remote_docs(&ev.site_id, to, from);
@@ -2992,6 +2997,10 @@ impl NebulaApp {
                         ui.end_row();
                         ui.label("");
                         ui.checkbox(&mut target.upload_on_save, t!("Beim Speichern automatisch hochladen"));
+                        ui.end_row();
+                        ui.label("");
+                        ui.checkbox(&mut target.staged, t!("Erst alles hochladen, dann auf einmal austauschen"))
+                            .on_hover_text(t!("Die Dateien kommen zuerst unter versteckten Hilfsnamen auf den Server und ersetzen die alten erst, wenn alle oben sind. So ist die Seite nie halb aktualisiert, und ein Abbruch ändert nichts."));
                         ui.end_row();
                         ui.label(t!("Ausschließen"));
                         ui.add(egui::TextEdit::singleline(&mut target.exclude).hint_text(t!(".git, node_modules, .env")).desired_width(300.0))

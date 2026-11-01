@@ -241,6 +241,8 @@ pub struct PublishTarget {
     pub remote_path: String,
     /// Upload a file to the server every time it is saved locally.
     pub upload_on_save: bool,
+    /// Publish in two steps (temporary names first), so the site is never half updated.
+    pub staged: bool,
     /// Modification time (seconds) of each file when it was last uploaded, by relative path.
     pub uploaded: std::collections::BTreeMap<String, u64>,
     /// Names skipped when synchronizing, comma separated.
@@ -256,6 +258,7 @@ impl Default for PublishTarget {
             site_id: String::new(),
             remote_path: String::new(),
             upload_on_save: false,
+            staged: true,
             uploaded: Default::default(),
             exclude: crate::sync::DEFAULT_EXCLUDE.join(", "),
             synced: Default::default(),

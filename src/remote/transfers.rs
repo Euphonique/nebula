@@ -65,6 +65,7 @@ impl Transfer {
             Request::Download { remote, .. } => last(remote),
             Request::Copy { from, .. } => last(from),
             Request::Write { path, .. } => last(path),
+            Request::Publish { files, .. } => t!("Veröffentlichen ({n} Dateien)", n = files.len()),
             _ => String::new(),
         }
     }
@@ -76,6 +77,7 @@ impl Transfer {
             Request::Download { local, .. } => t!("von {site_name} nach {map}", site_name = self.site_name, map = local.parent().map(|p| p.display().to_string()).unwrap_or_default()),
             Request::Copy { to, .. } => format!("{}:{}", self.site_name, to),
             Request::Write { .. } => t!("Speichern auf {site_name}", site_name = self.site_name),
+            Request::Publish { .. } => t!("nach {site_name}", site_name = self.site_name),
             _ => String::new(),
         }
     }
@@ -88,7 +90,7 @@ impl Transfer {
 
 /// Requests that move file contents and belong in the list.
 pub fn is_transfer(request: &Request) -> bool {
-    matches!(request, Request::Upload { .. } | Request::Download { .. } | Request::Copy { .. } | Request::Write { .. })
+    matches!(request, Request::Upload { .. } | Request::Download { .. } | Request::Copy { .. } | Request::Write { .. } | Request::Publish { .. })
 }
 
 /// Number of files below a local path (for upload progress).

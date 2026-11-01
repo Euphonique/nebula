@@ -80,6 +80,31 @@ fn undo_scenario(b: &mut dyn Backend, root: &str, site_id: &str) {
     assert!(b.stat(&gone).unwrap().is_none());
 }
 
+/// Staged publish: existing files are replaced, new ones (in new folders)
+/// appear, no temporary files stay behind.
+fn publish_scenario(b: &mut dyn Backend, root: &str) {
+    let dir = super::join(root, "pub");
+    b.mkdir(&dir).unwrap();
+    b.write(&super::join(&dir, "index.php"), b"alt").unwrap();
+    let local = tempfile::tempdir().unwrap();
+    std::fs::write(local.path().join("index.php"), "neu").unwrap();
+    std::fs::write(local.path().join("a.css"), "a{}").unwrap();
+    let files = vec![
+        (local.path().join("index.php"), super::join(&dir, "index.php")),
+        (local.path().join("a.css"), super::join(&dir, "css/a.css")),
+    ];
+    let (events, _rx) = crossbeam_channel::unbounded();
+    let (ctx, cancel) = (eframe::egui::Context::default(), std::sync::atomic::AtomicBool::new(false));
+    let mut p = super::Progress { events: &events, ctx: &ctx, site_id: "test", tag: 1, cancel: &cancel, done: 0 };
+    let (done, failed) = super::publish_staged(b, &files, false, &mut p).unwrap();
+    assert!(failed.is_empty(), "{failed:?}");
+    assert_eq!(done.len(), 2);
+    assert_eq!(b.read(&super::join(&dir, "index.php")).unwrap(), b"neu");
+    assert_eq!(b.read(&super::join(&dir, "css/a.css")).unwrap(), b"a{}");
+    let names: Vec<String> = b.list(&dir).unwrap().into_iter().chain(b.list(&super::join(&dir, "css")).unwrap()).map(|e| e.name).collect();
+    assert!(!names.iter().any(|n| n.contains("nebula")), "{names:?}");
+}
+
 /// Runs the same scenario against any backend.
 fn exercise(b: &mut dyn Backend, root: &str) {
     let dir = super::join(root, "site");
@@ -181,6 +206,7 @@ fn ftp_roundtrip() {
     let home_dir = b.home().unwrap();
     exercise(&mut b, &home_dir);
     undo_scenario(&mut b, &home_dir, &format!("undo-{port}"));
+    publish_scenario(&mut b, &home_dir);
 }
 
 #[test]
@@ -225,6 +251,7 @@ fn ftps_explicit_roundtrip() {
     let home_dir = b.home().unwrap();
     exercise(&mut b, &home_dir);
     undo_scenario(&mut b, &home_dir, &format!("undo-{port}"));
+    publish_scenario(&mut b, &home_dir);
 }
 
 /// Implicit FTPS: libunftp only speaks explicit TLS, so a TLS terminator in front
@@ -295,6 +322,7 @@ fn ftps_implicit_roundtrip() {
     let home_dir = b.home().unwrap();
     exercise(&mut b, &home_dir);
     undo_scenario(&mut b, &home_dir, &format!("undo-{port}"));
+    publish_scenario(&mut b, &home_dir);
 }
 
 // ---- minimal SFTP server backed by a directory ----------------------------------
@@ -572,7 +600,15 @@ impl russh_sftp::server::Handler for SftpFs {
     }
 
     async fn rename(&mut self, id: u32, from: String, to: String) -> Result<Status, StatusCode> {
-        std::fs::rename(self.local(&from), self.local(&to)).map_err(io_err)?;
+        // Like OpenSSH (SFTP v3): no renaming onto an existing file.
+        let (from, to) = (self.local(&from), self.local(&to));
+        if to.exists() {
+            return Err(StatusCode::Failure);
+        }
+        std::fs::rename(&from, &to).map_err(io_err)?;
+        if let Some(m) = self.modes.remove(&from) {
+            self.modes.insert(to, m);
+        }
         Ok(ok(id))
     }
 }
@@ -757,17 +793,51 @@ fn transfer_list_failure_and_retry() {
     assert_eq!(manager.transfers.items.len(), 1);
     assert_eq!(std::fs::read_to_string(home.path().join("b.txt")).unwrap(), "hallo");
 
-    // Upload history through the worker: a publish of two files is one entry,
-    // undone in one go.
+    let reply = |manager: &mut super::RemoteManager, tag: u64| -> super::Reply {
+        for _ in 0..200 {
+            for ev in manager.poll() {
+                if ev.tag == tag {
+                    return ev.reply;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("no reply");
+    };
+
+    // Staged publish: a missing local file stops everything, nothing changes
+    // and no temporary file is left.
     let local = tempfile::tempdir().unwrap();
     std::fs::write(local.path().join("a.txt"), "neu").unwrap();
     std::fs::write(local.path().join("c.txt"), "c").unwrap();
-    manager.begin_batch(super::journal::Kind::Publish);
-    let t1 = manager.send(&site, super::Request::Upload { local: local.path().join("a.txt"), remote: "/a.txt".into() });
-    let t2 = manager.send(&site, super::Request::Upload { local: local.path().join("c.txt"), remote: "/c.txt".into() });
-    manager.end_batch();
-    wait(&mut manager, t1);
-    assert!(matches!(wait(&mut manager, t2), TransferState::Done(_)));
+    let publish = |files: &[&str]| super::Request::Publish {
+        files: files.iter().map(|n| (local.path().join(n), format!("/{n}"))).collect(),
+        staged: true,
+    };
+    let tag = manager.send(&site, publish(&["a.txt", "fehlt.txt"]));
+    assert!(matches!(reply(&mut manager, tag), super::Reply::Failed { .. }));
+    assert_eq!(std::fs::read_to_string(home.path().join("a.txt")).unwrap(), "hallo");
+    let names = |dir: &std::path::Path| std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect::<Vec<_>>();
+    assert!(!names(home.path()).iter().any(|n| n.contains("nebula")), "{:?}", names(home.path()));
+
+    // Upload history through the worker: a publish of two files is one entry,
+    // undone in one go. The replaced file keeps its permissions.
+    let mut b = SftpBackend::connect(&site, "secret", Box::new(|p: super::HostKeyPrompt| p.answer(true))).unwrap();
+    b.chmod("/a.txt", 0o600).unwrap();
+    let t1 = manager.send(&site, publish(&["a.txt", "c.txt"]));
+    match reply(&mut manager, t1) {
+        super::Reply::Published { done, failed } => {
+            assert!(failed.is_empty(), "{failed:?}");
+            assert_eq!(done.len(), 2);
+        }
+        _ => panic!("expected published"),
+    }
+    assert_eq!(std::fs::read_to_string(home.path().join("a.txt")).unwrap(), "neu");
+    // The transfer list shows it as finished.
+    assert!(matches!(manager.transfers.items.iter().find(|t| t.tag == t1).unwrap().state, TransferState::Done(_)));
+    assert_eq!(b.list("/").unwrap().into_iter().find(|e| e.name == "a.txt").unwrap().mode.map(|m| m & 0o777), Some(0o600));
+    assert!(!names(home.path()).iter().any(|n| n.contains("nebula")), "{:?}", names(home.path()));
+    drop(b);
     let entries = super::journal::list(&site.id);
     // The copy before is an entry of its own; the publish is one more.
     assert_eq!(entries.len(), 2, "one entry for the publish");
@@ -775,17 +845,9 @@ fn transfer_list_failure_and_retry() {
     assert_eq!(entries[0].file_count(), 2);
     let batch = manager.transfers.items.iter().find(|t| t.tag == t1).unwrap().batch;
     assert!(entries[0].has_id(batch));
+    assert!(entries[0].actions.iter().all(|a| !super::is_temp(&a.path)), "{:?}", entries[0].actions);
     // Changed behind Nebula's back: reported first, undone only with force.
     std::fs::write(home.path().join("c.txt"), "fremd").unwrap();
-    let reply = |manager: &mut super::RemoteManager, tag: u64| -> super::Reply {
-        for _ in 0..200 {
-            if let Some(ev) = manager.poll().into_iter().find(|e| e.tag == tag) {
-                return ev.reply;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        panic!("no reply");
-    };
     let tag = manager.send(&site, super::Request::Undo { entry: entries[0].id, force: false });
     match reply(&mut manager, tag) {
         super::Reply::UndoConflict { paths, .. } => assert_eq!(paths, ["/c.txt"]),

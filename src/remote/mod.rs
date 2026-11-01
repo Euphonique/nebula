@@ -57,6 +57,44 @@ pub trait Backend: Send {
     fn ping(&mut self) -> Result<()>;
     /// Size and modification time, or `None` if the file does not exist.
     fn stat(&mut self, path: &str) -> Result<Option<Stamp>>;
+    /// Moves an uploaded temporary file onto `path`, replacing it.
+    fn swap_in(&mut self, tmp: &str, path: &str) -> Result<()> {
+        replace_with(self, tmp, path)
+    }
+}
+
+/// Puts `tmp` in place of `path`. Servers that refuse to rename onto an
+/// existing file (SFTP) get the old file moved aside first; it is put back
+/// if the second step fails.
+fn replace_with<B: Backend + ?Sized>(b: &mut B, tmp: &str, path: &str) -> Result<()> {
+    let Err(e) = b.rename(tmp, path) else { return Ok(()) };
+    if b.stat(path)?.is_none() {
+        return Err(e);
+    }
+    let old = temp_name(path, OLD_SUFFIX);
+    let _ = b.remove_file(&old);
+    b.rename(path, &old)?;
+    if let Err(e) = b.rename(tmp, path) {
+        let _ = b.rename(&old, path);
+        return Err(e);
+    }
+    // A leftover would be harmless (hidden and replaced next time).
+    let _ = b.remove_file(&old);
+    Ok(())
+}
+
+const TEMP_SUFFIX: &str = ".nebula-upload";
+const OLD_SUFFIX: &str = ".nebula-old";
+
+/// `/www/.index.php.nebula-upload` for `/www/index.php`: hidden, same folder.
+fn temp_name(path: &str, suffix: &str) -> String {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    join(&parent(path), &format!(".{name}{suffix}"))
+}
+
+/// Temporary files of a publish (not worth keeping in the upload history).
+pub fn is_temp(path: &str) -> bool {
+    path.ends_with(TEMP_SUFFIX) || path.ends_with(OLD_SUFFIX)
 }
 
 /// Identifies a version of a remote file for conflict detection.
@@ -106,6 +144,10 @@ pub enum Request {
     /// Restores the state before an operation of the upload history. Without
     /// `force`, files changed since then are reported first ([`Reply::UndoConflict`]).
     Undo { entry: u64, force: bool },
+    /// Uploads files of a project (local, remote). `staged`: everything goes up
+    /// under temporary names first and replaces the files only at the end, so
+    /// the site is never half updated.
+    Publish { files: Vec<(std::path::PathBuf, String)>, staged: bool },
 }
 
 /// One step of a synchronization.
@@ -153,6 +195,7 @@ impl Request {
             Request::Sync(ops) => t!("Synchronisieren ({ops_count} Schritte)", ops_count = ops.len()),
             Request::Compare(files) => t!("Vergleichen von {files_count} Dateien", files_count = files.len()),
             Request::Undo { .. } => t!("Rückgängigmachen").into(),
+            Request::Publish { files, .. } => t!("Veröffentlichen ({n} Dateien)", n = files.len()),
         }
     }
 }
@@ -174,6 +217,8 @@ pub enum Reply {
     Compared { differing: Vec<String> },
     /// A [`Request::Sync`] finished; `failed` lists steps that went wrong.
     Synced { done: usize, failed: Vec<String> },
+    /// A [`Request::Publish`] finished: server paths put in place, and failures.
+    Published { done: Vec<String>, failed: Vec<String> },
     /// Files of an operation changed on the server since; nothing was undone.
     UndoConflict { entry: u64, paths: Vec<String> },
     /// An operation was undone (as far as possible).
@@ -215,8 +260,6 @@ pub struct RemoteEvent {
 pub struct Batch {
     /// Entry id; requests of one batch become one entry.
     pub id: u64,
-    /// Overrides the kind derived from the request (e.g. a publish).
-    pub kind: Option<journal::Kind>,
     /// False when the upload history is switched off.
     pub record: bool,
 }
@@ -274,8 +317,6 @@ pub struct RemoteManager {
     cancels: HashMap<u64, Arc<std::sync::atomic::AtomicBool>>,
     /// Keep the upload history (from the settings).
     pub record: bool,
-    /// Batch that further requests join (see [`RemoteManager::begin_batch`]).
-    batch: Option<(u64, journal::Kind)>,
     last_batch_id: u64,
 }
 
@@ -291,7 +332,6 @@ impl RemoteManager {
             transfers: Default::default(),
             cancels: HashMap::new(),
             record: true,
-            batch: None,
             last_batch_id: 0,
         }
     }
@@ -301,17 +341,6 @@ impl RemoteManager {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
         self.last_batch_id = now.max(self.last_batch_id + 1);
         self.last_batch_id
-    }
-
-    /// Requests sent until [`RemoteManager::end_batch`] become one entry of the
-    /// upload history (e.g. all files of a publish).
-    pub fn begin_batch(&mut self, kind: journal::Kind) {
-        let id = self.new_batch_id();
-        self.batch = Some((id, kind));
-    }
-
-    pub fn end_batch(&mut self) {
-        self.batch = None;
     }
 
     pub fn is_connected(&self, site_id: &str) -> bool {
@@ -360,10 +389,7 @@ impl RemoteManager {
         let tag = self.next_tag;
         self.next_tag += 1;
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let batch = match self.batch {
-            Some((id, kind)) => Batch { id, kind: Some(kind), record: self.record },
-            None => Batch { id: self.new_batch_id(), kind: None, record: self.record },
-        };
+        let batch = Batch { id: self.new_batch_id(), record: self.record };
         if transfers::is_transfer(&request) {
             self.transfers.add(transfers::Transfer {
                 tag,
@@ -414,6 +440,7 @@ impl RemoteManager {
                             S::Running { total, .. } => total,
                             _ => match &t.request {
                                 Request::Upload { local, .. } => Some(transfers::count_local(local)),
+                                Request::Publish { files, .. } => Some(files.len()),
                                 Request::Download { is_dir: true, .. } | Request::Copy { is_dir: true, .. } => None,
                                 _ => Some(1),
                             },
@@ -422,6 +449,8 @@ impl RemoteManager {
                     }
                     Reply::Transferred { message, .. } => t.state = S::Done(message.clone()),
                     Reply::Written { bytes, .. } => t.state = S::Done(t!("{bytes} Bytes gespeichert", bytes = bytes)),
+                    Reply::Published { done, failed } if failed.is_empty() => t.state = S::Done(t!("{n} Datei(en) hochgeladen", n = done.len())),
+                    Reply::Published { done, failed } => t.state = S::Failed(t!("{n} Datei(en) hochgeladen, {f} fehlgeschlagen", n = done.len(), f = failed.len())),
                     Reply::Conflict { .. } => t.state = S::Failed(t!("Auf dem Server geändert – nicht überschrieben").into()),
                     Reply::Failed { message, .. } => t.state = S::Failed(message.clone()),
                     _ => {}
@@ -587,7 +616,7 @@ impl Worker {
             _ => (None, journal::name_of(request)),
         };
         let actions = std::mem::take(&mut rec.actions);
-        journal::commit(&site_id, batch.id, batch.kind.unwrap_or(kind), name, actions, reverts);
+        journal::commit(&site_id, batch.id, kind, name, actions, reverts);
         result
     }
 }
@@ -732,6 +761,10 @@ fn run_request(b: &mut dyn Backend, backup: bool, site_id: &str, request: &Reque
             }
             Reply::Compared { differing }
         }
+        Request::Publish { files, staged } => {
+            let (done, failed) = if *staged { publish_staged(b, files, backup, progress)? } else { publish_direct(b, files, backup, progress)? };
+            Reply::Published { done, failed }
+        }
         Request::Undo { entry, force } => {
             let Some(e) = journal::get(site_id, *entry) else {
                 anyhow::bail!(t!("Dieser Vorgang ist nicht mehr im Upload-Verlauf."));
@@ -799,6 +832,75 @@ fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str, 
         p.finished_file();
         Ok(1)
     }
+}
+
+/// Publishing file by file (the site shows the new files one after another).
+fn publish_direct(b: &mut dyn Backend, files: &[(std::path::PathBuf, String)], backup: bool, p: &mut Progress) -> Result<(Vec<String>, Vec<String>)> {
+    let (mut done, mut failed) = (Vec::new(), Vec::new());
+    for (local, remote) in files {
+        let result = if backup { backup_file(b, remote) } else { Ok(()) }.and_then(|()| upload_recursive(b, local, remote, p).map(|_| ()));
+        match result {
+            Ok(()) => done.push(remote.clone()),
+            Err(e) if p.cancelled() || is_connection_error(&e) => return Err(e),
+            Err(e) => failed.push(format!("{remote}: {e:#}")),
+        }
+    }
+    Ok((done, failed))
+}
+
+/// Publishing in two steps: all files go up under temporary names (the site
+/// does not change yet), then each replaces its file. A failed or cancelled
+/// upload removes the temporary files again and changes nothing.
+fn publish_staged(b: &mut dyn Backend, files: &[(std::path::PathBuf, String)], backup: bool, p: &mut Progress) -> Result<(Vec<String>, Vec<String>)> {
+    let mut staged: Vec<(String, &String)> = Vec::new();
+    for (local, remote) in files {
+        let tmp = temp_name(remote, TEMP_SUFFIX);
+        let result = p
+            .file()
+            .and_then(|()| std::fs::read(local).with_context(|| local.display().to_string()))
+            .and_then(|data| write_creating(b, &tmp, &data).with_context(|| remote.clone()));
+        if let Err(e) = result {
+            for (tmp, _) in &staged {
+                let _ = b.remove_file(tmp);
+            }
+            let _ = b.remove_file(&tmp);
+            return Err(e.context(t!("Nichts veröffentlicht – die Dateien auf dem Server sind unverändert")));
+        }
+        p.finished_file();
+        staged.push((tmp, remote));
+    }
+    // Now quickly, one after another; listings tell the permissions to keep.
+    let mut listings: HashMap<String, Vec<RemoteEntry>> = HashMap::new();
+    let (mut done, mut failed) = (Vec::new(), Vec::new());
+    for (tmp, remote) in staged {
+        match put_in_place(b, &tmp, remote, backup, &mut listings) {
+            Ok(()) => done.push(remote.clone()),
+            Err(e) => {
+                let _ = b.remove_file(&tmp);
+                failed.push(format!("{remote}: {e:#}"));
+            }
+        }
+    }
+    Ok((done, failed))
+}
+
+fn put_in_place(b: &mut dyn Backend, tmp: &str, path: &str, backup: bool, listings: &mut HashMap<String, Vec<RemoteEntry>>) -> Result<()> {
+    let dir = parent(path);
+    if !listings.contains_key(&dir) {
+        let entries = b.list(&dir).unwrap_or_default();
+        listings.insert(dir.clone(), entries);
+    }
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if let Some(old) = listings[&dir].iter().find(|e| e.name == name && !e.is_dir) {
+        if backup {
+            backup_file(b, path)?;
+        }
+        // A replaced file keeps its permissions (e.g. 600 for a config).
+        if let Some(mode) = old.mode {
+            let _ = b.chmod(tmp, mode & 0o7777);
+        }
+    }
+    b.swap_in(tmp, path)
 }
 
 /// Writes a file; if that fails, creates its parent folders and tries again

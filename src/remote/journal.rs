@@ -129,6 +129,7 @@ pub fn kind_of(request: &super::Request) -> Option<Kind> {
         R::CreateFile(_) | R::Mkdir(_) => Kind::Create,
         R::Sync(_) => Kind::Sync,
         R::Undo { .. } => Kind::Undo,
+        R::Publish { .. } => Kind::Publish,
         R::List(_) | R::Read(_) | R::Download { .. } | R::Chmod { .. } | R::Scan { .. } | R::Compare(_) => return None,
     })
 }
@@ -377,6 +378,26 @@ impl<'a> Recorder<'a> {
         }
     }
 
+    /// Changes the content of `path` with `change`, noting what was there.
+    /// `data` (the new content, if known) skips recording unchanged files.
+    fn replace(&mut self, path: &str, data: Option<&[u8]>, change: impl FnOnce(&mut dyn Backend) -> Result<()>) -> Result<()> {
+        let before = if self.seen(path) { None } else { Some(self.before(path)?) };
+        self.forget_read(path);
+        change(&mut *self.inner)?;
+        let after = self.inner.stat(path).ok().flatten();
+        match before {
+            // Written before in this operation: its first state stays.
+            None => merge_actions(&mut self.actions, vec![Action { path: path.to_string(), change: Change::Wrote { prior: Prior::Absent, after } }]),
+            // Nothing changed: nothing to undo.
+            Some(Before::Data(old)) if data == Some(old.as_slice()) => {}
+            Some(before) => {
+                let prior = self.keep(before);
+                self.actions.push(Action { path: path.to_string(), change: Change::Wrote { prior, after } });
+            }
+        }
+        Ok(())
+    }
+
     fn forget_read(&mut self, path: &str) {
         if self.last_read.as_ref().is_some_and(|(p, _)| p == path) {
             self.last_read = None;
@@ -402,28 +423,15 @@ impl Backend for Recorder<'_> {
     }
 
     fn write(&mut self, path: &str, data: &[u8]) -> Result<()> {
-        // Server backups (`.bak`) are not worth undoing.
-        if path.ends_with(".bak") {
+        // Server backups (`.bak`) and publish temporaries are not worth undoing.
+        if path.ends_with(".bak") || super::is_temp(path) {
             return self.inner.write(path, data);
         }
-        if self.seen(path) {
-            self.forget_read(path);
-            self.inner.write(path, data)?;
-            let after = self.inner.stat(path).ok().flatten();
-            merge_actions(&mut self.actions, vec![Action { path: path.to_string(), change: Change::Wrote { prior: Prior::Absent, after } }]);
-            return Ok(());
-        }
-        let before = self.before(path)?;
-        self.forget_read(path);
-        self.inner.write(path, data)?;
-        // Nothing changed: nothing to undo.
-        if matches!(&before, Before::Data(old) if old == data) {
-            return Ok(());
-        }
-        let after = self.inner.stat(path).ok().flatten();
-        let prior = self.keep(before);
-        self.actions.push(Action { path: path.to_string(), change: Change::Wrote { prior, after } });
-        Ok(())
+        self.replace(path, Some(data), |inner| inner.write(path, data))
+    }
+
+    fn swap_in(&mut self, tmp: &str, path: &str) -> Result<()> {
+        self.replace(path, None, |inner| inner.swap_in(tmp, path))
     }
 
     fn mkdir(&mut self, path: &str) -> Result<()> {
@@ -433,6 +441,9 @@ impl Backend for Recorder<'_> {
     }
 
     fn remove_file(&mut self, path: &str) -> Result<()> {
+        if super::is_temp(path) {
+            return self.inner.remove_file(path);
+        }
         let before = if self.seen(path) { Before::Absent } else { self.before(path)? };
         self.forget_read(path);
         self.inner.remove_file(path)?;

@@ -88,19 +88,26 @@ impl NebulaApp {
             return;
         }
         let n = files.len();
-        // One entry in the upload history for the whole publish.
-        self.remote.begin_batch(crate::remote::journal::Kind::Publish);
+        let base = remote::normalize(&target.remote_path);
+        let mut pending = Vec::new();
+        let mut uploads = Vec::new();
         for (path, rel, m) in files {
-            self.publish_file(&root, &target, &path, &rel, m);
+            let remote = remote::join(&base, &rel);
+            uploads.push((path, remote.clone()));
+            pending.push((remote, rel, m));
         }
-        self.remote.end_batch();
+        // One request: one entry in the upload history, and with `staged`
+        // the files replace the old ones only when all are uploaded.
+        if let Some(tag) = self.send_remote(&target.site_id, Request::Publish { files: uploads, staged: target.staged }) {
+            self.pending_publish.insert(tag, (root_key(&root), pending));
+        }
         self.info(t!("Veröffentliche {n} Datei(en)…", n = n));
     }
 
     fn publish_file(&mut self, root: &Path, target: &PublishTarget, path: &Path, rel: &str, m: u64) {
         let remote = remote::join(&remote::normalize(&target.remote_path), rel);
         if let Some(tag) = self.send_remote(&target.site_id, Request::Upload { local: path.to_path_buf(), remote }) {
-            self.pending_publish.insert(tag, (root_key(root), rel.to_string(), m));
+            self.pending_publish.insert(tag, (root_key(root), vec![(String::new(), rel.to_string(), m)]));
         }
     }
 
@@ -133,12 +140,39 @@ impl NebulaApp {
         }
     }
 
-    /// Records a successful publish upload.
-    pub(super) fn mark_published(&mut self, tag: u64) {
-        if let Some((root, rel, m)) = self.pending_publish.remove(&tag)
+    /// Records successful publish uploads (`done`: server paths; all if `None`).
+    pub(super) fn mark_published(&mut self, tag: u64, done: Option<&[String]>) {
+        if let Some((root, files)) = self.pending_publish.remove(&tag)
             && let Some(t) = self.settings.publish.get_mut(&root)
         {
-            t.uploaded.insert(rel, m);
+            for (remote, rel, m) in files {
+                if done.is_none_or(|d| d.contains(&remote)) {
+                    t.uploaded.insert(rel, m);
+                }
+            }
+        }
+    }
+
+    /// A publish finished; failed files stay "changed" for the next attempt.
+    pub(super) fn published(&mut self, site_id: &str, tag: u64, done: Vec<String>, failed: Vec<String>) {
+        self.mark_published(tag, Some(&done));
+        let site_name = self.sites.get(site_id).map(|s| s.display_name()).unwrap_or_default();
+        // Folders shown in the sidebar list the new files.
+        let mut dirs: Vec<String> = done.iter().map(|p| remote::parent(p)).collect();
+        dirs.sort();
+        dirs.dedup();
+        if let Some(tree) = self.sidebar.remote.get(site_id) {
+            dirs.retain(|d| tree.dirs.contains_key(d));
+            for dir in dirs {
+                self.remote_request(site_id, Request::List(dir));
+            }
+        }
+        if failed.is_empty() {
+            self.info(t!("{n} Datei(en) auf {site_name} veröffentlicht", n = done.len(), site_name = site_name));
+        } else {
+            self.error(format!("{}
+{}", t!("{n} Datei(en) auf {site_name} veröffentlicht, {f} fehlgeschlagen:", n = done.len(), site_name = site_name, f = failed.len()), failed.join("
+")));
         }
     }
 
