@@ -50,7 +50,11 @@ pub fn symbols(text: &str, language: Language) -> Vec<Symbol> {
     match language {
         Markdown => markdown(text),
         Css | Scss | Less => css(text),
-        Html | Xml => html(text),
+        Html => html(text),
+        Xml => xml(text),
+        Json => json(text),
+        Sql => sql(text),
+        Diff => diff(text),
         Php => {
             let mut s = c_like(text, &PHP);
             s.extend(html(text));
@@ -329,6 +333,175 @@ fn html(text: &str) -> Vec<Symbol> {
     out
 }
 
+/// Most entries of the element/key trees (large data files stay usable).
+const MAX_TREE: usize = 3000;
+/// Deeper levels are left out of the element/key trees.
+const MAX_TREE_DEPTH: usize = 6;
+
+/// XML: the element tree; an element is named by its tag and a telling
+/// attribute (`item · Start` for `<item name="Start">`).
+fn xml(text: &str) -> Vec<Symbol> {
+    const NAMED_BY: &[&str] = &["id", "name", "key", "title", "label", "type", "class", "ref", "href", "path", "Include", "Name", "Key", "Id"];
+    let b = text.as_bytes();
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    let mut line = 0usize;
+    let mut counted = 0usize;
+    let mut i = 0;
+    while let Some(off) = text[i..].find('<') {
+        let at = i + off;
+        line += text[counted..at].matches('\n').count();
+        counted = at;
+        let rest = &text[at..];
+        let skip = |pat: &str| rest.find(pat).map_or(text.len(), |e| at + e + pat.len());
+        if rest.starts_with("<!--") {
+            i = skip("-->");
+        } else if rest.starts_with("<![CDATA[") {
+            i = skip("]]>");
+        } else if rest.starts_with("<?") {
+            i = skip("?>");
+        } else if rest.starts_with("<!") {
+            i = skip(">");
+        } else if rest.starts_with("</") {
+            depth = depth.saturating_sub(1);
+            i = skip(">");
+        } else {
+            // The tag up to `>` outside quotes.
+            let mut j = at + 1;
+            let mut quote = None;
+            while j < b.len() {
+                match (quote, b[j]) {
+                    (None, b'"' | b'\'') => quote = Some(b[j]),
+                    (Some(q), c) if c == q => quote = None,
+                    (None, b'>') => break,
+                    _ => {}
+                }
+                j += 1;
+            }
+            let tag = &text[at + 1..j.min(text.len())];
+            let name: String = tag.chars().take_while(|c| !c.is_whitespace() && *c != '/' && *c != '>').collect();
+            if name.is_empty() || !name.starts_with(|c: char| c.is_alphabetic() || c == '_') {
+                i = at + 1;
+                continue;
+            }
+            if depth < MAX_TREE_DEPTH && out.len() < MAX_TREE {
+                let label = NAMED_BY.iter().find_map(|a| attr_value(tag, a));
+                let shown = match label {
+                    Some(l) if !l.is_empty() => format!("{name} · {l}"),
+                    _ => name.clone(),
+                };
+                out.push(Symbol { name: shown, kind: Kind::Element, line, depth });
+            }
+            if !tag.trim_end().ends_with('/') {
+                depth += 1;
+            }
+            i = (j + 1).min(text.len());
+        }
+    }
+    out
+}
+
+/// `name="value"` in a start tag (exact attribute name).
+fn attr_value(tag: &str, name: &str) -> Option<String> {
+    let mut from = 0;
+    while let Some(off) = tag[from..].find(name) {
+        let at = from + off;
+        from = at + name.len();
+        let before_ok = at > 0 && tag.as_bytes()[at - 1].is_ascii_whitespace();
+        let rest = tag[from..].trim_start();
+        if !before_ok || !rest.starts_with('=') {
+            continue;
+        }
+        let value = rest[1..].trim_start();
+        let q = value.chars().next()?;
+        if q != '"' && q != '\'' {
+            return None;
+        }
+        let end = value[1..].find(q)?;
+        return Some(value[1..1 + end].chars().take(60).collect());
+    }
+    None
+}
+
+/// JSON: the keys as a tree (array items are counted, not listed).
+fn json(text: &str) -> Vec<Symbol> {
+    let b = text.as_bytes();
+    let mut out = Vec::new();
+    // Per open bracket: whether it is an object.
+    let mut stack: Vec<bool> = Vec::new();
+    let mut line = 0usize;
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'\n' => line += 1,
+            b'{' => stack.push(true),
+            b'[' => stack.push(false),
+            b'}' | b']' => {
+                stack.pop();
+            }
+            b'"' => {
+                let start = i + 1;
+                let mut j = start;
+                while j < b.len() && b[j] != b'"' {
+                    j += if b[j] == b'\\' { 2 } else { 1 };
+                }
+                let end = j.min(b.len());
+                // A key: in an object and followed by `:`.
+                let is_key = stack.last() == Some(&true) && text[end + 1.min(b.len() - end)..].trim_start().starts_with(':');
+                let depth = stack.len().saturating_sub(1);
+                if is_key && depth < MAX_TREE_DEPTH && out.len() < MAX_TREE {
+                    out.push(Symbol { name: text[start..end].to_string(), kind: Kind::Section, line, depth });
+                }
+                line += text[start..end].matches('\n').count();
+                i = end;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    out
+}
+
+/// SQL: tables, views, functions and the like that a script creates.
+fn sql(text: &str) -> Vec<Symbol> {
+    static CREATE: LazyLock<Regex> = LazyLock::new(|| {
+        re(r"(?i)^\s*(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?(?:TEMPORARY\s+|TEMP\s+|UNIQUE\s+)?(TABLE|VIEW|FUNCTION|PROCEDURE|TRIGGER|INDEX|SCHEMA|DATABASE|TYPE|SEQUENCE)\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?([`\x22\[]?[\w.$]+[`\x22\]]?)")
+    });
+    text.lines()
+        .enumerate()
+        .filter_map(|(n, l)| {
+            let c = CREATE.captures(l)?;
+            let what = c[1].to_ascii_uppercase();
+            let kind = match what.as_str() {
+                "FUNCTION" | "PROCEDURE" | "TRIGGER" => Kind::Function,
+                "TABLE" | "VIEW" | "TYPE" => Kind::Class,
+                _ => Kind::Section,
+            };
+            let name = c[2].trim_matches(['`', '"', '[', ']']).to_string();
+            Some(Symbol { name: format!("{} {name}", what.to_lowercase()), kind, line: n, depth: 0 })
+        })
+        .collect()
+}
+
+/// Diff: the files and their changed sections (`@@ … @@`).
+fn diff(text: &str) -> Vec<Symbol> {
+    let mut out = Vec::new();
+    for (n, l) in text.lines().enumerate() {
+        if let Some(path) = l.strip_prefix("+++ ") {
+            let path = path.trim_start_matches("b/").split('\t').next().unwrap_or(path);
+            if path != "/dev/null" {
+                out.push(Symbol { name: path.to_string(), kind: Kind::Section, line: n, depth: 0 });
+            }
+        } else if l.starts_with("@@") {
+            let name = l.trim_start_matches('@').split("@@").next().unwrap_or("").trim();
+            let context = l.rsplit("@@").next().unwrap_or("").trim();
+            let shown = if context.is_empty() { name.to_string() } else { format!("{name}  {context}") };
+            out.push(Symbol { name: shown, kind: Kind::Rule, line: n, depth: 1 });
+        }
+    }
+    out
+}
+
 fn sections(text: &str) -> Vec<Symbol> {
     static S: LazyLock<Regex> = LazyLock::new(|| re(r"^\s*\[\[?([^\]]+)\]\]?"));
     text.lines()
@@ -389,5 +562,27 @@ mod tests {
         assert_eq!(names(&s), vec![(".box".into(), 0), ("main#content".into(), 0), ("Willkommen hier".into(), 0)]);
         assert_eq!(s[0].line, 1);
         assert_eq!(s[2].line, 4);
+    }
+
+    #[test]
+    fn xml_tree() {
+        let xml = "<?xml version=\"1.0\"?>\n<!-- Kommentar <x> -->\n<config>\n  <item name=\"Start\" />\n  <group id=\"g1\">\n    <entry>Text</entry>\n    <![CDATA[<kein>]]>\n  </group>\n</config>\n";
+        let s = symbols(xml, Language::Xml);
+        let tree: Vec<(String, usize, usize)> = s.iter().map(|s| (s.name.clone(), s.line, s.depth)).collect();
+        assert_eq!(tree, vec![("config".into(), 2, 0), ("item · Start".into(), 3, 1), ("group · g1".into(), 4, 1), ("entry".into(), 5, 2)]);
+    }
+
+    #[test]
+    fn json_sql_diff() {
+        let json = "{\n  \"name\": \"x\",\n  \"scripts\": {\n    \"build\": \"a:b\"\n  },\n  \"list\": [\"nein\", {\"tief\": 1}]\n}";
+        let s = symbols(json, Language::Json);
+        let tree: Vec<(String, usize, usize)> = s.iter().map(|s| (s.name.clone(), s.line, s.depth)).collect();
+        assert_eq!(tree, vec![("name".into(), 1, 0), ("scripts".into(), 2, 0), ("build".into(), 3, 1), ("list".into(), 5, 0), ("tief".into(), 5, 2)]);
+        let sql = "-- Schema\nCREATE TABLE IF NOT EXISTS `kunden` (\n id INT\n);\ncreate or replace view v_aktiv as select 1;\nCREATE FUNCTION summe() RETURNS INT\n";
+        let s = symbols(sql, Language::Sql);
+        let lines: Vec<(String, usize)> = s.iter().map(|s| (s.name.clone(), s.line)).collect();
+        assert_eq!(lines, vec![("table kunden".into(), 1), ("view v_aktiv".into(), 4), ("function summe".into(), 5)]);
+        let diff = "diff --git a/x.rs b/x.rs\n--- a/x.rs\n+++ b/x.rs\n@@ -1,3 +1,4 @@ fn main()\n-a\n+b\n";
+        assert_eq!(names(&symbols(diff, Language::Diff)), vec![("x.rs".into(), 0), ("-1,3 +1,4  fn main()".into(), 1)]);
     }
 }
