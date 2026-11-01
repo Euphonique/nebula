@@ -32,6 +32,8 @@ struct State {
     status: Status,
     tables: Vec<String>,
     tables_query: Option<u64>,
+    /// Tables and columns for SQL completion.
+    schema_query: Option<u64>,
     sql: String,
     running: Option<u64>,
     /// A statement that changes data, waiting for "Ausführen".
@@ -67,6 +69,7 @@ impl DbView {
             status: Status::Idle,
             tables: Vec::new(),
             tables_query: None,
+            schema_query: None,
             sql: String::new(),
             running: None,
             confirm: None,
@@ -103,7 +106,16 @@ impl DbView {
                     s.status = Status::Connected(version);
                     let session = s.session.as_mut().unwrap();
                     s.tables_query = Some(session.query("SHOW TABLES"));
+                    s.schema_query = Some(session.query(crate::sql_assist::SCHEMA_QUERY));
                 }
+                DbEvent::Done(id, outputs) if Some(id) == s.schema_query => {
+                    s.schema_query = None;
+                    if let Some(o) = outputs.first() {
+                        crate::sql_assist::set(&s.site_id, crate::sql_assist::Schema::from_rows(&o.rows));
+                    }
+                }
+                // Without access to information_schema there is just no completion.
+                DbEvent::Failed(id, _) if Some(id) == s.schema_query => s.schema_query = None,
                 DbEvent::Done(id, outputs) if Some(id) == s.tables_query => {
                     s.tables_query = None;
                     s.tables = outputs.first().map(|o| o.rows.iter().filter_map(|r| r.first().cloned().flatten()).collect()).unwrap_or_default();

@@ -9,7 +9,7 @@ use eframe::egui::{self, RichText, Sense};
 
 use super::NebulaApp;
 use crate::editor::DocSource;
-use crate::editor::document::Diagnostic;
+use crate::editor::document::{Diagnostic, Origin};
 use crate::remote::{self, Request};
 use crate::server_log::{self, LogEntry};
 use crate::ui::sidebar::{FileRef, RemoteStatus};
@@ -228,13 +228,13 @@ impl NebulaApp {
                 let start = doc.line_to_char(line);
                 let end = doc.line_end(line).max(start + 1);
                 let when = e.log.time.as_deref().map(|t| format!(" ({t})")).unwrap_or_default();
-                marks.push(Diagnostic { range: start..end, severity: e.log.severity, message: format!("{}{when}: {}", t!("Server"), e.log.message), server: true });
+                marks.push(Diagnostic { range: start..end, severity: e.log.severity, message: format!("{}{when}: {}", t!("Server"), e.log.message), origin: Origin::ServerLog });
             }
-            let had = doc.view.diagnostics.iter().any(|d| d.server);
+            let had = doc.view.diagnostics.iter().any(|d| d.origin == Origin::ServerLog);
             if marks.is_empty() && !had {
                 continue;
             }
-            doc.view.diagnostics.retain(|d| !d.server);
+            doc.view.diagnostics.retain(|d| d.origin != Origin::ServerLog);
             doc.view.diagnostics.extend(marks);
             doc.view.diagnostics.sort_by_key(|d| d.range.start);
         }

@@ -298,6 +298,8 @@ pub struct ViewState {
     pub rows_cache: Option<((u64, u64, Option<usize>, usize), Arc<Vec<super::folding::Row>>)>,
     /// Problems reported by extensions, sorted by start.
     pub diagnostics: Vec<Diagnostic>,
+    /// Tables and columns of the database this file talks to (SQL completion).
+    pub sql_schema: Option<Arc<crate::sql_assist::Schema>>,
     /// Completion items from extensions for the word starting at the given position.
     pub ext_items: Option<(usize, Vec<super::complete::Item>)>,
     /// The view wants extension completions (position, typed trigger character).
@@ -341,8 +343,18 @@ pub struct Diagnostic {
     /// 1 error, 2 warning, 3 info, 4 hint.
     pub severity: u8,
     pub message: String,
-    /// From a server error log (kept when extensions report anew).
-    pub server: bool,
+    /// Who reported it; each source replaces only its own.
+    pub origin: Origin,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Origin {
+    /// Extensions and language servers.
+    Ext,
+    /// A server's error log.
+    ServerLog,
+    /// The database check of SQL strings.
+    Sql,
 }
 
 pub struct Document {

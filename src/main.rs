@@ -29,6 +29,7 @@ mod server_import;
 mod server_log;
 mod server_watch;
 mod html_locate;
+mod sql_assist;
 mod offline;
 mod update;
 mod snippet_io;

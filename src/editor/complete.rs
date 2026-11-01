@@ -232,6 +232,36 @@ pub fn builtin_snippets(language: Language) -> &'static [(&'static str, &'static
 }
 
 /// Language at the cursor, looking into `<style>`/`<script>` blocks of HTML files.
+/// Table and column names when the cursor is in SQL; `None` outside SQL or
+/// when nothing fits (then the usual completion applies).
+fn sql_items(doc: &mut Document, schema: &crate::sql_assist::Schema, pos: usize, typed: &str, current: &str) -> Option<Vec<Item>> {
+    let text = doc.text();
+    if text.len() > 512 * 1024 {
+        return None;
+    }
+    let byte = text.char_indices().nth(pos).map_or(text.len(), |(b, _)| b);
+    let range = crate::sql_assist::sql_ranges(&text, doc.language == Language::Sql).into_iter().find(|r| r.start <= byte && byte <= r.end)?;
+    let mut ranked: Vec<(u8, Item)> = Vec::new();
+    for (name, detail, is_table) in crate::sql_assist::suggest(&text[range.clone()], byte - range.start, schema) {
+        let key = name.to_lowercase();
+        if name == current {
+            continue;
+        }
+        let class = if key.starts_with(typed) {
+            0
+        } else if typed.len() >= 2 && key.contains(typed) {
+            1
+        } else {
+            continue;
+        };
+        let kind = if is_table { Kind::Tag } else { Kind::Property };
+        ranked.push((class, Item { label: name.clone(), insert: name, kind, detail, start: None, end: None, filter: None }));
+    }
+    ranked.sort_by_key(|(c, _)| *c);
+    let items: Vec<Item> = ranked.into_iter().map(|(_, i)| i).take(80).collect();
+    (!items.is_empty()).then_some(items)
+}
+
 fn language_at(doc: &Document, before: &str) -> Language {
     if !matches!(doc.language, Language::Html | Language::Php) {
         return doc.language;
@@ -538,6 +568,13 @@ fn compute_builtin(doc: &mut Document) -> Option<Completion> {
     }
     let current = doc.slice(start..end);
     let lower = prefix.to_lowercase();
+    // Tables and columns of the database inside SQL strings.
+    if matches!(doc.language, Language::Php | Language::Sql)
+        && let Some(schema) = doc.view.sql_schema.clone()
+        && let Some(items) = sql_items(doc, &schema, pos, &lower, &current)
+    {
+        return Some(Completion { items, selected: 0, start });
+    }
     let before = doc.slice(start.saturating_sub(20_000)..start);
     let language = language_at(doc, &before);
 
@@ -710,6 +747,28 @@ mod tests {
 
     fn labels(c: &Completion) -> Vec<&str> {
         c.items.iter().map(|i| i.label.as_str()).collect()
+    }
+
+    #[test]
+    fn sql_names_in_php_strings() {
+        let mut tables = std::collections::BTreeMap::new();
+        tables.insert("users".to_string(), vec!["id".to_string(), "name".to_string()]);
+        tables.insert("orders".to_string(), vec!["user_id".to_string()]);
+        let schema = std::sync::Arc::new(crate::sql_assist::Schema { tables });
+        let mut d = at_end("a.php", "<?php $q = \"SELECT u.na");
+        d.view.sql_schema = Some(schema.clone());
+        // Without FROM yet `u` is no known alias: no column suggestions, normal completion.
+        assert!(compute(&mut d).is_none_or(|c| !labels(&c).contains(&"name")));
+        let mut d = at_end("a.php", "<?php $q = \"SELECT * FROM us");
+        d.view.sql_schema = Some(schema.clone());
+        let c = compute(&mut d).unwrap();
+        assert_eq!(labels(&c), ["users"]);
+        accept(&mut d, &c);
+        assert_eq!(d.rope.to_string(), "<?php $q = \"SELECT * FROM users");
+        // Outside the string: PHP as usual.
+        let mut d = at_end("a.php", "<?php $us");
+        d.view.sql_schema = Some(schema);
+        assert!(compute(&mut d).is_none_or(|c| !labels(&c).contains(&"users")));
     }
 
     #[test]

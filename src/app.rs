@@ -67,6 +67,7 @@ mod server_log;
 mod server_watch;
 mod mcp_preview;
 mod preview_link;
+mod sql_check;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -223,6 +224,8 @@ pub struct NebulaApp {
     mcp_jobs: Vec<mcp_preview::Job>,
     /// Linking preview elements and source.
     preview_link: preview_link::LinkState,
+    /// Per document: (version, schema) the database check ran for.
+    sql_checked: HashMap<u64, (u64, usize)>,
     /// Comparisons waiting for server files.
     diff_jobs: difftab::DiffJobs,
     preview: crate::preview::Preview,
@@ -331,6 +334,7 @@ impl NebulaApp {
             server_watch: Default::default(),
             mcp_jobs: Vec::new(),
             preview_link: Default::default(),
+            sql_checked: HashMap::new(),
             diff_jobs: Default::default(),
             preview: Default::default(),
             preview_state: Default::default(),
@@ -3403,6 +3407,7 @@ impl eframe::App for NebulaApp {
         self.process_remote_events();
         self.server_log_tick(&ctx);
         self.server_watch_tick(&ctx);
+        self.sql_tick();
         self.resume_waiting_transfers();
         self.poll_disk(&ctx);
         self.backup_unsaved(&ctx);

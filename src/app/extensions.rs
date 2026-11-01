@@ -381,7 +381,7 @@ impl NebulaApp {
                     }
                 }
             }
-            diags.extend(doc.view.diagnostics.iter().filter(|d| d.server).cloned());
+            diags.extend(doc.view.diagnostics.iter().filter(|d| d.origin != crate::editor::document::Origin::Ext).cloned());
             diags.sort_by_key(|d| d.range.start);
             doc.view.diagnostics = diags;
         }
@@ -1021,7 +1021,7 @@ fn diagnostic(doc: &Document, issue: &IssueMsg) -> Option<Diagnostic> {
     if let Some(src) = &issue.source {
         message = format!("{message} ({src})");
     }
-    Some(Diagnostic { range: start..end, severity: if issue.severity == 0 { 2 } else { issue.severity }, message, server: false })
+    Some(Diagnostic { range: start..end, severity: if issue.severity == 0 { 2 } else { issue.severity }, message, origin: crate::editor::document::Origin::Ext })
 }
 
 impl NebulaApp {
