@@ -11,6 +11,7 @@ pub mod terminal;
 pub mod search;
 pub mod db;
 pub mod transfers;
+pub mod journal;
 #[cfg(test)]
 mod integration_tests;
 
@@ -59,7 +60,7 @@ pub trait Backend: Send {
 }
 
 /// Identifies a version of a remote file for conflict detection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Stamp {
     pub size: u64,
     /// Seconds since the Unix epoch, if the server reports it.
@@ -102,6 +103,9 @@ pub enum Request {
     Sync(Vec<SyncOp>),
     /// Compares server files with local ones byte by byte: (name, remote, local).
     Compare(Vec<(String, String, std::path::PathBuf)>),
+    /// Restores the state before an operation of the upload history. Without
+    /// `force`, files changed since then are reported first ([`Reply::UndoConflict`]).
+    Undo { entry: u64, force: bool },
 }
 
 /// One step of a synchronization.
@@ -148,6 +152,7 @@ impl Request {
             Request::Scan { root, .. } => t!("Einlesen von {root}", root = root),
             Request::Sync(ops) => t!("Synchronisieren ({ops_count} Schritte)", ops_count = ops.len()),
             Request::Compare(files) => t!("Vergleichen von {files_count} Dateien", files_count = files.len()),
+            Request::Undo { .. } => t!("Rückgängigmachen").into(),
         }
     }
 }
@@ -169,6 +174,10 @@ pub enum Reply {
     Compared { differing: Vec<String> },
     /// A [`Request::Sync`] finished; `failed` lists steps that went wrong.
     Synced { done: usize, failed: Vec<String> },
+    /// Files of an operation changed on the server since; nothing was undone.
+    UndoConflict { entry: u64, paths: Vec<String> },
+    /// An operation was undone (as far as possible).
+    Undone { restored: usize, skipped: Vec<String>, failed: Vec<String>, paths: Vec<String> },
     Failed { request: Request, message: String },
     ConnectFailed { message: String },
     Disconnected,
@@ -201,8 +210,19 @@ pub struct RemoteEvent {
     pub reply: Reply,
 }
 
+/// Where the changes of a request go in the upload history.
+#[derive(Clone, Copy, Debug)]
+pub struct Batch {
+    /// Entry id; requests of one batch become one entry.
+    pub id: u64,
+    /// Overrides the kind derived from the request (e.g. a publish).
+    pub kind: Option<journal::Kind>,
+    /// False when the upload history is switched off.
+    pub record: bool,
+}
+
 enum Command {
-    Run { tag: u64, request: Request, cancel: Arc<std::sync::atomic::AtomicBool> },
+    Run { tag: u64, request: Request, cancel: Arc<std::sync::atomic::AtomicBool>, batch: Batch },
     Disconnect,
 }
 
@@ -252,6 +272,11 @@ pub struct RemoteManager {
     pub transfers: transfers::Transfers,
     /// Cancel flags of long requests outside the transfer list (comparisons).
     cancels: HashMap<u64, Arc<std::sync::atomic::AtomicBool>>,
+    /// Keep the upload history (from the settings).
+    pub record: bool,
+    /// Batch that further requests join (see [`RemoteManager::begin_batch`]).
+    batch: Option<(u64, journal::Kind)>,
+    last_batch_id: u64,
 }
 
 impl RemoteManager {
@@ -265,7 +290,28 @@ impl RemoteManager {
             next_tag: 1,
             transfers: Default::default(),
             cancels: HashMap::new(),
+            record: true,
+            batch: None,
+            last_batch_id: 0,
         }
+    }
+
+    /// Ids are times in milliseconds, so they stay unique across sessions.
+    fn new_batch_id(&mut self) -> u64 {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        self.last_batch_id = now.max(self.last_batch_id + 1);
+        self.last_batch_id
+    }
+
+    /// Requests sent until [`RemoteManager::end_batch`] become one entry of the
+    /// upload history (e.g. all files of a publish).
+    pub fn begin_batch(&mut self, kind: journal::Kind) {
+        let id = self.new_batch_id();
+        self.batch = Some((id, kind));
+    }
+
+    pub fn end_batch(&mut self) {
+        self.batch = None;
     }
 
     pub fn is_connected(&self, site_id: &str) -> bool {
@@ -314,6 +360,10 @@ impl RemoteManager {
         let tag = self.next_tag;
         self.next_tag += 1;
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let batch = match self.batch {
+            Some((id, kind)) => Batch { id, kind: Some(kind), record: self.record },
+            None => Batch { id: self.new_batch_id(), kind: None, record: self.record },
+        };
         if transfers::is_transfer(&request) {
             self.transfers.add(transfers::Transfer {
                 tag,
@@ -324,13 +374,14 @@ impl RemoteManager {
                 started: std::time::Instant::now(),
                 finished: None,
                 cancel: cancel.clone(),
+                batch: batch.id,
             });
         } else if matches!(request, Request::Compare(_)) {
             self.cancels.insert(tag, cancel.clone());
         }
         let conn = &self.connections[&site.id];
         conn.busy.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if conn.tx.send(Command::Run { tag, request, cancel }).is_err() {
+        if conn.tx.send(Command::Run { tag, request, cancel, batch }).is_err() {
             conn.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         }
         tag
@@ -468,9 +519,9 @@ impl Worker {
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
             };
-            let (tag, request, cancel) = match cmd {
+            let (tag, request, cancel, batch) = match cmd {
                 Command::Disconnect => break,
-                Command::Run { tag, request, cancel } => (tag, request, cancel),
+                Command::Run { tag, request, cancel, batch } => (tag, request, cancel, batch),
             };
             // Cancelled while waiting in the queue.
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
@@ -485,7 +536,7 @@ impl Worker {
                 let _ = events.send(RemoteEvent { site_id: site_id.clone(), tag, reply: Reply::Progress { done: 0 } });
                 ctx.request_repaint();
             }
-            let mut result = self.execute(&request, &mut progress);
+            let mut result = self.execute(&request, &mut progress, batch);
             if let Err(e) = &result
                 && is_connection_error(e)
             {
@@ -493,7 +544,7 @@ impl Worker {
                 self.backend = None;
                 progress.done = 0;
                 result = match self.open() {
-                    Ok(()) => self.execute(&request, &mut progress),
+                    Ok(()) => self.execute(&request, &mut progress, batch),
                     Err(e) => Err(e),
                 };
             }
@@ -513,153 +564,188 @@ impl Worker {
         self.emit(0, Reply::Disconnected);
     }
 
-    fn execute(&mut self, request: &Request, progress: &mut Progress) -> Result<Reply> {
+    fn execute(&mut self, request: &Request, progress: &mut Progress, batch: Batch) -> Result<Reply> {
         if self.backend.is_none() {
             self.open()?;
         }
         let backup = self.site.backup_on_save;
-        let b = self.backend.as_mut().unwrap();
-        Ok(match request {
-            Request::List(path) => {
-                let mut entries = b.list(path)?;
-                entries.sort_by(|a, b| {
-                    b.is_dir
-                        .cmp(&a.is_dir)
-                        .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-                });
-                Reply::Listed { path: path.clone(), entries }
-            }
-            Request::Read(path) => {
-                let data = b.read(path)?;
-                let stamp = b.stat(path).ok().flatten();
-                Reply::Read { path: path.clone(), data, stamp }
-            }
-            Request::Write { path, data, expected } => {
-                if let Some(expected) = expected
-                    && let Ok(Some(current)) = b.stat(path)
-                    && !current.matches(expected)
-                {
-                    return Ok(Reply::Conflict { path: path.clone() });
-                }
-                if backup {
-                    backup_file(b.as_mut(), path)?;
-                }
-                b.write(path, data)?;
-                let stamp = b.stat(path).ok().flatten();
-                Reply::Written { path: path.clone(), bytes: data.len(), stamp }
-            }
-            Request::Upload { local, remote } => {
-                if backup && local.is_file() {
-                    backup_file(b.as_mut(), remote)?;
-                }
-                let n = upload_recursive(b.as_mut(), local, remote, progress)?;
-                Reply::Transferred {
-                    message: t!("{n} Datei(en) hochgeladen", n = n),
-                    remote_dir: Some(parent(remote)),
-                    local_dir: None,
-                }
-            }
-            Request::Download { remote, local, is_dir } => {
-                let n = download_recursive(b.as_mut(), remote, local, *is_dir, progress)?;
-                Reply::Transferred {
-                    message: t!("{n} Datei(en) heruntergeladen", n = n),
-                    remote_dir: None,
-                    local_dir: local.parent().map(|p| p.to_path_buf()),
-                }
-            }
-            Request::Copy { from, to, is_dir } => {
-                let n = copy_recursive(b.as_mut(), from, to, *is_dir, progress)?;
-                Reply::Transferred {
-                    message: t!("{n} Datei(en) kopiert", n = n),
-                    remote_dir: Some(parent(to)),
-                    local_dir: None,
-                }
-            }
-            Request::CreateFile(path) => {
-                // Writing would empty an existing file.
-                if name_taken(b.as_mut(), path)? {
-                    anyhow::bail!(t!("{path} existiert bereits.", path = path));
-                }
-                b.write(path, &[])?;
-                Reply::Changed { dir: parent(path), message: t!("{path} angelegt", path = path) }
-            }
-            Request::Mkdir(path) => {
-                b.mkdir(path)?;
-                Reply::Changed { dir: parent(path), message: t!("{path} angelegt", path = path) }
-            }
-            Request::Delete { path, is_dir } => {
-                if *is_dir {
-                    remove_recursive(b.as_mut(), path)?;
-                } else {
-                    b.remove_file(path)?;
-                }
-                Reply::Changed { dir: parent(path), message: t!("{path} gelöscht", path = path) }
-            }
-            Request::Rename { from, to } => {
-                // FTP servers usually replace an existing target silently.
-                if from != to && name_taken(b.as_mut(), to)? {
-                    anyhow::bail!(t!("{path} existiert bereits.", path = to));
-                }
-                b.rename(from, to)?;
-                Reply::Changed { dir: parent(to), message: format!("{from} → {to}") }
-            }
-            Request::Chmod { path, mode, is_dir, recurse } => {
-                // "Only files" below a folder leaves the folder itself alone.
-                let mut n = 0;
-                if !(*is_dir && *recurse == Some(Recurse::Files)) {
-                    b.chmod(path, *mode)?;
-                    n += 1;
-                }
-                if let (true, Some(scope)) = (*is_dir, recurse) {
-                    n += chmod_recursive(b.as_mut(), path, *mode, *scope)?;
-                }
-                let what = if n == 1 { path.clone() } else { t!("{n} Objekte", n = n) };
-                Reply::Changed { dir: parent(path), message: t!("Berechtigungen von {what} auf {mode_string} gesetzt", what = what, mode_string = mode_string(*mode)) }
-            }
-            Request::Scan { root, exclude } => {
-                let mut files = Vec::new();
-                let truncated = scan_recursive(b.as_mut(), root, "", exclude, &mut files)?;
-                Reply::Scanned { files, truncated }
-            }
-            Request::Sync(ops) => {
-                // Every step on its own: one failure doesn't stop the others.
-                let (mut done, mut failed) = (0, Vec::new());
-                for op in ops {
-                    let result = match op {
-                        SyncOp::Upload { local, remote } => upload_recursive(b.as_mut(), local, remote, progress).map(|_| ()),
-                        SyncOp::Download { remote, local } => download_recursive(b.as_mut(), remote, local, false, progress).map(|_| ()),
-                        SyncOp::Delete(path) => b.remove_file(path),
-                    };
-                    match result {
-                        Ok(()) => done += 1,
-                        // A cancelled transfer stops everything.
-                        Err(e) if progress.cancelled() => return Err(e),
-                        Err(e) => {
-                            let what = match op {
-                                SyncOp::Upload { remote, .. } | SyncOp::Download { remote, .. } | SyncOp::Delete(remote) => remote,
-                            };
-                            failed.push(format!("{what}: {e:#}"));
-                        }
-                    }
-                }
-                Reply::Synced { done, failed }
-            }
-            Request::Compare(files) => {
-                let mut differing = Vec::new();
-                for (name, remote, local) in files {
-                    progress.file()?;
-                    // Server errors stop the comparison (a dropped connection
-                    // is retried); an unreadable local file counts as different.
-                    let r = b.read(remote)?;
-                    let same = std::fs::read(local).is_ok_and(|l| l == r);
-                    if !same {
-                        differing.push(name.clone());
-                    }
-                }
-                Reply::Compared { differing }
-            }
-        })
+        let site_id = self.site.id.clone();
+        let b = self.backend.as_mut().unwrap().as_mut();
+        // Undoing is always recorded, so it can be undone again.
+        let kind = journal::kind_of(request).filter(|k| batch.record || *k == journal::Kind::Undo);
+        let Some(kind) = kind else {
+            return run_request(b, backup, &site_id, request, progress);
+        };
+        let mut rec = journal::Recorder::new(b, &site_id);
+        // Also after a failure: what was changed until then can be undone.
+        let result = run_request(&mut rec, backup, &site_id, request, progress);
+        let (reverts, name) = match request {
+            Request::Undo { entry, .. } => match journal::get(&site_id, *entry) {
+                Some(e) => (Some((e.id, e.kind)), e.name),
+                None => (None, String::new()),
+            },
+            _ => (None, journal::name_of(request)),
+        };
+        let actions = std::mem::take(&mut rec.actions);
+        journal::commit(&site_id, batch.id, batch.kind.unwrap_or(kind), name, actions, reverts);
+        result
     }
+}
+
+fn run_request(b: &mut dyn Backend, backup: bool, site_id: &str, request: &Request, progress: &mut Progress) -> Result<Reply> {
+    Ok(match request {
+        Request::List(path) => {
+            let mut entries = b.list(path)?;
+            entries.sort_by(|a, b| {
+                b.is_dir
+                    .cmp(&a.is_dir)
+                    .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+            Reply::Listed { path: path.clone(), entries }
+        }
+        Request::Read(path) => {
+            let data = b.read(path)?;
+            let stamp = b.stat(path).ok().flatten();
+            Reply::Read { path: path.clone(), data, stamp }
+        }
+        Request::Write { path, data, expected } => {
+            if let Some(expected) = expected
+                && let Ok(Some(current)) = b.stat(path)
+                && !current.matches(expected)
+            {
+                return Ok(Reply::Conflict { path: path.clone() });
+            }
+            if backup {
+                backup_file(b, path)?;
+            }
+            b.write(path, data)?;
+            let stamp = b.stat(path).ok().flatten();
+            Reply::Written { path: path.clone(), bytes: data.len(), stamp }
+        }
+        Request::Upload { local, remote } => {
+            if backup && local.is_file() {
+                backup_file(b, remote)?;
+            }
+            let n = upload_recursive(b, local, remote, progress)?;
+            Reply::Transferred {
+                message: t!("{n} Datei(en) hochgeladen", n = n),
+                remote_dir: Some(parent(remote)),
+                local_dir: None,
+            }
+        }
+        Request::Download { remote, local, is_dir } => {
+            let n = download_recursive(b, remote, local, *is_dir, progress)?;
+            Reply::Transferred {
+                message: t!("{n} Datei(en) heruntergeladen", n = n),
+                remote_dir: None,
+                local_dir: local.parent().map(|p| p.to_path_buf()),
+            }
+        }
+        Request::Copy { from, to, is_dir } => {
+            let n = copy_recursive(b, from, to, *is_dir, progress)?;
+            Reply::Transferred {
+                message: t!("{n} Datei(en) kopiert", n = n),
+                remote_dir: Some(parent(to)),
+                local_dir: None,
+            }
+        }
+        Request::CreateFile(path) => {
+            // Writing would empty an existing file.
+            if name_taken(b, path)? {
+                anyhow::bail!(t!("{path} existiert bereits.", path = path));
+            }
+            b.write(path, &[])?;
+            Reply::Changed { dir: parent(path), message: t!("{path} angelegt", path = path) }
+        }
+        Request::Mkdir(path) => {
+            b.mkdir(path)?;
+            Reply::Changed { dir: parent(path), message: t!("{path} angelegt", path = path) }
+        }
+        Request::Delete { path, is_dir } => {
+            if *is_dir {
+                remove_recursive(b, path)?;
+            } else {
+                b.remove_file(path)?;
+            }
+            Reply::Changed { dir: parent(path), message: t!("{path} gelöscht", path = path) }
+        }
+        Request::Rename { from, to } => {
+            // FTP servers usually replace an existing target silently.
+            if from != to && name_taken(b, to)? {
+                anyhow::bail!(t!("{path} existiert bereits.", path = to));
+            }
+            b.rename(from, to)?;
+            Reply::Changed { dir: parent(to), message: format!("{from} → {to}") }
+        }
+        Request::Chmod { path, mode, is_dir, recurse } => {
+            // "Only files" below a folder leaves the folder itself alone.
+            let mut n = 0;
+            if !(*is_dir && *recurse == Some(Recurse::Files)) {
+                b.chmod(path, *mode)?;
+                n += 1;
+            }
+            if let (true, Some(scope)) = (*is_dir, recurse) {
+                n += chmod_recursive(b, path, *mode, *scope)?;
+            }
+            let what = if n == 1 { path.clone() } else { t!("{n} Objekte", n = n) };
+            Reply::Changed { dir: parent(path), message: t!("Berechtigungen von {what} auf {mode_string} gesetzt", what = what, mode_string = mode_string(*mode)) }
+        }
+        Request::Scan { root, exclude } => {
+            let mut files = Vec::new();
+            let truncated = scan_recursive(b, root, "", exclude, &mut files)?;
+            Reply::Scanned { files, truncated }
+        }
+        Request::Sync(ops) => {
+            // Every step on its own: one failure doesn't stop the others.
+            let (mut done, mut failed) = (0, Vec::new());
+            for op in ops {
+                let result = match op {
+                    SyncOp::Upload { local, remote } => upload_recursive(b, local, remote, progress).map(|_| ()),
+                    SyncOp::Download { remote, local } => download_recursive(b, remote, local, false, progress).map(|_| ()),
+                    SyncOp::Delete(path) => b.remove_file(path),
+                };
+                match result {
+                    Ok(()) => done += 1,
+                    // A cancelled transfer stops everything.
+                    Err(e) if progress.cancelled() => return Err(e),
+                    Err(e) => {
+                        let what = match op {
+                            SyncOp::Upload { remote, .. } | SyncOp::Download { remote, .. } | SyncOp::Delete(remote) => remote,
+                        };
+                        failed.push(format!("{what}: {e:#}"));
+                    }
+                }
+            }
+            Reply::Synced { done, failed }
+        }
+        Request::Compare(files) => {
+            let mut differing = Vec::new();
+            for (name, remote, local) in files {
+                progress.file()?;
+                // Server errors stop the comparison (a dropped connection
+                // is retried); an unreadable local file counts as different.
+                let r = b.read(remote)?;
+                let same = std::fs::read(local).is_ok_and(|l| l == r);
+                if !same {
+                    differing.push(name.clone());
+                }
+            }
+            Reply::Compared { differing }
+        }
+        Request::Undo { entry, force } => {
+            let Some(e) = journal::get(site_id, *entry) else {
+                anyhow::bail!(t!("Dieser Vorgang ist nicht mehr im Upload-Verlauf."));
+            };
+            if !*force {
+                let paths = journal::changed_since(b, &e)?;
+                if !paths.is_empty() {
+                    return Ok(Reply::UndoConflict { entry: *entry, paths });
+                }
+            }
+            let u = journal::undo(b, site_id, &e);
+            Reply::Undone { restored: u.restored, skipped: u.skipped, failed: u.failed, paths: u.paths }
+        }
+    })
 }
 
 /// Collects files below `dir`; returns true when [`SCAN_LIMIT`] was reached.
@@ -709,18 +795,25 @@ fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str, 
     } else {
         p.file()?;
         let data = std::fs::read(local)?;
-        if b.write(remote, &data).is_err() {
-            // The target folder may not exist yet: create its parents and retry.
-            let mut dir = String::new();
-            for part in parent(remote).split('/').filter(|p| !p.is_empty()) {
-                dir = format!("{dir}/{part}");
-                let _ = b.mkdir(&dir);
-            }
-            b.write(remote, &data)?;
-        }
+        write_creating(b, remote, &data)?;
         p.finished_file();
         Ok(1)
     }
+}
+
+/// Writes a file; if that fails, creates its parent folders and tries again
+/// (the target folder may not exist yet).
+fn write_creating(b: &mut dyn Backend, path: &str, data: &[u8]) -> Result<()> {
+    if b.write(path, data).is_err() {
+        let mut dir = String::new();
+        for part in parent(path).split('/').filter(|p| !p.is_empty()) {
+            dir = format!("{dir}/{part}");
+            // Existing folders fail here, so the upload history only notes new ones.
+            let _ = b.mkdir(&dir);
+        }
+        b.write(path, data)?;
+    }
+    Ok(())
 }
 
 fn download_recursive(b: &mut dyn Backend, remote: &str, local: &std::path::Path, is_dir: bool, p: &mut Progress) -> Result<usize> {

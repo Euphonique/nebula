@@ -36,7 +36,7 @@ pub(super) struct HistoryView {
 }
 
 /// "vor 5 Min." for recent times, else date and time.
-fn when(ms: u64) -> String {
+pub(super) fn when(ms: u64) -> String {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(ms);
     let ago = now.saturating_sub(ms) / 1000;
     match ago {

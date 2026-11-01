@@ -44,6 +44,8 @@ pub struct Transfer {
     /// When it finished (for "fertig vor …").
     pub finished: Option<Instant>,
     pub cancel: Arc<AtomicBool>,
+    /// Entry of the upload history this transfer belongs to.
+    pub batch: u64,
 }
 
 impl Transfer {

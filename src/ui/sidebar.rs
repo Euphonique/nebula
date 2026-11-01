@@ -173,6 +173,8 @@ pub enum SidebarAction {
     /// New server, preset to a group.
     AddSiteToGroup(String),
     DuplicateSite(String),
+    /// Earlier operations on a server, undoable.
+    UploadHistory(String),
     RemoveSite(String),
     /// Move a server into a group (empty = none).
     SetSiteGroup { site_id: String, group: String },
@@ -1231,6 +1233,10 @@ impl Sidebar {
                         }
                     }
                 });
+            }
+            if ui.button(t!("Upload-Verlauf…")).clicked() {
+                actions.push(SidebarAction::UploadHistory(site.id.clone()));
+                ui.close();
             }
             if ui.button(t!("Auf dem Server suchen…")).clicked() {
                 let path = home.clone().unwrap_or_else(|| site.root_path.trim().to_string());

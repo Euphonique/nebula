@@ -62,6 +62,7 @@ mod macros;
 mod loading;
 mod db_tab;
 mod updates;
+mod upload_history;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -207,6 +208,8 @@ pub struct NebulaApp {
     autosave: history::AutosaveState,
     /// The open "Lokaler Verlauf" window.
     history_view: Option<history::HistoryView>,
+    /// The open "Upload-Verlauf" window.
+    upload_history: Option<upload_history::UploadHistoryView>,
     /// Comparisons waiting for server files.
     diff_jobs: difftab::DiffJobs,
     preview: crate::preview::Preview,
@@ -310,6 +313,7 @@ impl NebulaApp {
             jump_reveal: false,
             autosave: Default::default(),
             history_view: None,
+            upload_history: None,
             diff_jobs: Default::default(),
             preview: Default::default(),
             preview_state: Default::default(),
@@ -798,6 +802,7 @@ impl NebulaApp {
     }
 
     fn process_remote_events(&mut self) {
+        self.remote.record = self.settings.upload_history;
         let events = self.remote.poll();
         for ev in events {
             let site_name = self
@@ -990,6 +995,8 @@ impl NebulaApp {
                 Reply::Synced { done, failed } => {
                     self.sync_done(ev.tag, done, failed);
                 }
+                Reply::UndoConflict { entry, paths } => self.upload_undo_conflict(&ev.site_id, entry, paths),
+                Reply::Undone { restored, skipped, failed, paths } => self.upload_undone(&ev.site_id, restored, skipped, failed, paths),
                 Reply::Changed { dir, message } => {
                     self.info(message);
                     self.remote_request(&ev.site_id, Request::List(dir));
@@ -1035,6 +1042,7 @@ impl NebulaApp {
                             self.pending_followups.remove(&ev.tag);
                             self.pending_publish.remove(&ev.tag);
                         }
+                        Request::Undo { .. } => self.upload_undo_failed(&ev.site_id),
                         Request::Rename { from, to } => {
                             // Tabs followed the rename already; send them back.
                             self.retarget_remote_docs(&ev.site_id, to, from);
@@ -1245,6 +1253,7 @@ impl NebulaApp {
             SidebarAction::EditSite(id) => self.open_site_form(id),
             SidebarAction::AddSiteToGroup(group) => self.add_site_to_group(group),
             SidebarAction::DuplicateSite(id) => self.duplicate_site(&id),
+            SidebarAction::UploadHistory(id) => self.open_upload_history(&id, None),
             SidebarAction::SetSiteGroup { site_id, group } => self.set_site_group(&site_id, &group),
             SidebarAction::ToggleGroup(group) => self.toggle_group(group),
             SidebarAction::DissolveGroup(group) => self.dissolve_group(&group),
@@ -3545,6 +3554,7 @@ impl eframe::App for NebulaApp {
         self.dialogs(&ctx);
         if self.dialog.is_none() {
             self.history_window(&ctx);
+            self.upload_history_window(&ctx);
         }
         self.autosave_tick(&ctx);
         // Outcome of a git operation from the Git panel.

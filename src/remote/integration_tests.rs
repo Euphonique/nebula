@@ -23,7 +23,7 @@ AAAEBUl2n4l7iwgzK2e4KOIjfUniFeA1AnE0hMpOo/7LBjtS9prWpvXvOckUOFS9R+V38E
 gzhiwJtzqHuSp0Ee1NT4AAAABHRlc3QB
 -----END OPENSSH PRIVATE KEY-----";
 
-fn isolated_config() {
+pub(crate) fn isolated_config() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let dir = std::env::temp_dir().join(format!("nebula-test-{}", std::process::id()));
@@ -38,6 +38,46 @@ fn free_port() -> u16 {
         .local_addr()
         .unwrap()
         .port()
+}
+
+/// Upload history on a real server: a folder upload, an overwrite and a
+/// deletion are undone together, then redone.
+fn undo_scenario(b: &mut dyn Backend, root: &str, site_id: &str) {
+    use super::journal::{self, Kind, Recorder};
+    let dir = super::join(root, "undo");
+    b.mkdir(&dir).unwrap();
+    let keep = super::join(&dir, "keep.txt");
+    let gone = super::join(&dir, "gone.txt");
+    b.write(&keep, b"alt").unwrap();
+    b.write(&gone, b"weg").unwrap();
+    let new = super::join(&dir, "neu/a.css");
+    let mut rec = Recorder::new(b, site_id);
+    rec.write(&keep, b"neu").unwrap();
+    super::write_creating(&mut rec, &new, b"a{}").unwrap();
+    rec.remove_file(&gone).unwrap();
+    let actions = std::mem::take(&mut rec.actions);
+    journal::commit(site_id, 1, Kind::Upload, dir.clone(), actions, None);
+
+    let entry = journal::get(site_id, 1).unwrap();
+    assert!(journal::changed_since(b, &entry).unwrap().is_empty());
+    let mut rec = Recorder::new(b, site_id);
+    let out = journal::undo(&mut rec, site_id, &entry);
+    assert!(out.failed.is_empty(), "{:?}", out.failed);
+    assert_eq!(out.restored, 3);
+    let actions = std::mem::take(&mut rec.actions);
+    journal::commit(site_id, 2, Kind::Undo, String::new(), actions, Some((1, Kind::Upload)));
+    assert_eq!(b.read(&keep).unwrap(), b"alt");
+    assert_eq!(b.read(&gone).unwrap(), b"weg");
+    assert!(b.stat(&new).unwrap().is_none());
+    assert!(!b.list(&dir).unwrap().iter().any(|e| e.name == "neu"), "created folder is removed again");
+
+    let redo = journal::get(site_id, 2).unwrap();
+    let mut rec = Recorder::new(b, site_id);
+    let out = journal::undo(&mut rec, site_id, &redo);
+    assert!(out.failed.is_empty(), "{:?}", out.failed);
+    assert_eq!(b.read(&keep).unwrap(), b"neu");
+    assert_eq!(b.read(&new).unwrap(), b"a{}");
+    assert!(b.stat(&gone).unwrap().is_none());
 }
 
 /// Runs the same scenario against any backend.
@@ -140,6 +180,7 @@ fn ftp_roundtrip() {
     let mut b = FtpBackend::connect(&site, "secret").expect("ftp connect");
     let home_dir = b.home().unwrap();
     exercise(&mut b, &home_dir);
+    undo_scenario(&mut b, &home_dir, &format!("undo-{port}"));
 }
 
 #[test]
@@ -183,6 +224,7 @@ fn ftps_explicit_roundtrip() {
     let mut b = FtpBackend::connect(&site, "secret").expect("explicit ftps connect");
     let home_dir = b.home().unwrap();
     exercise(&mut b, &home_dir);
+    undo_scenario(&mut b, &home_dir, &format!("undo-{port}"));
 }
 
 /// Implicit FTPS: libunftp only speaks explicit TLS, so a TLS terminator in front
@@ -252,6 +294,7 @@ fn ftps_implicit_roundtrip() {
     let mut b = FtpBackend::connect(&site, "secret").expect("implicit ftps connect");
     let home_dir = b.home().unwrap();
     exercise(&mut b, &home_dir);
+    undo_scenario(&mut b, &home_dir, &format!("undo-{port}"));
 }
 
 // ---- minimal SFTP server backed by a directory ----------------------------------
@@ -576,6 +619,7 @@ fn sftp_roundtrip_and_host_key_trust() {
     let root = b.home().unwrap();
     assert_eq!(root, "/");
     exercise(&mut b, &root);
+    undo_scenario(&mut b, &root, "undo-sftp");
 
     // Permissions: set and read back from the listing.
     b.write("/perm.txt", b"x").unwrap();
@@ -712,6 +756,54 @@ fn transfer_list_failure_and_retry() {
     assert!(matches!(wait(&mut manager, retry), TransferState::Done(_)));
     assert_eq!(manager.transfers.items.len(), 1);
     assert_eq!(std::fs::read_to_string(home.path().join("b.txt")).unwrap(), "hallo");
+
+    // Upload history through the worker: a publish of two files is one entry,
+    // undone in one go.
+    let local = tempfile::tempdir().unwrap();
+    std::fs::write(local.path().join("a.txt"), "neu").unwrap();
+    std::fs::write(local.path().join("c.txt"), "c").unwrap();
+    manager.begin_batch(super::journal::Kind::Publish);
+    let t1 = manager.send(&site, super::Request::Upload { local: local.path().join("a.txt"), remote: "/a.txt".into() });
+    let t2 = manager.send(&site, super::Request::Upload { local: local.path().join("c.txt"), remote: "/c.txt".into() });
+    manager.end_batch();
+    wait(&mut manager, t1);
+    assert!(matches!(wait(&mut manager, t2), TransferState::Done(_)));
+    let entries = super::journal::list(&site.id);
+    // The copy before is an entry of its own; the publish is one more.
+    assert_eq!(entries.len(), 2, "one entry for the publish");
+    assert_eq!(entries[0].kind, super::journal::Kind::Publish);
+    assert_eq!(entries[0].file_count(), 2);
+    let batch = manager.transfers.items.iter().find(|t| t.tag == t1).unwrap().batch;
+    assert!(entries[0].has_id(batch));
+    // Changed behind Nebula's back: reported first, undone only with force.
+    std::fs::write(home.path().join("c.txt"), "fremd").unwrap();
+    let reply = |manager: &mut super::RemoteManager, tag: u64| -> super::Reply {
+        for _ in 0..200 {
+            if let Some(ev) = manager.poll().into_iter().find(|e| e.tag == tag) {
+                return ev.reply;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("no reply");
+    };
+    let tag = manager.send(&site, super::Request::Undo { entry: entries[0].id, force: false });
+    match reply(&mut manager, tag) {
+        super::Reply::UndoConflict { paths, .. } => assert_eq!(paths, ["/c.txt"]),
+        _ => panic!("expected a conflict"),
+    }
+    let tag = manager.send(&site, super::Request::Undo { entry: entries[0].id, force: true });
+    match reply(&mut manager, tag) {
+        super::Reply::Undone { restored, failed, .. } => {
+            assert_eq!(restored, 2);
+            assert!(failed.is_empty(), "{failed:?}");
+        }
+        _ => panic!("expected undone"),
+    }
+    assert_eq!(std::fs::read_to_string(home.path().join("a.txt")).unwrap(), "hallo");
+    assert!(!home.path().join("c.txt").exists());
+    let entries = super::journal::list(&site.id);
+    assert_eq!(entries[0].kind, super::journal::Kind::Undo);
+    assert!(entries[1].undone);
 
     site.set_password("").unwrap();
 }

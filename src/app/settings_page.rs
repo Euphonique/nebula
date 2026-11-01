@@ -291,6 +291,22 @@ impl NebulaApp {
                 .small()
                 .color(self.theme.text_faint),
         );
+        section(ui, t!("Upload-Verlauf"));
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.settings.upload_history, t!("Vor Änderungen auf dem Server den alten Stand aufbewahren"));
+            if ui.small_button(t!("Leeren")).clicked() {
+                let mb = crate::remote::journal::total_size() as f64 / 1024.0 / 1024.0;
+                match crate::remote::journal::clear() {
+                    Ok(()) => self.info(t!("Upload-Verlauf geleert ({mb} MB).", mb = format!("{mb:.1}"))),
+                    Err(e) => self.error(t!("Upload-Verlauf konnte nicht geleert werden: {e}", e = e)),
+                }
+            }
+        });
+        ui.label(
+            RichText::new(t!("Speichern, Hochladen, Veröffentlichen, Synchronisieren und Löschen lassen sich dann als Ganzes rückgängig machen (Rechtsklick auf einen Server › „Upload-Verlauf…“). Überschriebene Dateien werden dafür vorher gelesen; Dateien über 10 MB werden nicht gesichert. 30 Tage, bis 200 MB je Server."))
+                .small()
+                .color(self.theme.text_faint),
+        );
         let e = &mut self.settings.editor;
         section(ui, t!("Rechtschreibprüfung"));
         ui.checkbox(&mut e.spell_check, t!("Kommentare, Markdown und Text prüfen (Windows-Rechtschreibprüfung)"));

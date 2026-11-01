@@ -88,9 +88,12 @@ impl NebulaApp {
             return;
         }
         let n = files.len();
+        // One entry in the upload history for the whole publish.
+        self.remote.begin_batch(crate::remote::journal::Kind::Publish);
         for (path, rel, m) in files {
             self.publish_file(&root, &target, &path, &rel, m);
         }
+        self.remote.end_batch();
         self.info(t!("Veröffentliche {n} Datei(en)…", n = n));
     }
 
@@ -115,6 +118,19 @@ impl NebulaApp {
             return;
         }
         self.publish_file(&root, &target, path, &rel, mtime(path));
+    }
+
+    /// After undoing on a server: files put back are no longer published, so
+    /// the next publish uploads them again.
+    pub(super) fn forget_published(&mut self, site_id: &str, paths: &[String]) {
+        for target in self.settings.publish.values_mut().filter(|t| t.site_id == site_id) {
+            let base = remote::normalize(&target.remote_path);
+            for p in paths {
+                if let Some(rel) = p.strip_prefix(&base).and_then(|r| r.strip_prefix('/')) {
+                    target.uploaded.remove(rel);
+                }
+            }
+        }
     }
 
     /// Records a successful publish upload.

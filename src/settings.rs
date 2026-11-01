@@ -136,6 +136,8 @@ pub struct AppSettings {
     pub update_skipped: String,
     /// Keep copies of server files and folders to read them while offline.
     pub offline_cache: bool,
+    /// Keep the state before changes on servers, so they can be undone.
+    pub upload_history: bool,
     pub sidebar_width: f32,
     pub last_folder: Option<PathBuf>,
     pub recent_files: Vec<PathBuf>,
@@ -316,6 +318,7 @@ impl Default for AppSettings {
             update_checked: 0,
             update_skipped: String::new(),
             offline_cache: true,
+            upload_history: true,
             sidebar_width: 260.0,
             last_folder: None,
             recent_files: Vec::new(),

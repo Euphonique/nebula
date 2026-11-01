@@ -10,6 +10,8 @@ enum Act {
     Cancel(u64),
     Retry(u64),
     Remove(u64),
+    /// Show the operation in the upload history.
+    History(String, u64),
     ClearFinished,
 }
 
@@ -62,6 +64,7 @@ impl NebulaApp {
                 Act::Cancel(tag) => self.remote.transfers.cancel(tag),
                 Act::Remove(tag) => self.remote.transfers.remove(tag),
                 Act::ClearFinished => self.remote.transfers.clear_finished(),
+                Act::History(site_id, batch) => self.open_upload_history(&site_id, Some(batch)),
                 Act::Retry(tag) => {
                     let site_id = self.remote.transfers.items.iter().find(|t| t.tag == tag).map(|t| t.site_id.clone());
                     match site_id.and_then(|id| self.sites.get(&id).cloned()) {
@@ -153,6 +156,12 @@ impl NebulaApp {
                     TransferState::Done(_) => {
                         if buttons.small_button("✕").on_hover_text(t!("Aus der Liste entfernen")).clicked() {
                             acts.push(Act::Remove(t.tag));
+                        }
+                        if t.direction() != Direction::Down
+                            && self.settings.upload_history
+                            && buttons.small_button("↶").on_hover_text(t!("Im Upload-Verlauf zeigen (rückgängig machen)")).clicked()
+                        {
+                            acts.push(Act::History(t.site_id.clone(), t.batch));
                         }
                     }
                 }
