@@ -1,6 +1,6 @@
 [package]
 name = "nebula"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Fast native code editor for Windows with built-in FTP/SFTP remote editing"
 
