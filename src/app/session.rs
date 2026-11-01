@@ -46,6 +46,21 @@ impl NebulaApp {
         tabs
     }
 
+    /// A server file of the restored session arrived: it does not take the
+    /// focus from the tab in front, unless it is the one that should be.
+    pub(super) fn restored_in_background(&mut self, key: &(String, String), before: Option<u64>) {
+        if !self.restoring.loading.remove(key) {
+            return;
+        }
+        if self.restoring.wanted.as_ref() == Some(key) {
+            self.restoring.wanted = None;
+            return;
+        }
+        if let Some(i) = before.and_then(|id| self.doc_index(id)) {
+            self.activate(i);
+        }
+    }
+
     pub(super) fn restore_session(&mut self) {
         let entries = std::mem::take(&mut self.settings.session);
         let active = self.settings.session_active;
@@ -66,6 +81,11 @@ impl NebulaApp {
             } else if let (Some(site_id), Some(path)) = (&e.site_id, &e.remote_path)
                 && self.sites.get(site_id).is_some()
             {
+                let key = (site_id.clone(), path.clone());
+                if active == Some(n) {
+                    self.restoring.wanted = Some(key.clone());
+                }
+                self.restoring.loading.insert(key);
                 // Remote files open once the connection delivers them.
                 self.pending_cursors.insert((site_id.clone(), path.clone()), e.cursor);
                 if e.pinned {
@@ -189,4 +209,12 @@ fn apply_entry(doc: &mut crate::editor::Document, e: &SessionEntry) {
     doc.view.center_line = Some(doc.char_to_line(pos));
     doc.pinned = e.pinned;
     doc.view.bookmarks = e.bookmarks.iter().copied().filter(|&l| l < doc.len_lines()).collect();
+}
+
+#[derive(Default)]
+pub(super) struct Restoring {
+    /// Server files of the session that are still loading.
+    pub loading: std::collections::HashSet<(String, String)>,
+    /// The session's active tab, if it is a server file (it comes to the front).
+    pub wanted: Option<(String, String)>,
 }

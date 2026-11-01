@@ -197,6 +197,9 @@ pub struct NebulaApp {
     pending_cursors: HashMap<(String, String), usize>,
     /// Server files from the last session whose tab was pinned.
     pending_pins: std::collections::HashSet<(String, String)>,
+    /// Server files of the restored session still loading: they open in the
+    /// background (except the session's active one, if nothing else was opened).
+    restoring: session::Restoring,
     /// Bookmarks of remote tabs from the last session, applied once they load.
     pending_bookmarks: HashMap<(String, String), Vec<usize>>,
     /// Line and column to jump to once a remote file from the search arrives.
@@ -323,6 +326,7 @@ impl NebulaApp {
             settings_ui: SettingsUi::default(),
             pending_cursors: HashMap::new(),
             pending_pins: Default::default(),
+            restoring: Default::default(),
             pending_bookmarks: HashMap::new(),
             pending_lines: HashMap::new(),
             pending_publish: HashMap::new(),
@@ -391,6 +395,8 @@ impl NebulaApp {
                 app.open_folder(path);
             } else {
                 app.open_local(&path);
+                // Files given at the start stay in front of restored ones.
+                app.restoring.wanted = None;
             }
         }
         app
@@ -930,8 +936,11 @@ impl NebulaApp {
                         continue;
                     }
                     let Some((site_id, _)) = self.pending_opens.remove(&ev.tag) else { continue };
+                    let before = self.active.map(|i| self.docs[i].id);
+                    let key = (site_id.clone(), path.clone());
                     if crate::image_view::is_image_name(&path) {
                         self.open_image(DocSource::Remote { site_id, path }, &data);
+                        self.restored_in_background(&key, before);
                         continue;
                     }
                     if is_binary(&data) {
@@ -940,6 +949,7 @@ impl NebulaApp {
                         doc.remote_stamp = stamp;
                         doc.hex = Some(Arc::new(crate::hex_view::HexData::memory(data.to_vec())));
                         self.add_doc(doc);
+                        self.restored_in_background(&key, before);
                         continue;
                     }
                     let source = DocSource::Remote { site_id, path };
@@ -951,6 +961,7 @@ impl NebulaApp {
                         self.apply_pending_cursor(i);
                         self.apply_pending_backup(i);
                     }
+                    self.restored_in_background(&key, before);
                 }
                 Reply::Conflict { path } => {
                     if let Some(save) = self.pending_saves.remove(&ev.tag)
@@ -1180,7 +1191,9 @@ impl NebulaApp {
         let waiting: Vec<String> = self.pending_opens.values().filter(|(s, _)| s == site_id).map(|(_, p)| p.clone()).collect();
         self.pending_opens.retain(|_, (s, _)| s != site_id);
         for path in waiting {
+            let before = self.active.map(|i| self.docs[i].id);
             self.open_offline(site_id, &path);
+            self.restored_in_background(&(site_id.to_string(), path), before);
         }
         self.backup_open_failed(site_id, None);
         let ids: Vec<u64> = self.pending_saves.values().map(|s| s.doc_id).collect();
