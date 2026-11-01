@@ -258,6 +258,37 @@ impl NebulaApp {
         self.open_file_at(file, line, 0);
     }
 
+    /// The newest entries for agents (MCP), optionally of one server (by name).
+    pub(super) fn server_log_json(&self, site: Option<&str>) -> serde_json::Value {
+        let names: HashMap<String, String> = self.sites.sites.iter().map(|s| (s.id.clone(), s.display_name())).collect();
+        let entries: Vec<serde_json::Value> = self
+            .server_logs
+            .entries
+            .iter()
+            .rev()
+            .filter(|e| site.is_none_or(|s| names.get(&e.site_id).is_some_and(|n| n.eq_ignore_ascii_case(s))))
+            .take(50)
+            .map(|e| {
+                let (file, line) = match &e.log.file {
+                    Some((p, l)) => (Some(e.site_path.clone().unwrap_or_else(|| p.clone())), Some(*l)),
+                    None => (None, None),
+                };
+                let level = match e.log.severity {
+                    1 => "error",
+                    2 => "warning",
+                    _ => "notice",
+                };
+                serde_json::json!({ "server": names.get(&e.site_id), "time": e.log.time, "level": level, "message": e.log.message, "file": file, "line": line, "saved_since": e.stale })
+            })
+            .collect();
+        let watched: Vec<String> = self.server_logs_watched();
+        serde_json::json!({ "watched_logs": watched, "entries": entries, "note": if watched.is_empty() { "No error log is watched: set one in the server settings (field Fehlerprotokoll / error log) and connect to the server." } else { "Newest first; only lines written since Nebula connected." } })
+    }
+
+    fn server_logs_watched(&self) -> Vec<String> {
+        self.server_logs.watches.keys().map(|(site, path)| format!("{}:{path}", self.sites.get(site).map(|s| s.display_name()).unwrap_or_default())).collect()
+    }
+
     /// Status bar field with the entries; nothing while there are none.
     pub(super) fn server_log_status(&mut self, ui: &mut egui::Ui) {
         if self.server_logs.entries.is_empty() {

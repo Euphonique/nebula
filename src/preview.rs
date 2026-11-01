@@ -42,6 +42,26 @@ const INIT_SCRIPT: &str = r#"(function () {
       + '::-webkit-scrollbar-thumb:hover{background-color:rgba(140,140,150,.75)}';
     (document.head || document.documentElement).prepend(s);
   });
+  // Console errors and warnings of the page, for agents (MCP).
+  var log = window.__nebulaConsole = [];
+  var keep = function (level, text) {
+    if (log.length >= 200) log.shift();
+    log.push({ level: level, text: String(text).slice(0, 2000), time: Date.now() });
+  };
+  ['error', 'warn'].forEach(function (level) {
+    var orig = console[level];
+    console[level] = function () {
+      keep(level, Array.prototype.map.call(arguments, function (a) {
+        try { return a instanceof Error ? a.stack || a.message : typeof a === 'object' ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
+      }).join(' '));
+      return orig.apply(console, arguments);
+    };
+  });
+  addEventListener('error', function (e) {
+    if (e.message) keep('error', e.message + (e.filename ? ' (' + e.filename + ':' + e.lineno + ')' : ''));
+    else if (e.target && (e.target.src || e.target.href)) keep('error', 'Failed to load ' + (e.target.src || e.target.href));
+  }, true);
+  addEventListener('unhandledrejection', function (e) { keep('error', 'Unhandled promise rejection: ' + (e.reason && e.reason.stack || e.reason)); });
   window.__nebulaReloadCss = function () {
     document.querySelectorAll('link[rel~="stylesheet"]').forEach(function (l) {
       var u = new URL(l.href); u.searchParams.set('__nebula', Date.now()); l.href = u.href;
@@ -124,6 +144,45 @@ impl Preview {
                 false
             }
         }
+    }
+
+    /// Whether the web view is shown right now.
+    pub fn is_visible(&self) -> bool {
+        self.webview.is_some() && self.visible
+    }
+
+    /// Takes a PNG of what the preview shows; `out` gets it when done.
+    pub fn capture_png(&self, out: std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, String>>>>) -> Result<(), String> {
+        use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
+        use wry::WebViewExtWindows;
+        let webview = self.webview.as_ref().ok_or("The preview is not open.")?;
+        let core = webview.webview();
+        // SAFETY: COM calls on the UI thread that owns the web view.
+        unsafe {
+            let stream = windows::Win32::UI::Shell::SHCreateMemStream(None).ok_or("Could not create a memory stream.")?;
+            let kept = stream.clone();
+            let handler = webview2_com::CapturePreviewCompletedHandler::create(Box::new(move |result| {
+                let png = result.map_err(|e| e.to_string()).and_then(|()| read_stream(&kept));
+                if let Ok(mut slot) = out.lock() {
+                    *slot = Some(png);
+                }
+                Ok(())
+            }));
+            core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, &stream, &handler).map_err(|e| e.to_string())
+        }
+    }
+
+    /// Console errors and warnings the page logged (JSON), into `out`.
+    pub fn console(&self, out: std::sync::Arc<std::sync::Mutex<Option<String>>>) -> Result<(), String> {
+        let webview = self.webview.as_ref().ok_or("The preview is not open.")?;
+        let js = "JSON.stringify({ url: location.href, title: document.title, messages: window.__nebulaConsole || [] })";
+        webview
+            .evaluate_script_with_callback(js, move |json| {
+                if let Ok(mut slot) = out.lock() {
+                    *slot = Some(json);
+                }
+            })
+            .map_err(|e| e.to_string())
     }
 
     /// Requests from the page that wait for an answer.
@@ -210,6 +269,29 @@ impl Preview {
 }
 
 /// Answers a protocol request.
+/// Everything in a COM memory stream.
+unsafe fn read_stream(stream: &windows::Win32::System::Com::IStream) -> Result<Vec<u8>, String> {
+    use windows::Win32::System::Com::STREAM_SEEK_SET;
+    // SAFETY: the caller hands over a valid stream.
+    unsafe {
+        stream.Seek(0, STREAM_SEEK_SET, None).map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let mut read = 0u32;
+            let hr = stream.Read(buf.as_mut_ptr().cast(), buf.len() as u32, Some(&mut read));
+            if hr.is_err() {
+                return Err(hr.message());
+            }
+            if read == 0 {
+                break;
+            }
+            out.extend_from_slice(&buf[..read as usize]);
+        }
+        Ok(out)
+    }
+}
+
 pub fn respond(responder: RequestAsyncResponder, status: u16, content_type: &str, body: impl Into<Cow<'static, [u8]>>) {
     let response = Response::builder()
         .status(StatusCode::from_u16(status).unwrap_or(StatusCode::OK))

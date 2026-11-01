@@ -38,13 +38,20 @@ impl NebulaApp {
     }
 
     /// Answers tool calls; called every frame.
-    pub(super) fn poll_mcp(&mut self) {
+    pub(super) fn poll_mcp(&mut self, ctx: &egui::Context) {
         let Some(server) = &self.mcp else { return };
         let calls: Vec<crate::mcp::Call> = server.calls.try_iter().collect();
         for call in calls {
-            let result = self.mcp_tool(&call.tool, &call.args);
-            let _ = call.reply.send(result);
+            match call.tool.as_str() {
+                // Answered later: they wait for the preview.
+                "get_preview_screenshot" | "get_preview_console" => self.mcp_start_preview_job(call),
+                _ => {
+                    let result = self.mcp_tool(&call.tool, &call.args);
+                    let _ = call.reply.send(result.map(Into::into));
+                }
+            }
         }
+        self.mcp_preview_jobs(ctx);
     }
 
     fn mcp_tool(&mut self, tool: &str, args: &Value) -> Result<String, String> {
@@ -115,6 +122,10 @@ impl NebulaApp {
                 let i = self.local_doc(&path).ok_or("This file is not open in Nebula; read it from disk instead.")?;
                 let text = self.docs[i].text();
                 Ok(text.chars().take(MAX_TEXT).collect())
+            }
+            "get_server_log" => {
+                let site = args.get("server").and_then(Value::as_str);
+                Ok(pretty(self.server_log_json(site)))
             }
             "open_file" => {
                 let path = PathBuf::from(args.get("path").and_then(Value::as_str).ok_or("path is missing")?);

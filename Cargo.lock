@@ -4143,6 +4143,7 @@ dependencies = [
  "unftp-sbe-fs",
  "ureq",
  "vt100",
+ "webview2-com",
  "windows",
  "windows-sys 0.61.2",
  "winreg 0.56.0",

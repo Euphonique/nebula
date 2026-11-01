@@ -31,11 +31,23 @@ impl Default for McpSettings {
     }
 }
 
-/// A tool call for the app; `reply` takes the text result (or an error).
+/// What a tool returns: text, optionally with a PNG image.
+pub struct Answer {
+    pub text: String,
+    pub png: Option<Vec<u8>>,
+}
+
+impl From<String> for Answer {
+    fn from(text: String) -> Self {
+        Self { text, png: None }
+    }
+}
+
+/// A tool call for the app; `reply` takes the result (or an error).
 pub struct Call {
     pub tool: String,
     pub args: Value,
-    pub reply: Sender<Result<String, String>>,
+    pub reply: Sender<Result<Answer, String>>,
 }
 
 pub struct McpServer {
@@ -189,7 +201,7 @@ fn handle(msg: Value, calls: &Sender<Call>, wake: &(dyn Fn() + Send + Sync)) -> 
             "protocolVersion": params.get("protocolVersion").and_then(Value::as_str).unwrap_or("2025-03-26"),
             "capabilities": { "tools": {} },
             "serverInfo": { "name": "nebula", "title": "Nebula", "version": env!("CARGO_PKG_VERSION") },
-            "instructions": "Nebula is the code editor the user works in. Use these tools to see the open files, the active file with cursor and selection, and reported problems, and to open files for the user.",
+            "instructions": "Nebula is the code editor the user works in. Use these tools to see the open files, the active file with cursor and selection, and reported problems, and to open files for the user. After changing HTML, CSS, JS or PHP, check your work: get_preview_screenshot shows the live preview (also at phone or tablet widths), get_preview_console lists JavaScript errors of the page, get_server_log lists PHP/web server errors from the server's error log.",
         })),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": tools() })),
@@ -201,7 +213,12 @@ fn handle(msg: Value, calls: &Sender<Call>, wake: &(dyn Fn() + Send + Sync)) -> 
             wake();
             let outcome = if sent { rx.recv_timeout(Duration::from_secs(15)).unwrap_or_else(|_| Err("Nebula did not answer in time.".into())) } else { Err("Nebula is closing.".into()) };
             Ok(match outcome {
-                Ok(text) => json!({ "content": [{ "type": "text", "text": text }] }),
+                Ok(Answer { text, png: Some(png) }) => {
+                    use base64::Engine;
+                    let data = base64::engine::general_purpose::STANDARD.encode(png);
+                    json!({ "content": [{ "type": "image", "data": data, "mimeType": "image/png" }, { "type": "text", "text": text }] })
+                }
+                Ok(Answer { text, .. }) => json!({ "content": [{ "type": "text", "text": text }] }),
                 Err(text) => json!({ "content": [{ "type": "text", "text": text }], "isError": true }),
             })
         }
@@ -235,6 +252,24 @@ fn tools() -> Value {
             "name": "get_file_text",
             "description": "The current text of an open file, including unsaved changes.",
             "inputSchema": { "type": "object", "properties": { "path": path }, "required": ["path"] }
+        },
+        {
+            "name": "get_preview_screenshot",
+            "description": "A PNG of Nebula's live preview: the page the user sees next to the editor (local or on the server). Use it to check layout changes visually. Opens the preview if needed.",
+            "inputSchema": { "type": "object", "properties": {
+                "width": { "type": "integer", "description": "Render at this CSS width, e.g. 375 (phone), 768 (tablet), 1280 (desktop); omit for the panel width" },
+                "reload": { "type": "boolean", "description": "Reload the page first (after saving files)" }
+            } }
+        },
+        {
+            "name": "get_preview_console",
+            "description": "JavaScript errors and warnings the page in Nebula's live preview logged (console.error/warn, uncaught errors, failed resources), with its URL.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "get_server_log",
+            "description": "Recent entries of the error logs Nebula watches on servers (PHP errors, warnings, notices) with time, message, file and line. Only for servers with an error log configured and connected.",
+            "inputSchema": { "type": "object", "properties": { "server": { "type": "string", "description": "Only this server (name)" } } }
         },
         {
             "name": "open_file",
@@ -279,7 +314,10 @@ mod tests {
         // The "app": answers tool calls.
         std::thread::spawn(move || {
             for c in calls {
-                let _ = c.reply.send(Ok(format!("{} {}", c.tool, c.args["path"].as_str().unwrap_or(""))));
+                let text = format!("{} {}", c.tool, c.args["path"].as_str().unwrap_or(""));
+                // Screenshots come with an image.
+                let png = (c.tool == "get_preview_screenshot").then(|| vec![0x89, b'P', b'N', b'G']);
+                let _ = c.reply.send(Ok(Answer { text, png }));
             }
         });
         let path = "/mcp/geheim";
@@ -289,9 +327,13 @@ mod tests {
         let (status, _) = post(server.port, path, &json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
         assert!(status.contains("202"));
         let (_, list) = post(server.port, path, &json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }));
-        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 5);
+        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 8);
         let (_, call) = post(server.port, path, &json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "open_file", "arguments": { "path": "C:\\a.txt" } } }));
         assert_eq!(call["result"]["content"][0]["text"], "open_file C:\\a.txt");
+        let (_, shot) = post(server.port, path, &json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "get_preview_screenshot", "arguments": {} } }));
+        assert_eq!(shot["result"]["content"][0]["type"], "image");
+        assert_eq!(shot["result"]["content"][0]["mimeType"], "image/png");
+        assert_eq!(shot["result"]["content"][0]["data"], "iVBORw==");
         // Without the token: nothing.
         let (status, _) = post(server.port, "/mcp/falsch", &json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/list" }));
         assert!(status.contains("404"));
