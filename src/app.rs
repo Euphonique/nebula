@@ -64,6 +64,7 @@ mod db_tab;
 mod updates;
 mod upload_history;
 mod server_log;
+mod server_watch;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -214,6 +215,8 @@ pub struct NebulaApp {
     upload_history: Option<upload_history::UploadHistoryView>,
     /// Watched error logs of servers and their entries.
     server_logs: server_log::ServerLogs,
+    /// Change watcher: running scans, reports, the open window.
+    server_watch: server_watch::WatchState,
     /// Comparisons waiting for server files.
     diff_jobs: difftab::DiffJobs,
     preview: crate::preview::Preview,
@@ -319,6 +322,7 @@ impl NebulaApp {
             history_view: None,
             upload_history: None,
             server_logs: Default::default(),
+            server_watch: Default::default(),
             diff_jobs: Default::default(),
             preview: Default::default(),
             preview_state: Default::default(),
@@ -997,7 +1001,9 @@ impl NebulaApp {
                     self.sync_compared(ev.tag, differing);
                 }
                 Reply::Scanned { files, truncated } => {
-                    self.sync_scanned(ev.tag, files, truncated);
+                    if let Some((files, truncated)) = self.watch_take_scan(ev.tag, files, truncated) {
+                        self.sync_scanned(ev.tag, files, truncated);
+                    }
                 }
                 Reply::Synced { done, failed } => {
                     self.sync_done(ev.tag, done, failed);
@@ -1012,6 +1018,10 @@ impl NebulaApp {
                 }
                 Reply::Failed { request, message } => {
                     if self.sync_failed(ev.tag, &message) || self.server_log_failed(&ev.site_id, ev.tag, &message) {
+                        continue;
+                    }
+                    if self.watch_failed(ev.tag) {
+                        self.error(format!("{site_name}: {message}"));
                         continue;
                     }
                     if self.preview_state.pending.contains_key(&ev.tag) {
@@ -1266,6 +1276,7 @@ impl NebulaApp {
             SidebarAction::AddSiteToGroup(group) => self.add_site_to_group(group),
             SidebarAction::DuplicateSite(id) => self.duplicate_site(&id),
             SidebarAction::UploadHistory(id) => self.open_upload_history(&id, None),
+            SidebarAction::ServerWatch(id) => self.open_server_watch(&id),
             SidebarAction::SetSiteGroup { site_id, group } => self.set_site_group(&site_id, &group),
             SidebarAction::ToggleGroup(group) => self.toggle_group(group),
             SidebarAction::DissolveGroup(group) => self.dissolve_group(&group),
@@ -2275,6 +2286,7 @@ impl NebulaApp {
             };
             // Uploads/downloads first; other server requests only as a spinner.
             self.server_log_status(ui);
+            self.server_watch_status(ui);
             let transfers_shown = self.transfers_status(ui);
             if transfers_shown {
                 // The transfer list says enough.
@@ -3382,6 +3394,7 @@ impl eframe::App for NebulaApp {
         let polls = crate::perf::section("Polls");
         self.process_remote_events();
         self.server_log_tick(&ctx);
+        self.server_watch_tick(&ctx);
         self.resume_waiting_transfers();
         self.poll_disk(&ctx);
         self.backup_unsaved(&ctx);
@@ -3577,6 +3590,7 @@ impl eframe::App for NebulaApp {
         if self.dialog.is_none() {
             self.history_window(&ctx);
             self.upload_history_window(&ctx);
+            self.server_watch_window(&ctx);
         }
         self.autosave_tick(&ctx);
         // Outcome of a git operation from the Git panel.

@@ -13,7 +13,7 @@ pub mod db;
 pub mod transfers;
 pub mod journal;
 #[cfg(test)]
-mod integration_tests;
+pub(crate) mod integration_tests;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -622,14 +622,19 @@ impl Worker {
         let backup = self.site.backup_on_save;
         let site_id = self.site.id.clone();
         let b = self.backend.as_mut().unwrap().as_mut();
-        // Undoing is always recorded, so it can be undone again.
-        let kind = journal::kind_of(request).filter(|k| batch.record || *k == journal::Kind::Undo);
-        let Some(kind) = kind else {
+        let Some(kind) = journal::kind_of(request) else {
             return run_request(b, backup, &site_id, request, progress);
         };
-        let mut rec = journal::Recorder::new(b, &site_id);
-        // Also after a failure: what was changed until then can be undone.
+        // Undoing is always recorded, so it can be undone again. Without the
+        // upload history the changes are still noted for the change watcher.
+        let keep = batch.record || kind == journal::Kind::Undo;
+        let mut rec = if keep { journal::Recorder::new(b, &site_id) } else { journal::Recorder::changes_only(b, &site_id) };
         let result = run_request(&mut rec, backup, &site_id, request, progress);
+        let actions = std::mem::take(&mut rec.actions);
+        crate::server_watch::note_own(&site_id, &actions);
+        if !keep {
+            return result;
+        }
         let (reverts, name) = match request {
             Request::Undo { entry, .. } => match journal::get(&site_id, *entry) {
                 Some(e) => (Some((e.id, e.kind)), e.name),
@@ -637,7 +642,7 @@ impl Worker {
             },
             _ => (None, journal::name_of(request)),
         };
-        let actions = std::mem::take(&mut rec.actions);
+        // Also after a failure: what was changed until then can be undone.
         journal::commit(&site_id, batch.id, kind, name, actions, reverts);
         result
     }

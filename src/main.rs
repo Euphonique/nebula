@@ -27,6 +27,7 @@ mod crash;
 mod remote;
 mod server_import;
 mod server_log;
+mod server_watch;
 mod offline;
 mod update;
 mod snippet_io;

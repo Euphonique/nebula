@@ -175,6 +175,8 @@ pub enum SidebarAction {
     DuplicateSite(String),
     /// Earlier operations on a server, undoable.
     UploadHistory(String),
+    /// Report changes on a server made without Nebula.
+    ServerWatch(String),
     RemoveSite(String),
     /// Move a server into a group (empty = none).
     SetSiteGroup { site_id: String, group: String },
@@ -1236,6 +1238,10 @@ impl Sidebar {
             }
             if ui.button(t!("Upload-Verlauf…")).clicked() {
                 actions.push(SidebarAction::UploadHistory(site.id.clone()));
+                ui.close();
+            }
+            if ui.button(t!("Änderungswächter…")).clicked() {
+                actions.push(SidebarAction::ServerWatch(site.id.clone()));
                 ui.close();
             }
             if ui.button(t!("Auf dem Server suchen…")).clicked() {

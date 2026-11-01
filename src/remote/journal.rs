@@ -341,11 +341,18 @@ pub struct Recorder<'a> {
     pub actions: Vec<Action>,
     /// The file read last (backups read the file just before overwriting it).
     last_read: Option<(String, Vec<u8>)>,
+    /// Keep earlier contents (upload history on); otherwise only note what changed.
+    keep: bool,
 }
 
 impl<'a> Recorder<'a> {
     pub fn new(inner: &'a mut dyn Backend, site_id: &str) -> Self {
-        Self { inner, site_id: site_id.to_string(), actions: Vec::new(), last_read: None }
+        Self { inner, site_id: site_id.to_string(), actions: Vec::new(), last_read: None, keep: true }
+    }
+
+    /// Notes changes without reading or keeping earlier contents.
+    pub fn changes_only(inner: &'a mut dyn Backend, site_id: &str) -> Self {
+        Self { keep: false, ..Self::new(inner, site_id) }
     }
 
     fn seen(&self, path: &str) -> bool {
@@ -353,6 +360,9 @@ impl<'a> Recorder<'a> {
     }
 
     fn before(&mut self, path: &str) -> Result<Before> {
+        if !self.keep {
+            return Ok(Before::Unreadable);
+        }
         if let Some((p, data)) = &self.last_read
             && p == path
         {
