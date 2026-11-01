@@ -341,6 +341,8 @@ pub struct Diagnostic {
     /// 1 error, 2 warning, 3 info, 4 hint.
     pub severity: u8,
     pub message: String,
+    /// From a server error log (kept when extensions report anew).
+    pub server: bool,
 }
 
 pub struct Document {

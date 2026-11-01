@@ -114,6 +114,8 @@ fn exercise(b: &mut dyn Backend, root: &str) {
     // Overwriting with shorter content must truncate.
     b.write(&file, b"<p>ok</p>").unwrap();
     assert_eq!(b.read(&file).unwrap(), b"<p>ok</p>");
+    // Reading from an offset (for error logs).
+    assert_eq!(b.read_from(&file, 3).unwrap(), b"ok</p>");
 
     let entries = b.list(&dir).unwrap();
     assert_eq!(entries.len(), 1);
@@ -866,6 +868,39 @@ fn transfer_list_failure_and_retry() {
     let entries = super::journal::list(&site.id);
     assert_eq!(entries[0].kind, super::journal::Kind::Undo);
     assert!(entries[1].undone);
+
+    // Error log: watching starts at the end, then only whole new lines come;
+    // a rotated (shorter) log is read from the start.
+    let log = home.path().join("error_log");
+    std::fs::write(&log, "[alt] PHP Warning: x in /a.php on line 1
+").unwrap();
+    let tail = |manager: &mut super::RemoteManager, offset: Option<u64>| {
+        let tag = manager.send(&site, super::Request::TailLog { path: "/error_log".into(), offset });
+        match reply(manager, tag) {
+        super::Reply::LogTail { offset, text } => (offset, text),
+            _ => panic!("expected a log tail"),
+        }
+    };
+    let (start, text) = tail(&mut manager, None);
+    assert_eq!((start, text.as_str()), (41, ""));
+    std::fs::write(&log, "[alt] PHP Warning: x in /a.php on line 1
+neu 1
+neu 2
+halb").unwrap();
+    let (next, text) = tail(&mut manager, Some(start));
+    assert_eq!(text, "neu 1
+neu 2
+");
+    let (next, text) = tail(&mut manager, Some(next));
+    assert_eq!(text, "");
+    std::fs::write(&log, "frisch
+").unwrap();
+    let (_, text) = tail(&mut manager, Some(next));
+    assert_eq!(text, "frisch
+");
+    let missing = manager.send(&site, super::Request::TailLog { path: "/fehlt.log".into(), offset: None });
+    assert!(matches!(reply(&mut manager, missing), super::Reply::Failed { .. }));
+    assert_eq!(manager.total_pending(), 0, "log polling is not counted as pending");
 
     site.set_password("").unwrap();
 }

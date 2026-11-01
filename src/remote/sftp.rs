@@ -11,7 +11,7 @@ use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertific
 use russh::ChannelId;
 use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::OpenFlags;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use super::{Backend, HostKeyPrompt, RemoteEntry, Stamp, join};
 use crate::settings::{Site, config_dir};
@@ -32,12 +32,20 @@ pub type PromptFn = Box<dyn Fn(HostKeyPrompt) + Send + Sync>;
 /// Trusted host key fingerprints, stored as JSON next to the settings.
 struct KnownHosts;
 
+/// Connections to several servers may trust a key at the same time.
+static KNOWN_HOSTS_LOCK: Mutex<()> = Mutex::new(());
+
 impl KnownHosts {
     fn path() -> PathBuf {
         config_dir().join("known_hosts.json")
     }
 
     fn load() -> BTreeMap<String, String> {
+        let _guard = KNOWN_HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        Self::read()
+    }
+
+    fn read() -> BTreeMap<String, String> {
         std::fs::read(Self::path())
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
@@ -45,11 +53,13 @@ impl KnownHosts {
     }
 
     fn store(key: &str, fingerprint: &str) {
-        let mut map = Self::load();
+        let _guard = KNOWN_HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = Self::read();
         map.insert(key.to_string(), fingerprint.to_string());
         let _ = std::fs::create_dir_all(config_dir());
         if let Ok(json) = serde_json::to_vec_pretty(&map) {
-            let _ = std::fs::write(Self::path(), json);
+            // Atomically: a reader never sees half a file.
+            let _ = crate::safe_write::write(&Self::path(), &json);
         }
     }
 }
@@ -259,6 +269,16 @@ impl Backend for SftpBackend {
 
     fn read(&mut self, path: &str) -> Result<Vec<u8>> {
         Ok(RUNTIME.block_on(self.sftp.read(path))?)
+    }
+
+    fn read_from(&mut self, path: &str, offset: u64) -> Result<Vec<u8>> {
+        RUNTIME.block_on(async {
+            let mut file = self.sftp.open(path).await?;
+            file.seek(std::io::SeekFrom::Start(offset)).await?;
+            let mut out = Vec::new();
+            file.read_to_end(&mut out).await?;
+            Ok(out)
+        })
     }
 
     fn write(&mut self, path: &str, data: &[u8]) -> Result<()> {

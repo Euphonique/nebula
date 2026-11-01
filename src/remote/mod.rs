@@ -57,6 +57,11 @@ pub trait Backend: Send {
     fn ping(&mut self) -> Result<()>;
     /// Size and modification time, or `None` if the file does not exist.
     fn stat(&mut self, path: &str) -> Result<Option<Stamp>>;
+    /// The end of a file from byte `offset` on (for logs).
+    fn read_from(&mut self, path: &str, offset: u64) -> Result<Vec<u8>> {
+        let all = self.read(path)?;
+        Ok(all.get(offset as usize..).unwrap_or_default().to_vec())
+    }
     /// Moves an uploaded temporary file onto `path`, replacing it.
     fn swap_in(&mut self, tmp: &str, path: &str) -> Result<()> {
         replace_with(self, tmp, path)
@@ -148,6 +153,9 @@ pub enum Request {
     /// under temporary names first and replaces the files only at the end, so
     /// the site is never half updated.
     Publish { files: Vec<(std::path::PathBuf, String)>, staged: bool },
+    /// What was appended to a log since `offset`; without offset only the
+    /// current size (watching starts at the end).
+    TailLog { path: String, offset: Option<u64> },
 }
 
 /// One step of a synchronization.
@@ -196,6 +204,7 @@ impl Request {
             Request::Compare(files) => t!("Vergleichen von {files_count} Dateien", files_count = files.len()),
             Request::Undo { .. } => t!("Rückgängigmachen").into(),
             Request::Publish { files, .. } => t!("Veröffentlichen ({n} Dateien)", n = files.len()),
+            Request::TailLog { path, .. } => t!("Lesen des Fehlerprotokolls {path}", path = path),
         }
     }
 }
@@ -219,6 +228,8 @@ pub enum Reply {
     Synced { done: usize, failed: Vec<String> },
     /// A [`Request::Publish`] finished: server paths put in place, and failures.
     Published { done: Vec<String>, failed: Vec<String> },
+    /// New lines of a log (whole lines only) and where to go on next time.
+    LogTail { offset: u64, text: String },
     /// Files of an operation changed on the server since; nothing was undone.
     UndoConflict { entry: u64, paths: Vec<String> },
     /// An operation was undone (as far as possible).
@@ -265,7 +276,8 @@ pub struct Batch {
 }
 
 enum Command {
-    Run { tag: u64, request: Request, cancel: Arc<std::sync::atomic::AtomicBool>, batch: Batch },
+    /// `quiet`: not counted as pending (background polling).
+    Run { tag: u64, request: Request, cancel: Arc<std::sync::atomic::AtomicBool>, batch: Batch, quiet: bool },
     Disconnect,
 }
 
@@ -406,8 +418,11 @@ impl RemoteManager {
             self.cancels.insert(tag, cancel.clone());
         }
         let conn = &self.connections[&site.id];
-        conn.busy.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if conn.tx.send(Command::Run { tag, request, cancel, batch }).is_err() {
+        let quiet = matches!(request, Request::TailLog { .. });
+        if !quiet {
+            conn.busy.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        if conn.tx.send(Command::Run { tag, request, cancel, batch, quiet }).is_err() && !quiet {
             conn.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         }
         tag
@@ -526,8 +541,10 @@ impl Worker {
             self.emit(0, Reply::ConnectFailed { message: format!("{e:#}") });
             // Fail everything still queued so the UI doesn't wait forever.
             for cmd in rx.try_iter() {
-                if let Command::Run { tag, request, .. } = cmd {
-                    self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                if let Command::Run { tag, request, quiet, .. } = cmd {
+                    if !quiet {
+                        self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                    }
                     self.emit(tag, Reply::Failed { request, message: t!("Keine Verbindung").into() });
                 }
             }
@@ -548,13 +565,18 @@ impl Worker {
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
             };
-            let (tag, request, cancel, batch) = match cmd {
+            let (tag, request, cancel, batch, quiet) = match cmd {
                 Command::Disconnect => break,
-                Command::Run { tag, request, cancel, batch } => (tag, request, cancel, batch),
+                Command::Run { tag, request, cancel, batch, quiet } => (tag, request, cancel, batch, quiet),
+            };
+            let done = |busy: &std::sync::atomic::AtomicUsize| {
+                if !quiet {
+                    busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                }
             };
             // Cancelled while waiting in the queue.
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                done(&self.busy);
                 self.emit(tag, Reply::Failed { request, message: t!("Abgebrochen").into() });
                 continue;
             }
@@ -577,7 +599,7 @@ impl Worker {
                     Err(e) => Err(e),
                 };
             }
-            self.busy.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+            done(&self.busy);
             match result {
                 Ok(reply) => self.emit(tag, reply),
                 Err(_) if cancel.load(std::sync::atomic::Ordering::Relaxed) => {
@@ -764,6 +786,26 @@ fn run_request(b: &mut dyn Backend, backup: bool, site_id: &str, request: &Reque
         Request::Publish { files, staged } => {
             let (done, failed) = if *staged { publish_staged(b, files, backup, progress)? } else { publish_direct(b, files, backup, progress)? };
             Reply::Published { done, failed }
+        }
+        Request::TailLog { path, offset } => {
+            let Some(stamp) = b.stat(path)? else {
+                anyhow::bail!(t!("{path} gibt es nicht", path = path));
+            };
+            let (offset, text) = match *offset {
+                None => (stamp.size, String::new()),
+                Some(o) if o == stamp.size => (o, String::new()),
+                // Shorter than before: the log was rotated or emptied.
+                Some(o) => {
+                    let start = if o > stamp.size { 0 } else { o };
+                    // Never more than the last 256 KB at once.
+                    let start = start.max(stamp.size.saturating_sub(256 * 1024));
+                    let data = b.read_from(path, start)?;
+                    // Only whole lines; the rest comes next time.
+                    let end = data.iter().rposition(|&c| c == b'\n').map_or(0, |i| i + 1);
+                    (start + end as u64, String::from_utf8_lossy(&data[..end]).into_owned())
+                }
+            };
+            Reply::LogTail { offset, text }
         }
         Request::Undo { entry, force } => {
             let Some(e) = journal::get(site_id, *entry) else {

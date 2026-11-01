@@ -63,6 +63,7 @@ mod loading;
 mod db_tab;
 mod updates;
 mod upload_history;
+mod server_log;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -211,6 +212,8 @@ pub struct NebulaApp {
     history_view: Option<history::HistoryView>,
     /// The open "Upload-Verlauf" window.
     upload_history: Option<upload_history::UploadHistoryView>,
+    /// Watched error logs of servers and their entries.
+    server_logs: server_log::ServerLogs,
     /// Comparisons waiting for server files.
     diff_jobs: difftab::DiffJobs,
     preview: crate::preview::Preview,
@@ -315,6 +318,7 @@ impl NebulaApp {
             autosave: Default::default(),
             history_view: None,
             upload_history: None,
+            server_logs: Default::default(),
             diff_jobs: Default::default(),
             preview: Default::default(),
             preview_state: Default::default(),
@@ -692,6 +696,7 @@ impl NebulaApp {
                         self.upload_on_save(&path);
                         self.preview_saved(&DocSource::Local(path.clone()));
                         self.ext_doc_saved(doc_id);
+                        self.server_log_saved(doc_id);
                         true
                     }
                     Err(e) => {
@@ -977,6 +982,7 @@ impl NebulaApp {
                         }
                         let saved_id = doc.id;
                         self.ext_doc_saved(saved_id);
+                        self.server_log_saved(saved_id);
                         let doc = &mut self.docs[i];
                         if save.close_after && !doc.is_dirty() {
                             self.docs.remove(i);
@@ -996,6 +1002,7 @@ impl NebulaApp {
                 Reply::Synced { done, failed } => {
                     self.sync_done(ev.tag, done, failed);
                 }
+                Reply::LogTail { offset, text } => self.server_log_read(&ev.site_id, ev.tag, offset, &text),
                 Reply::Published { done, failed } => self.published(&ev.site_id, ev.tag, done, failed),
                 Reply::UndoConflict { entry, paths } => self.upload_undo_conflict(&ev.site_id, entry, paths),
                 Reply::Undone { restored, skipped, failed, paths } => self.upload_undone(&ev.site_id, restored, skipped, failed, paths),
@@ -1004,7 +1011,7 @@ impl NebulaApp {
                     self.remote_request(&ev.site_id, Request::List(dir));
                 }
                 Reply::Failed { request, message } => {
-                    if self.sync_failed(ev.tag, &message) {
+                    if self.sync_failed(ev.tag, &message) || self.server_log_failed(&ev.site_id, ev.tag, &message) {
                         continue;
                     }
                     if self.preview_state.pending.contains_key(&ev.tag) {
@@ -2267,6 +2274,7 @@ impl NebulaApp {
                 r
             };
             // Uploads/downloads first; other server requests only as a spinner.
+            self.server_log_status(ui);
             let transfers_shown = self.transfers_status(ui);
             if transfers_shown {
                 // The transfer list says enough.
@@ -2661,6 +2669,10 @@ impl NebulaApp {
                         ui.end_row();
                         ui.label(t!("Web-URL"));
                         ui.add(egui::TextEdit::singleline(&mut s.web_url).hint_text("https://example.com").desired_width(280.0));
+                        ui.end_row();
+                        ui.label(t!("Fehlerprotokoll"));
+                        ui.add(egui::TextEdit::singleline(&mut s.error_logs).hint_text("logs/error_log, /var/log/apache2/error.log").desired_width(280.0))
+                            .on_hover_text(t!("Wird mitgelesen, solange der Server verbunden ist; Fehler erscheinen an der passenden Zeile im Editor. Mehrere Dateien durch Komma getrennt, relative Pfade gelten ab dem Startpfad."));
                         ui.end_row();
                         match s.protocol {
                             Protocol::Sftp => {
@@ -3369,6 +3381,7 @@ impl eframe::App for NebulaApp {
         }
         let polls = crate::perf::section("Polls");
         self.process_remote_events();
+        self.server_log_tick(&ctx);
         self.resume_waiting_transfers();
         self.poll_disk(&ctx);
         self.backup_unsaved(&ctx);

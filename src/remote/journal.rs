@@ -130,7 +130,7 @@ pub fn kind_of(request: &super::Request) -> Option<Kind> {
         R::Sync(_) => Kind::Sync,
         R::Undo { .. } => Kind::Undo,
         R::Publish { .. } => Kind::Publish,
-        R::List(_) | R::Read(_) | R::Download { .. } | R::Chmod { .. } | R::Scan { .. } | R::Compare(_) => return None,
+        R::List(_) | R::Read(_) | R::TailLog { .. } | R::Download { .. } | R::Chmod { .. } | R::Scan { .. } | R::Compare(_) => return None,
     })
 }
 

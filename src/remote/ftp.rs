@@ -148,6 +148,15 @@ impl Backend for FtpBackend {
         Ok(self.stream.retr_as_buffer(path)?.into_inner())
     }
 
+    fn read_from(&mut self, path: &str, offset: u64) -> Result<Vec<u8>> {
+        // REST before RETR; servers without it send the whole file.
+        if offset > 0 && self.stream.resume_transfer(offset as usize).is_err() {
+            let all = self.read(path)?;
+            return Ok(all.get(offset as usize..).unwrap_or_default().to_vec());
+        }
+        Ok(self.stream.retr_as_buffer(path)?.into_inner())
+    }
+
     fn write(&mut self, path: &str, data: &[u8]) -> Result<()> {
         self.stream.put_file(path, &mut Cursor::new(data))?;
         Ok(())

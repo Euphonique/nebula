@@ -488,6 +488,8 @@ pub struct Site {
     pub accept_invalid_certs: bool,
     /// Public URL that corresponds to `root_path`, used for "Open in browser".
     pub web_url: String,
+    /// Error logs to watch (comma separated; relative to the start folder).
+    pub error_logs: String,
     /// Commands run in the SSH terminal with one click (cache, deploy, …).
     pub commands: Vec<ServerCommand>,
     /// Before overwriting a server file, keep the previous version as `<name>.bak`.
@@ -519,6 +521,7 @@ impl Default for Site {
             passive: true,
             accept_invalid_certs: false,
             web_url: String::new(),
+            error_logs: String::new(),
             commands: Vec::new(),
             backup_on_save: false,
             db: DbSettings::default(),
