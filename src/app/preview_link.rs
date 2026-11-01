@@ -10,7 +10,7 @@ use eframe::egui;
 use serde::Deserialize;
 
 use super::NebulaApp;
-use crate::editor::document::{Change, EditKind, Selection};
+use crate::editor::document::{Change, Diagnostic, EditKind, Origin, Selection};
 use crate::html_locate::{self, ElementSig};
 
 /// Pause after the cursor moved before the preview follows.
@@ -22,6 +22,16 @@ pub(super) struct LinkState {
     pub last: Option<(u64, u64, usize)>,
     /// A different position seen at this time, shown once it settles.
     pending: Option<((u64, u64, usize), Instant)>,
+    /// The page check is on: it runs again after every reload.
+    pub audit: bool,
+}
+
+/// A problem the page check found.
+#[derive(Deserialize)]
+struct Finding {
+    severity: u8,
+    message: String,
+    el: Option<ElementSig>,
 }
 
 #[derive(Deserialize)]
@@ -33,6 +43,8 @@ struct Message {
     before: String,
     #[serde(default)]
     after: String,
+    #[serde(default)]
+    items: Vec<Finding>,
 }
 
 fn char_of(text: &str, byte: usize) -> usize {
@@ -102,13 +114,83 @@ impl NebulaApp {
         best.map(|(i, r, _)| (i, r))
     }
 
+    /// Checks the page in the preview; the result comes as a message.
+    pub(super) fn run_page_check(&mut self) {
+        self.preview_link.audit = true;
+        let texts = serde_json::json!({
+            "title": t!("Die Seite hat keinen Titel (<title>)"),
+            "description": t!("Keine Meta-Beschreibung (<meta name=\"description\">) – wichtig für Suchmaschinen"),
+            "viewport": t!("Kein viewport-Meta-Tag – auf Handys erscheint die Seite verkleinert"),
+            "lang": t!("Kein lang-Attribut am <html> – wichtig für Bildschirmleser und Übersetzung"),
+            "h1": t!("Keine Hauptüberschrift (<h1>)"),
+            "h1many": t!("{n} Hauptüberschriften (<h1>) – meist ist eine besser"),
+            "alt": t!("Bild ohne alt-Text"),
+            "broken": t!("Bild lädt nicht: {src}"),
+            "oversized": t!("Bild ist {natural} px breit, angezeigt werden {shown} px – verkleinern spart Ladezeit"),
+            "heavy": t!("Bild ist {kb} KB groß"),
+            "emptylink": t!("Link ohne Text (auch kein aria-label)"),
+            "emptybutton": t!("Knopf ohne Text (auch kein aria-label)"),
+            "label": t!("Eingabefeld ohne Beschriftung (<label>)"),
+            "contrast": t!("Kontrast zu gering: {ratio}:1 (nötig {need}:1)"),
+            "deadlink": t!("Link führt ins Leere: {href} ({status})"),
+        });
+        self.preview.run(&format!("window.__nebulaAudit && __nebulaAudit({texts})"));
+    }
+
+    pub(super) fn stop_page_check(&mut self) {
+        self.preview_link.audit = false;
+        for doc in &mut self.docs {
+            doc.view.diagnostics.retain(|d| d.origin != Origin::Audit);
+        }
+    }
+
+    /// Puts the findings of the page check into the files they belong to.
+    fn page_checked(&mut self, items: Vec<Finding>) {
+        if !self.preview_link.audit {
+            return;
+        }
+        let page_doc = self.preview_state.page.as_ref().and_then(|p| self.doc_index(p.doc_id));
+        let mut marks: Vec<(usize, Diagnostic)> = Vec::new();
+        let (mut errors, mut warnings) = (0, 0);
+        for f in items {
+            match f.severity {
+                1 => errors += 1,
+                2 => warnings += 1,
+                _ => {}
+            }
+            let place = f.el.as_ref().and_then(|el| self.locate_element(el)).or_else(|| page_doc.map(|i| (i, 0..1)));
+            if let Some((i, range)) = place {
+                let message = format!("{}: {}", t!("Seitencheck"), f.message);
+                marks.push((i, Diagnostic { range, severity: f.severity, message, origin: Origin::Audit }));
+            }
+        }
+        for doc in &mut self.docs {
+            doc.view.diagnostics.retain(|d| d.origin != Origin::Audit);
+        }
+        for (i, d) in marks {
+            self.docs[i].view.diagnostics.push(d);
+        }
+        for doc in &mut self.docs {
+            doc.view.diagnostics.sort_by_key(|d| d.range.start);
+        }
+        if errors + warnings == 0 {
+            self.info(t!("Seitencheck: keine Auffälligkeiten."));
+        } else {
+            self.info(t!("Seitencheck: {e} Fehler, {w} Hinweise – markiert im Code und in der Problemliste der Statusleiste.", e = errors, w = warnings));
+        }
+    }
+
     fn preview_message(&mut self, m: Message) {
         match m.kind.as_str() {
             // A page (re)loaded: show the cursor's element again.
             "ready" => {
                 self.preview_link.last = None;
                 self.preview_link.pending = None;
+                if self.preview_link.audit {
+                    self.run_page_check();
+                }
             }
+            "audit" => self.page_checked(m.items),
             "reveal" => match self.locate_element(&m.el) {
                 Some((i, range)) => {
                     self.activate(i);

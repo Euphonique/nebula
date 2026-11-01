@@ -126,6 +126,87 @@ const INIT_SCRIPT: &str = r#"(function () {
     if (!box.parentNode) document.body.appendChild(box);
     if (r.bottom < 0 || r.top > innerHeight) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
   };
+  // Page check (I9): problems with the element they belong to.
+  window.__nebulaAudit = function (texts) {
+    var items = [];
+    var add = function (severity, key, args, el) {
+      var msg = texts[key] || key;
+      Object.keys(args || {}).forEach(function (k) { msg = msg.split('{' + k + '}').join(args[k]); });
+      items.push({ severity: severity, message: msg, el: el ? sig(el) : null });
+    };
+    var all = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
+    var visible = function (el) {
+      var r = el.getBoundingClientRect(), s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+    };
+    // Head.
+    var head = document.head || document.documentElement;
+    if (!document.title.trim()) add(1, 'title', {}, head);
+    if (!document.querySelector('meta[name="description" i]')) add(2, 'description', {}, head);
+    if (!document.querySelector('meta[name="viewport" i]')) add(2, 'viewport', {}, head);
+    if (!document.documentElement.getAttribute('lang')) add(2, 'lang', {}, document.documentElement);
+    var h1 = all('h1');
+    if (!h1.length && document.body) add(3, 'h1', {}, document.body);
+    if (h1.length > 1) add(3, 'h1many', { n: h1.length }, h1[1]);
+    // Images.
+    all('img').forEach(function (img) {
+      if (!img.hasAttribute('alt')) add(1, 'alt', {}, img);
+      if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) add(1, 'broken', { src: img.getAttribute('src') }, img);
+      var shown = img.getBoundingClientRect().width * (window.devicePixelRatio || 1);
+      if (img.naturalWidth > 1000 && shown > 0 && img.naturalWidth > shown * 2.5) add(2, 'oversized', { natural: img.naturalWidth, shown: Math.round(shown) }, img);
+      var entry = performance.getEntriesByName(img.currentSrc || img.src)[0];
+      var bytes = entry && (entry.encodedBodySize || entry.transferSize);
+      if (bytes > 400 * 1024) add(2, 'heavy', { kb: Math.round(bytes / 1024) }, img);
+    });
+    // Links and buttons without a name.
+    all('a[href], button').forEach(function (el) {
+      var name = (el.textContent || '').trim() || el.getAttribute('aria-label') || el.getAttribute('title') || (el.querySelector('img[alt]') || {}).alt;
+      if (!name && visible(el)) add(1, el.tagName === 'A' ? 'emptylink' : 'emptybutton', {}, el);
+    });
+    // Form fields without a label.
+    all('input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]), select, textarea').forEach(function (el) {
+      var labelled = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.closest('label') || (el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]'));
+      if (!labelled && visible(el)) add(2, 'label', {}, el);
+    });
+    // Contrast of text (WCAG AA), against the first solid background.
+    var rgb = function (s) { var m = s.match(/[\d.]+/g); return m ? m.map(Number) : [0, 0, 0, 0]; };
+    var lum = function (c) {
+      return [0, 1, 2].map(function (i) { var v = c[i] / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })
+        .reduce(function (a, v, i) { return a + v * [0.2126, 0.7152, 0.0722][i]; }, 0);
+    };
+    var background = function (el) {
+      for (var e = el; e; e = e.parentElement) {
+        var s = getComputedStyle(e);
+        if (s.backgroundImage !== 'none') return null; // over an image: not measurable
+        var c = rgb(s.backgroundColor);
+        if (c.length < 4 || c[3] > 0.9) return c;
+      }
+      return [255, 255, 255];
+    };
+    var contrastHits = 0;
+    all('body *').forEach(function (el) {
+      if (contrastHits >= 20 || !visible(el)) return;
+      var own = Array.prototype.some.call(el.childNodes, function (n) { return n.nodeType === 3 && n.nodeValue.trim(); });
+      if (!own) return;
+      var s = getComputedStyle(el), fg = rgb(s.color), bg = background(el);
+      if (!bg || (fg.length > 3 && fg[3] < 0.5)) return;
+      var a = lum(fg), b = lum(bg), ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      var size = parseFloat(s.fontSize), bold = parseInt(s.fontWeight, 10) >= 700;
+      var need = size >= 24 || (bold && size >= 18.66) ? 3 : 4.5;
+      if (ratio < need) { contrastHits++; add(2, 'contrast', { ratio: ratio.toFixed(1), need: need }, el); }
+    });
+    // Links within the site that lead nowhere (checked by asking for them).
+    var seen = {}, checks = [];
+    all('a[href]').forEach(function (a) {
+      var u = new URL(a.getAttribute('href'), location.href);
+      if (u.origin !== location.origin || u.hash && u.pathname === location.pathname || seen[u.pathname]) return;
+      seen[u.pathname] = true;
+      if (checks.length < 60) checks.push(fetch(u.pathname, { method: 'GET' }).then(function (r) {
+        if (r.status >= 400) add(1, 'deadlink', { href: a.getAttribute('href'), status: r.status }, a);
+      }).catch(function () {}));
+    });
+    Promise.all(checks).then(function () { post({ kind: 'audit', url: location.href, items: items }); });
+  };
   window.__nebulaReloadCss = function () {
     document.querySelectorAll('link[rel~="stylesheet"]').forEach(function (l) {
       var u = new URL(l.href); u.searchParams.set('__nebula', Date.now()); l.href = u.href;

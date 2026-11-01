@@ -405,6 +405,14 @@ impl NebulaApp {
         if button(ui, t!("Entwicklertools"), false, icons::devtools).clicked() {
             self.preview.open_devtools();
         }
+        let checking = self.preview_link.audit;
+        if button(ui, t!("Seite prüfen: alt-Texte, Kontrast, Links, Meta-Tags, große Bilder – die Treffer erscheinen im Code und in der Problemliste"), checking, icons::audit).clicked() {
+            if checking {
+                self.stop_page_check();
+            } else {
+                self.run_page_check();
+            }
+        }
         let link = self.settings.preview_link;
         if button(ui, t!("Mit dem Code verknüpfen: Element am Cursor hervorheben; Strg+Klick in der Vorschau springt zur Stelle, Strg+Doppelklick bearbeitet Text"), link, icons::inspect).clicked() {
             self.settings.preview_link = !link;

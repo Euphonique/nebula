@@ -355,6 +355,8 @@ pub enum Origin {
     ServerLog,
     /// The database check of SQL strings.
     Sql,
+    /// The page check of the preview.
+    Audit,
 }
 
 pub struct Document {

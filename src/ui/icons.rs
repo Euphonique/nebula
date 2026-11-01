@@ -381,6 +381,14 @@ pub fn inspect(painter: &Painter, c: Pos2, color: Color32) {
     painter.add(eframe::egui::Shape::convex_polygon(arrow, color, Stroke::NONE));
 }
 
+/// A check mark in a circle: check the page.
+pub fn audit(painter: &Painter, c: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    painter.circle_stroke(c, 7.0, stroke);
+    painter.line_segment([c + vec2(-3.5, 0.2), c + vec2(-1.0, 2.8)], stroke);
+    painter.line_segment([c + vec2(-1.0, 2.8), c + vec2(3.8, -2.6)], stroke);
+}
+
 /// Three dots ("more actions").
 pub fn more(painter: &Painter, c: Pos2, color: Color32) {
     for dx in [-5.0, 0.0, 5.0] {
