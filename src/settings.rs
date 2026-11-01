@@ -136,6 +136,8 @@ pub struct AppSettings {
     pub update_skipped: String,
     /// Keep copies of server files and folders to read them while offline.
     pub offline_cache: bool,
+    /// Link preview and source: highlight the element at the cursor in the preview.
+    pub preview_link: bool,
     /// Keep the state before changes on servers, so they can be undone.
     pub upload_history: bool,
     pub sidebar_width: f32,
@@ -321,6 +323,7 @@ impl Default for AppSettings {
             update_checked: 0,
             update_skipped: String::new(),
             offline_cache: true,
+            preview_link: true,
             upload_history: true,
             sidebar_width: 260.0,
             last_folder: None,

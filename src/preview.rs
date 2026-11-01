@@ -62,6 +62,70 @@ const INIT_SCRIPT: &str = r#"(function () {
     else if (e.target && (e.target.src || e.target.href)) keep('error', 'Failed to load ' + (e.target.src || e.target.href));
   }, true);
   addEventListener('unhandledrejection', function (e) { keep('error', 'Unhandled promise rejection: ' + (e.reason && e.reason.stack || e.reason)); });
+  // Linking with the source: Ctrl+click reveals an element in the editor,
+  // Ctrl+double-click edits plain text in place; the editor highlights the
+  // element at its cursor through __nebulaHighlight.
+  var sig = function (el) {
+    var cls = (el.getAttribute('class') || '').trim();
+    var same = Array.prototype.filter.call(document.getElementsByTagName(el.tagName), function (x) { return (x.getAttribute('class') || '').trim() === cls; });
+    var attrs = [];
+    ['id', 'href', 'src', 'name', 'type', 'alt', 'action', 'for', 'placeholder', 'title', 'value'].forEach(function (a) {
+      var v = el.getAttribute(a); if (v) attrs.push([a, v.slice(0, 300)]);
+    });
+    var own = Array.prototype.filter.call(el.childNodes, function (n) { return n.nodeType === 3; })
+      .map(function (n) { return n.nodeValue; }).join(' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+    return { tag: el.tagName.toLowerCase(), cls: cls, attrs: attrs, text: own, index: same.indexOf(el) };
+  };
+  var post = function (m) { if (window.ipc) window.ipc.postMessage(JSON.stringify(m)); };
+  addEventListener('click', function (e) {
+    if (!e.ctrlKey || e.detail > 1) return;
+    e.preventDefault(); e.stopPropagation();
+    post({ kind: 'reveal', el: sig(e.target) });
+  }, true);
+  addEventListener('dblclick', function (e) {
+    var el = e.target;
+    if (!e.ctrlKey || el.children.length || !el.textContent.trim()) return;
+    e.preventDefault(); e.stopPropagation();
+    var before = el.textContent, s = sig(el);
+    el.contentEditable = 'true'; el.focus();
+    var done = function (save) {
+      el.removeEventListener('blur', onBlur); el.removeEventListener('keydown', onKey);
+      el.removeAttribute('contenteditable');
+      if (!save) { el.textContent = before; return; }
+      if (el.textContent !== before) post({ kind: 'edit', el: s, before: before, after: el.textContent });
+    };
+    var onBlur = function () { done(true); };
+    var onKey = function (k) {
+      if (k.key === 'Enter') { k.preventDefault(); done(true); }
+      else if (k.key === 'Escape') { done(false); }
+    };
+    el.addEventListener('blur', onBlur); el.addEventListener('keydown', onKey);
+  }, true);
+  addEventListener('load', function () { post({ kind: 'ready' }); });
+  var box;
+  window.__nebulaHighlight = function (q) {
+    if (!box) {
+      box = document.createElement('div');
+      box.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483647;border:2px solid rgba(59,130,246,.9);background:rgba(59,130,246,.10);border-radius:3px;box-sizing:border-box';
+    }
+    var el = null;
+    if (q) {
+      var id = (q.attrs || []).filter(function (a) { return a[0] === 'id'; })[0];
+      if (id) el = document.getElementById(id[1]);
+      if (!el) {
+        var list = Array.prototype.filter.call(document.getElementsByTagName(q.tag), function (x) {
+          return (x.getAttribute('class') || '').replace(/\s+/g, ' ').trim() === q.cls.replace(/\s+/g, ' ').trim();
+        });
+        el = list[q.index] || null;
+      }
+    }
+    if (!el || el === document.body || el === document.documentElement) { if (box.parentNode) box.remove(); return; }
+    var r = el.getBoundingClientRect();
+    box.style.left = (r.left + scrollX - 2) + 'px'; box.style.top = (r.top + scrollY - 2) + 'px';
+    box.style.width = (r.width + 4) + 'px'; box.style.height = (r.height + 4) + 'px';
+    if (!box.parentNode) document.body.appendChild(box);
+    if (r.bottom < 0 || r.top > innerHeight) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
   window.__nebulaReloadCss = function () {
     document.querySelectorAll('link[rel~="stylesheet"]').forEach(function (l) {
       var u = new URL(l.href); u.searchParams.set('__nebula', Date.now()); l.href = u.href;
@@ -74,6 +138,9 @@ pub struct Preview {
     _context: Option<WebContext>,
     tx: Sender<ProtocolRequest>,
     rx: Receiver<ProtocolRequest>,
+    /// Messages of the page script (element clicked, text edited).
+    ipc_tx: Sender<String>,
+    ipc_rx: Receiver<String>,
     /// Creating the web view failed (e.g. no WebView2 runtime).
     pub error: Option<String>,
     bounds: Option<(i32, i32, u32, u32)>,
@@ -84,11 +151,14 @@ pub struct Preview {
 impl Default for Preview {
     fn default() -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
+        let (ipc_tx, ipc_rx) = crossbeam_channel::unbounded();
         Self {
             webview: None,
             _context: None,
             tx,
             rx,
+            ipc_tx,
+            ipc_rx,
             error: None,
             bounds: None,
             visible: false,
@@ -113,11 +183,16 @@ impl Preview {
         let mut context = WebContext::new(Some(crate::settings::config_dir().join("webview")));
         let tx = self.tx.clone();
         let repaint = ctx.clone();
+        let (ipc_tx, ipc_repaint) = (self.ipc_tx.clone(), ctx.clone());
         let result = WebViewBuilder::new_with_web_context(&mut context)
             .with_visible(false)
             .with_focused(false)
             .with_devtools(true)
             .with_initialization_script(INIT_SCRIPT)
+            .with_ipc_handler(move |request| {
+                let _ = ipc_tx.send(request.body().clone());
+                ipc_repaint.request_repaint();
+            })
             .with_asynchronous_custom_protocol("nebula".into(), move |_id, request, responder| {
                 let path = percent_decode(request.uri().path());
                 let _ = tx.send(ProtocolRequest { path, responder });
@@ -143,6 +218,18 @@ impl Preview {
                 self.error = Some(format!("Die Vorschau benötigt die WebView2-Runtime von Microsoft ({e})."));
                 false
             }
+        }
+    }
+
+    /// Messages of the page script since the last call.
+    pub fn messages(&self) -> Vec<String> {
+        self.ipc_rx.try_iter().collect()
+    }
+
+    /// Runs a script in the page (no answer).
+    pub fn run(&self, js: &str) {
+        if let Some(w) = &self.webview {
+            let _ = w.evaluate_script(js);
         }
     }
 

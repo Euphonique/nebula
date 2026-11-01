@@ -26,7 +26,7 @@ enum Base {
 
 /// The page shown in the preview.
 pub(super) struct Page {
-    doc_id: u64,
+    pub doc_id: u64,
     base: Base,
     /// Shown from the site's web URL (PHP); refreshed after saving.
     live: bool,
@@ -138,6 +138,7 @@ impl NebulaApp {
         if !self.settings.preview || !self.preview.is_ready() {
             return;
         }
+        self.preview_link_tick(ctx);
         // Show the active document if it is a page; otherwise keep the last page
         // (editing a stylesheet updates the page that uses it).
         if let Some(i) = self.active {
@@ -403,6 +404,12 @@ impl NebulaApp {
         };
         if button(ui, t!("Entwicklertools"), false, icons::devtools).clicked() {
             self.preview.open_devtools();
+        }
+        let link = self.settings.preview_link;
+        if button(ui, t!("Mit dem Code verknüpfen: Element am Cursor hervorheben; Strg+Klick in der Vorschau springt zur Stelle, Strg+Doppelklick bearbeitet Text"), link, icons::inspect).clicked() {
+            self.settings.preview_link = !link;
+            self.preview.run("window.__nebulaHighlight && __nebulaHighlight(null)");
+            self.preview_link.last = None;
         }
         if button(ui, t!("Im Browser öffnen"), false, icons::external).clicked() {
             self.open_in_browser(&ui.ctx().clone());

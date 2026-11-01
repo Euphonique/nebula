@@ -66,6 +66,7 @@ mod upload_history;
 mod server_log;
 mod server_watch;
 mod mcp_preview;
+mod preview_link;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -220,6 +221,8 @@ pub struct NebulaApp {
     server_watch: server_watch::WatchState,
     /// MCP calls waiting for the preview (screenshots, console).
     mcp_jobs: Vec<mcp_preview::Job>,
+    /// Linking preview elements and source.
+    preview_link: preview_link::LinkState,
     /// Comparisons waiting for server files.
     diff_jobs: difftab::DiffJobs,
     preview: crate::preview::Preview,
@@ -327,6 +330,7 @@ impl NebulaApp {
             server_logs: Default::default(),
             server_watch: Default::default(),
             mcp_jobs: Vec::new(),
+            preview_link: Default::default(),
             diff_jobs: Default::default(),
             preview: Default::default(),
             preview_state: Default::default(),

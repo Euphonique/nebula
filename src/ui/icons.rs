@@ -367,6 +367,20 @@ pub fn devices(painter: &Painter, c: Pos2, color: Color32) {
     painter.rect_stroke(phone, 1.5, stroke, eframe::egui::StrokeKind::Inside);
 }
 
+/// A frame with a pointer: link preview elements and source.
+pub fn inspect(painter: &Painter, c: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    // Dashed frame, open at the bottom right where the pointer sits.
+    let (l, t, r, b) = (c.x - 8.0, c.y - 7.0, c.x + 6.0, c.y + 6.0);
+    painter.line_segment([pos2(l, t), pos2(r, t)], stroke);
+    painter.line_segment([pos2(l, t), pos2(l, b)], stroke);
+    painter.line_segment([pos2(l, b), pos2(c.x - 1.0, b)], stroke);
+    painter.line_segment([pos2(r, t), pos2(r, c.y - 1.0)], stroke);
+    let tip = c + vec2(0.5, 0.5);
+    let arrow = vec![tip, tip + vec2(7.5, 3.0), tip + vec2(4.0, 4.0), tip + vec2(3.0, 7.5)];
+    painter.add(eframe::egui::Shape::convex_polygon(arrow, color, Stroke::NONE));
+}
+
 /// Three dots ("more actions").
 pub fn more(painter: &Painter, c: Pos2, color: Color32) {
     for dx in [-5.0, 0.0, 5.0] {

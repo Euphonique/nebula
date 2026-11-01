@@ -28,6 +28,7 @@ mod remote;
 mod server_import;
 mod server_log;
 mod server_watch;
+mod html_locate;
 mod offline;
 mod update;
 mod snippet_io;
