@@ -68,6 +68,7 @@ mod server_watch;
 mod mcp_preview;
 mod preview_link;
 mod sql_check;
+mod css_rename_ui;
 use files::{ConflictPolicy, TransferQueue};
 use settings_page::{Page, SettingsUi};
 use crate::ui::{chrome, icons};
@@ -226,6 +227,8 @@ pub struct NebulaApp {
     preview_link: preview_link::LinkState,
     /// Per document: (version, schema) the database check ran for.
     sql_checked: HashMap<u64, (u64, usize)>,
+    /// The open "CSS-Klasse umbenennen" dialog.
+    rename_class: Option<css_rename_ui::RenameClass>,
     /// Comparisons waiting for server files.
     diff_jobs: difftab::DiffJobs,
     preview: crate::preview::Preview,
@@ -335,6 +338,7 @@ impl NebulaApp {
             mcp_jobs: Vec::new(),
             preview_link: Default::default(),
             sql_checked: HashMap::new(),
+            rename_class: None,
             diff_jobs: Default::default(),
             preview: Default::default(),
             preview_state: Default::default(),
@@ -3616,6 +3620,7 @@ impl eframe::App for NebulaApp {
             self.history_window(&ctx);
             self.upload_history_window(&ctx);
             self.server_watch_window(&ctx);
+            self.rename_class_window(&ctx);
         }
         self.autosave_tick(&ctx);
         // Outcome of a git operation from the Git panel.

@@ -31,6 +31,7 @@ mod server_watch;
 mod html_locate;
 mod sql_assist;
 mod optimize;
+mod css_rename;
 mod offline;
 mod update;
 mod snippet_io;
