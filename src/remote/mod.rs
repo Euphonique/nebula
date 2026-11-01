@@ -289,6 +289,8 @@ struct Progress<'a> {
     tag: u64,
     cancel: &'a std::sync::atomic::AtomicBool,
     done: usize,
+    /// How files are optimized on their way up (from the site).
+    optimize: crate::optimize::Optimize,
 }
 
 impl Progress<'_> {
@@ -581,7 +583,7 @@ impl Worker {
                 continue;
             }
             let (events, ctx, site_id) = (self.events.clone(), self.ctx.clone(), self.site.id.clone());
-            let mut progress = Progress { events: &events, ctx: &ctx, site_id: &site_id, tag, cancel: &cancel, done: 0 };
+            let mut progress = Progress { events: &events, ctx: &ctx, site_id: &site_id, tag, cancel: &cancel, done: 0, optimize: self.site.optimize };
             if transfers::is_transfer(&request) {
                 // Marks the transfer as running in the list.
                 let _ = events.send(RemoteEvent { site_id: site_id.clone(), tag, reply: Reply::Progress { done: 0 } });
@@ -781,7 +783,8 @@ fn run_request(b: &mut dyn Backend, backup: bool, site_id: &str, request: &Reque
                 // Server errors stop the comparison (a dropped connection
                 // is retried); an unreadable local file counts as different.
                 let r = b.read(remote)?;
-                let same = std::fs::read(local).is_ok_and(|l| l == r);
+                // Compared as it would be uploaded (optimized).
+                let same = std::fs::read(local).is_ok_and(|l| crate::optimize::apply(remote, l, &progress.optimize) == r);
                 if !same {
                     differing.push(name.clone());
                 }
@@ -874,7 +877,7 @@ fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str, 
         Ok(n)
     } else {
         p.file()?;
-        let data = std::fs::read(local)?;
+        let data = crate::optimize::apply(remote, std::fs::read(local)?, &p.optimize);
         write_creating(b, remote, &data)?;
         p.finished_file();
         Ok(1)
@@ -900,11 +903,13 @@ fn publish_direct(b: &mut dyn Backend, files: &[(std::path::PathBuf, String)], b
 /// upload removes the temporary files again and changes nothing.
 fn publish_staged(b: &mut dyn Backend, files: &[(std::path::PathBuf, String)], backup: bool, p: &mut Progress) -> Result<(Vec<String>, Vec<String>)> {
     let mut staged: Vec<(String, &String)> = Vec::new();
+    let opt = p.optimize;
     for (local, remote) in files {
         let tmp = temp_name(remote, TEMP_SUFFIX);
         let result = p
             .file()
             .and_then(|()| std::fs::read(local).with_context(|| local.display().to_string()))
+            .map(|data| crate::optimize::apply(remote, data, &opt))
             .and_then(|data| write_creating(b, &tmp, &data).with_context(|| remote.clone()));
         if let Err(e) = result {
             for (tmp, _) in &staged {

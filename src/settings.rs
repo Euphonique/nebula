@@ -497,6 +497,8 @@ pub struct Site {
     pub commands: Vec<ServerCommand>,
     /// Before overwriting a server file, keep the previous version as `<name>.bak`.
     pub backup_on_save: bool,
+    /// Optimize CSS, JS and images when uploading from a local project.
+    pub optimize: crate::optimize::Optimize,
     /// MySQL/MariaDB reached through an SSH tunnel to this server.
     pub db: DbSettings,
     /// Group in the server list; empty = none.
@@ -527,6 +529,7 @@ impl Default for Site {
             error_logs: String::new(),
             commands: Vec::new(),
             backup_on_save: false,
+            optimize: Default::default(),
             db: DbSettings::default(),
             group: String::new(),
         }

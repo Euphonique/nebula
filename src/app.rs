@@ -2731,6 +2731,18 @@ impl NebulaApp {
                             }
                         }
                         ui.label("");
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(t!("Beim Hochladen optimieren:"));
+                                ui.checkbox(&mut s.optimize.css, "CSS");
+                                ui.checkbox(&mut s.optimize.js, "JavaScript");
+                                ui.checkbox(&mut s.optimize.images, t!("große Bilder"));
+                            })
+                            .response
+                            .on_hover_text(t!("Nur auf dem Server: CSS wird minifiziert, JavaScript verliert Kommentare und Einrückung, Bilder über {max} px werden verkleinert. Lokale Dateien bleiben unverändert; *.min.css/*.min.js werden nicht angefasst.", max = s.optimize.max_image));
+                        });
+                        ui.end_row();
+                        ui.label("");
                         ui.checkbox(&mut s.backup_on_save, t!("Vor dem Überschreiben eine Kopie als .bak anlegen"))
                             .on_hover_text(t!("Beim Speichern und Hochladen wird die vorhandene Datei erst als „name.bak“ gesichert (eine ältere Kopie wird ersetzt)."));
                         ui.end_row();

@@ -95,7 +95,7 @@ fn publish_scenario(b: &mut dyn Backend, root: &str) {
     ];
     let (events, _rx) = crossbeam_channel::unbounded();
     let (ctx, cancel) = (eframe::egui::Context::default(), std::sync::atomic::AtomicBool::new(false));
-    let mut p = super::Progress { events: &events, ctx: &ctx, site_id: "test", tag: 1, cancel: &cancel, done: 0 };
+    let mut p = super::Progress { events: &events, ctx: &ctx, site_id: "test", tag: 1, cancel: &cancel, done: 0, optimize: Default::default() };
     let (done, failed) = super::publish_staged(b, &files, false, &mut p).unwrap();
     assert!(failed.is_empty(), "{failed:?}");
     assert_eq!(done.len(), 2);
@@ -140,7 +140,7 @@ fn exercise(b: &mut dyn Backend, root: &str) {
     std::fs::write(local.path().join("assets/img/b.svg"), "<svg/>").unwrap();
     let (events, events_rx) = crossbeam_channel::unbounded();
     let (ctx, cancel) = (eframe::egui::Context::default(), std::sync::atomic::AtomicBool::new(false));
-    let mut p = super::Progress { events: &events, ctx: &ctx, site_id: "test", tag: 1, cancel: &cancel, done: 0 };
+    let mut p = super::Progress { events: &events, ctx: &ctx, site_id: "test", tag: 1, cancel: &cancel, done: 0, optimize: Default::default() };
     let up = super::join(&dir, "assets");
     assert_eq!(super::upload_recursive(b, &local.path().join("assets"), &up, &mut p).unwrap(), 2);
     let copy = super::join(&dir, "assets2");
@@ -753,7 +753,7 @@ fn transfer_list_failure_and_retry() {
     });
     std::thread::sleep(Duration::from_millis(300));
 
-    let site = Site {
+    let mut site = Site {
         id: format!("transfer-test-{}", std::process::id()),
         protocol: Protocol::Sftp,
         host: "127.0.0.1".into(),
@@ -901,6 +901,21 @@ neu 2
     let missing = manager.send(&site, super::Request::TailLog { path: "/fehlt.log".into(), offset: None });
     assert!(matches!(reply(&mut manager, missing), super::Reply::Failed { .. }));
     assert_eq!(manager.total_pending(), 0, "log polling is not counted as pending");
+
+    // Optimizing on upload (after reconnecting with the new settings): the
+    // server gets minified CSS, the local file stays, comparing sees no difference.
+    manager.disconnect(&site.id);
+    site.optimize.css = true;
+    std::fs::write(local.path().join("s.css"), "a {\n  color : red ;\n}\n").unwrap();
+    let tag = manager.send(&site, super::Request::Upload { local: local.path().join("s.css"), remote: "/s.css".into() });
+    reply(&mut manager, tag);
+    assert_eq!(std::fs::read_to_string(home.path().join("s.css")).unwrap(), "a{color:red}");
+    assert_eq!(std::fs::read_to_string(local.path().join("s.css")).unwrap(), "a {\n  color : red ;\n}\n");
+    let tag = manager.send(&site, super::Request::Compare(vec![("s.css".into(), "/s.css".into(), local.path().join("s.css"))]));
+    match reply(&mut manager, tag) {
+        super::Reply::Compared { differing } => assert!(differing.is_empty(), "{differing:?}"),
+        _ => panic!("expected a comparison"),
+    }
 
     site.set_password("").unwrap();
 }
