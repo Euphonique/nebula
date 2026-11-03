@@ -2,7 +2,7 @@
 <img width="300" height="300" alt="nebula_logo_full" src="https://github.com/user-attachments/assets/e004c324-3881-4528-ae1f-afa183ae1962" />
 </p>
 <p align="center">
-A beautiful and streamlined editor.
+A beautiful and streamlined code editor.
 </p>
 <hr>
 <img width="2893" height="1572" alt="Screenshot_2026-11-03_103739" src="https://github.com/user-attachments/assets/e0bf8778-0a0d-43d4-963b-be4ac68b2aa5" />
