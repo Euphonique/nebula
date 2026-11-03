@@ -5,7 +5,7 @@
 A beautiful and streamlined editor.
 </p>
 <hr>
-<img width="1364" height="757" alt="screen_mainwindow" src="https://github.com/user-attachments/assets/03dbd53b-5f49-4283-9a49-207aa8c8d905" />
+<img width="2893" height="1572" alt="Screenshot_2026-11-03_103739" src="https://github.com/user-attachments/assets/e0bf8778-0a0d-43d4-963b-be4ac68b2aa5" />
 <hr>
 <p>
 nebula puts the essence of a modern editor in one streamlined and beautiful UI completely written from scratch.
