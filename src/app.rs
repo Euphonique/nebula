@@ -3624,6 +3624,8 @@ impl eframe::App for NebulaApp {
             }
         });
 
+        self.terminal_viewport(&ctx);
+
         let _rest = crate::perf::section("Dialoge und Rest");
         if self.dialog.is_none() && self.host_keys.is_empty() {
             self.ext_prompts(&ctx);

@@ -865,7 +865,11 @@ fn backup_file(b: &mut dyn Backend, path: &str) -> Result<()> {
 }
 
 fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str, p: &mut Progress) -> Result<usize> {
-    if local.is_dir() {
+    let metadata = std::fs::symlink_metadata(local)?;
+    if metadata.file_type().is_symlink() {
+        anyhow::bail!(t!("Symbolische Verknüpfungen werden nicht hochgeladen: {path}", path = local.display()));
+    }
+    if metadata.is_dir() {
         // The folder may already exist; a real failure shows up on the files.
         let _ = b.mkdir(remote);
         let mut n = 0;

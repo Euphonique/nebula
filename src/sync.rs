@@ -94,6 +94,10 @@ pub fn scan_local(root: &Path, exclude: &[String], limit: usize) -> Result<Vec<L
             if exclude.iter().any(|x| *x == name) {
                 continue;
             }
+            let file_type = e.file_type().map_err(unreadable)?;
+            if file_type.is_symlink() {
+                continue;
+            }
             let rel = if rel.is_empty() { name } else { format!("{rel}/{name}") };
             let meta = e.metadata().map_err(unreadable)?;
             if meta.is_dir() {
@@ -284,5 +288,24 @@ mod tests {
         assert_eq!(files.iter().map(|f| (f.rel.as_str(), f.size)).collect::<Vec<_>>(), [("css/s.css", 3)]);
         // Too many files: refused instead of a partial list.
         assert!(scan_local(tmp.path(), &[], 1).is_err());
+    }
+
+    #[test]
+    fn local_scan_skips_symlinks() {
+        let project = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_file = outside.path().join("secret.txt");
+        let outside_dir = outside.path().join("folder");
+        std::fs::write(&outside_file, "outside").unwrap();
+        std::fs::create_dir(&outside_dir).unwrap();
+        let file_link = project.path().join("linked.txt");
+        let dir_link = project.path().join("linked-folder");
+        if std::os::windows::fs::symlink_file(&outside_file, &file_link).is_err()
+            || std::os::windows::fs::symlink_dir(&outside_dir, &dir_link).is_err()
+        {
+            eprintln!("Skipping symlink scan test: Windows did not allow creating symlinks");
+            return;
+        }
+        assert!(scan_local(project.path(), &[], 100).unwrap().is_empty());
     }
 }

@@ -104,6 +104,7 @@ pub(super) struct Terminals {
     tabs: Vec<TermTab>,
     active: usize,
     pub visible: bool,
+    detached: bool,
     /// Form for a new saved command in the "Befehle" menu.
     new_name: String,
     new_command: String,
@@ -204,6 +205,7 @@ impl NebulaApp {
 
     pub(super) fn toggle_terminal(&mut self, ctx: &egui::Context) {
         if !self.terminals.is_empty() {
+            self.terminals.detached = false;
             self.terminals.visible = !self.terminals.visible;
             if self.terminals.visible {
                 let id = self.terminals.tabs[self.terminals.active].term.id;
@@ -257,7 +259,7 @@ impl NebulaApp {
 
     /// The terminal panel at the bottom of the editor area.
     pub(super) fn terminal_panel(&mut self, ui: &mut egui::Ui) {
-        if !self.terminals.visible || self.terminals.is_empty() {
+        if !self.terminals.visible || self.terminals.detached || self.terminals.is_empty() {
             return;
         }
         let theme = self.theme.clone();
@@ -269,30 +271,62 @@ impl NebulaApp {
             .frame(egui::Frame::new().fill(theme.sidebar_bg))
             .show(ui, |ui| {
                 let full = ui.max_rect();
-                ui.painter().line_segment([full.left_top(), full.right_top()], Stroke::new(1.0, theme.separator));
-                self.terminal_header(ui, Rect::from_min_size(full.min, vec2(full.width(), HEADER_H)));
-                let body = Rect::from_min_max(pos2(full.left(), full.top() + HEADER_H), full.max);
-                if let Some(tab) = self.terminals.tabs.get_mut(self.terminals.active) {
-                    let font = FontId::monospace((self.settings.editor.font_size - 1.0).max(9.0));
-                    let reconnect = terminal_view(ui, tab, body, &theme, font);
-                    if reconnect {
-                        let site = tab.term.site_id.clone();
-                        let local = tab.local.clone();
-                        let i = self.terminals.active;
-                        self.terminals.tabs.remove(i);
-                        match local {
-                            Some((shell, cwd)) => self.open_local_terminal(ui.ctx(), Some(shell), cwd),
-                            None => self.open_terminal(ui.ctx(), &site),
-                        }
-                        // Keep the tab where it was.
-                        let tab = self.terminals.tabs.pop().unwrap();
-                        self.terminals.tabs.insert(i, tab);
-                        self.terminals.active = i;
-                    }
-                }
-                ui.advance_cursor_after_rect(full);
+                self.terminal_contents(ui, full);
             });
         self.settings.terminal_height = resp.response.rect.height();
+    }
+
+    /// The detached terminal is still rendered by this app, so its sessions
+    /// and tabs remain shared with the docked panel.
+    pub(super) fn terminal_viewport(&mut self, ctx: &egui::Context) {
+        if !self.terminals.detached || self.terminals.is_empty() {
+            return;
+        }
+        let theme = self.theme.clone();
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of("terminal-window"),
+            egui::ViewportBuilder::default()
+                .with_title(t!("Terminal"))
+                .with_inner_size([900.0, 520.0])
+                .with_min_inner_size([480.0, 240.0]),
+            |ui, _| {
+                if ui.input(|i| i.viewport().close_requested()) {
+                    self.terminals.detached = false;
+                    self.terminals.visible = true;
+                    if let Some(tab) = self.terminals.tabs.get_mut(self.terminals.active) {
+                        tab.want_focus = true;
+                    }
+                }
+                let full = ui.max_rect();
+                ui.painter().rect_filled(full, 0.0, theme.sidebar_bg);
+                self.terminal_contents(ui, full);
+            },
+        );
+    }
+
+    fn terminal_contents(&mut self, ui: &mut egui::Ui, full: Rect) {
+        let theme = self.theme.clone();
+        ui.painter().line_segment([full.left_top(), full.right_top()], Stroke::new(1.0, theme.separator));
+        self.terminal_header(ui, Rect::from_min_size(full.min, vec2(full.width(), HEADER_H)));
+        let body = Rect::from_min_max(pos2(full.left(), full.top() + HEADER_H), full.max);
+        if let Some(tab) = self.terminals.tabs.get_mut(self.terminals.active) {
+            let font = FontId::monospace((self.settings.editor.font_size - 1.0).max(9.0));
+            let reconnect = terminal_view(ui, tab, body, &theme, font);
+            if reconnect {
+                let site = tab.term.site_id.clone();
+                let local = tab.local.clone();
+                let i = self.terminals.active;
+                self.terminals.tabs.remove(i);
+                match local {
+                    Some((shell, cwd)) => self.open_local_terminal(ui.ctx(), Some(shell), cwd),
+                    None => self.open_terminal(ui.ctx(), &site),
+                }
+                let tab = self.terminals.tabs.pop().unwrap();
+                self.terminals.tabs.insert(i, tab);
+                self.terminals.active = i;
+            }
+        }
+        ui.advance_cursor_after_rect(full);
     }
 
     fn terminal_header(&mut self, ui: &mut egui::Ui, rect: Rect) {
@@ -376,7 +410,25 @@ impl NebulaApp {
                 .clicked()
             {
                 self.terminals.visible = false;
+                self.terminals.detached = false;
                 self.focus_editor = true;
+            }
+            let detached = self.terminals.detached;
+            let move_terminal = if detached {
+                icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, icons::panel_bottom)
+                    .on_hover_text(t!("Terminal wieder andocken"))
+                    .clicked()
+            } else {
+                icons::icon_button(ui, &theme, vec2(26.0, 26.0), false, icons::external)
+                    .on_hover_text(t!("Terminal in eigenem Fenster öffnen"))
+                    .clicked()
+            };
+            if move_terminal {
+                self.terminals.detached = !detached;
+                self.terminals.visible = true;
+                if let Some(tab) = self.terminals.tabs.get_mut(self.terminals.active) {
+                    tab.want_focus = true;
+                }
             }
             let Some(site) = site_id.as_ref().and_then(|id| self.sites.sites.iter_mut().find(|s| &s.id == id)) else { return };
             let menu = ui.add(egui::Button::new(egui::RichText::new(t!("Befehle ▾")).size(12.0)).frame(false)).on_hover_text(t!("Gespeicherte Befehle für diesen Server"));
@@ -433,6 +485,7 @@ impl NebulaApp {
             self.terminals.tabs.remove(i);
             if self.terminals.tabs.is_empty() {
                 self.terminals.visible = false;
+                self.terminals.detached = false;
                 self.focus_editor = true;
             }
             self.terminals.active = self.terminals.active.min(self.terminals.tabs.len().saturating_sub(1));
