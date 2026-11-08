@@ -2,10 +2,10 @@
 <img width="300" height="300" alt="nebula_logo_full" src="https://github.com/user-attachments/assets/e004c324-3881-4528-ae1f-afa183ae1962" />
 </p>
 <p align="center">
-A beautiful and streamlined editor.
+A beautiful and streamlined code editor.
 </p>
 <hr>
-<img width="1364" height="757" alt="screen_mainwindow" src="https://github.com/user-attachments/assets/03dbd53b-5f49-4283-9a49-207aa8c8d905" />
+<img width="2893" height="1572" alt="screenshot" src="https://github.com/user-attachments/assets/928753fd-55dc-41c2-be62-e3eef464cf20" />
 <hr>
 <p>
 nebula puts the essence of a modern editor in one streamlined and beautiful UI completely written from scratch.
@@ -14,3 +14,17 @@ It has local and remote SFTP file browsers, git, a powerful project wide search,
 Code completion, live preview, split view, minimap, full theme support, extensions...
 </p>
 
+<h2>Features</h2>
+<ul>
+<li>Native Windows code editor — written in Rust, streamlined interface</li>
+<li>Remote development — SFTP, FTP, and FTPS; edit server files directly</li>
+<li>Publishing and synchronization — deploy changed files, two-way sync, conflict detection, upload history with undo</li>
+<li>Live preview — HTML, PHP, Markdown, and images; responsive device widths and page checks</li>
+<li>Powerful code editing — syntax highlighting for 26 languages, autocomplete, snippets, Emmet, multi-cursor editing, project-wide search</li>
+<li>Git integration — status, staging, commits, pull/push, diffs, blame, and AI-generated commit messages</li>
+<li>AI coding agents — Claude Code, Codex, Gemini CLI, custom ACP agents, built-in API/Ollama agent, MCP support</li>
+<li>Integrated tools — local and SSH terminals, database browser, server logs, and saved server commands</li>
+<li>Nova-compatible extensions — extension library, JavaScript runtime, and language-server support</li>
+<li>Recovery and history — session restore, crash recovery, local file history, and server upload rollback</li>
+<li>Customizable workspace — themes, split view, minimap, Zen mode, keyboard shortcuts, and multilingual UI</li>
+</ul>
