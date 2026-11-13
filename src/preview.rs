@@ -10,7 +10,11 @@ use wry::http::{Response, StatusCode};
 use wry::{RequestAsyncResponder, WebContext, WebView, WebViewBuilder};
 
 /// Origin of served pages (WebView2 maps `nebula://localhost/` to this).
+/// Where the page's own files are served (wry's custom protocol scheme).
+#[cfg(windows)]
 pub const ORIGIN: &str = "http://nebula.localhost";
+#[cfg(not(windows))]
+pub const ORIGIN: &str = "nebula://localhost";
 
 /// A resource requested by the page; the app answers it.
 pub struct ProtocolRequest {
@@ -261,6 +265,12 @@ impl Preview {
         if self.error.is_some() {
             return false;
         }
+        // WebKitGTK lives in GTK, which has to be up before the first web view.
+        #[cfg(target_os = "linux")]
+        if let Err(e) = gtk::init() {
+            self.error = Some(format!("GTK konnte nicht gestartet werden ({e})."));
+            return false;
+        }
         let mut context = WebContext::new(Some(crate::settings::config_dir().join("webview")));
         let tx = self.tx.clone();
         let repaint = ctx.clone();
@@ -282,7 +292,7 @@ impl Preview {
             .with_new_window_req_handler(|url, _| {
                 // Links with target=_blank open in the system browser.
                 if url.starts_with("http") && !url.starts_with(ORIGIN) {
-                    let _ = std::process::Command::new("explorer").arg(&url).spawn();
+                    crate::platform::open_url(&url);
                 }
                 wry::NewWindowResponse::Deny
             })
@@ -296,7 +306,11 @@ impl Preview {
                 true
             }
             Err(e) => {
-                self.error = Some(format!("Die Vorschau benötigt die WebView2-Runtime von Microsoft ({e})."));
+                self.error = Some(if cfg!(windows) {
+                    format!("Die Vorschau benötigt die WebView2-Runtime von Microsoft ({e}).")
+                } else {
+                    format!("Die Vorschau benötigt WebKitGTK (libwebkit2gtk-4.1) und X11/XWayland ({e}).")
+                });
                 false
             }
         }
@@ -319,7 +333,48 @@ impl Preview {
         self.webview.is_some() && self.visible
     }
 
+    /// Runs pending GTK events: the web view's drawing, IPC and resource
+    /// requests arrive there, not in egui's event loop. Keeps polling while
+    /// a web view exists.
+    pub fn pump(&self, ctx: &egui::Context) {
+        #[cfg(target_os = "linux")]
+        if self.webview.is_some() {
+            while gtk::events_pending() {
+                gtk::main_iteration_do(false);
+            }
+            ctx.request_repaint_after(std::time::Duration::from_millis(30));
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = ctx;
+    }
+
+    /// Takes a PNG of what the preview shows; `out` gets it when done (the
+    /// snapshot arrives through the GTK events `pump` runs).
+    #[cfg(target_os = "linux")]
+    pub fn capture_png(&self, out: std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, String>>>>) -> Result<(), String> {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        let webview = self.webview.as_ref().ok_or("The preview is not open.")?;
+        webview.webview().snapshot(
+            webkit2gtk::SnapshotRegion::Visible,
+            webkit2gtk::SnapshotOptions::NONE,
+            None::<&webkit2gtk::gio::Cancellable>,
+            move |result| {
+                let png = result.map_err(|e| e.to_string()).and_then(|surface| {
+                    let mut bytes = Vec::new();
+                    surface.write_to_png(&mut bytes).map_err(|e| e.to_string())?;
+                    Ok(bytes)
+                });
+                if let Ok(mut slot) = out.lock() {
+                    *slot = Some(png);
+                }
+            },
+        );
+        Ok(())
+    }
+
     /// Takes a PNG of what the preview shows; `out` gets it when done.
+    #[cfg(windows)]
     pub fn capture_png(&self, out: std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, String>>>>) -> Result<(), String> {
         use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
         use wry::WebViewExtWindows;
@@ -384,6 +439,12 @@ impl Preview {
         if !self.visible {
             let _ = webview.set_visible(true);
             self.visible = true;
+            // GTK drops the size of a hidden widget: once shown, apply it again.
+            #[cfg(target_os = "linux")]
+            let _ = webview.set_bounds(wry::Rect {
+                position: wry::dpi::PhysicalPosition::new(b.0, b.1).into(),
+                size: wry::dpi::PhysicalSize::new(b.2, b.3).into(),
+            });
         }
     }
 
@@ -438,6 +499,7 @@ impl Preview {
 
 /// Answers a protocol request.
 /// Everything in a COM memory stream.
+#[cfg(windows)]
 unsafe fn read_stream(stream: &windows::Win32::System::Com::IStream) -> Result<Vec<u8>, String> {
     use windows::Win32::System::Com::STREAM_SEEK_SET;
     // SAFETY: the caller hands over a valid stream.

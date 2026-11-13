@@ -85,7 +85,7 @@ impl NebulaApp {
                 let pairs = candidates
                     .into_iter()
                     .map(|rel| {
-                        let (remote, local) = (remote::join(&remote_root, &rel), run.root.join(rel.replace('/', "\\")));
+                        let (remote, local) = (remote::join(&remote_root, &rel), run.root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR)));
                         (rel, remote, local)
                     })
                     .collect();
@@ -337,7 +337,7 @@ impl NebulaApp {
         let remote_root = remote::normalize(&run.target.remote_path);
         let (mut ops, mut transferred, mut trash_failed) = (Vec::new(), HashSet::new(), Vec::new());
         for item in items {
-            let local = run.root.join(item.rel.replace('/', "\\"));
+            let local = run.root.join(item.rel.replace('/', std::path::MAIN_SEPARATOR_STR));
             let remote_path = remote::join(&remote_root, &item.rel);
             match item.action() {
                 Some(Kind::Upload) => {
@@ -350,7 +350,7 @@ impl NebulaApp {
                 }
                 Some(Kind::DeleteRemote) => ops.push(SyncOp::Delete(remote_path)),
                 Some(Kind::DeleteLocal) => {
-                    if !crate::win32::move_to_recycle_bin(&local) {
+                    if !crate::platform::move_to_recycle_bin(&local) {
                         trash_failed.push(item.rel.clone());
                     }
                 }

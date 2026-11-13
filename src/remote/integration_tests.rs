@@ -1090,3 +1090,37 @@ fn serve_mysql() {
     });
 }
 
+
+/// Files dragged out of the window are downloaded while the drop waits:
+/// `wait_for` blocks until exactly those requests are done and keeps the
+/// other events for the next `poll`.
+#[test]
+fn wait_for_downloads_through_the_manager() {
+    isolated_config();
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join("www/dir")).unwrap();
+    std::fs::write(home.path().join("www/a.txt"), "hallo").unwrap();
+    std::fs::write(home.path().join("www/dir/b.txt"), "welt").unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let port = spawn_ftp(&rt, home.path().to_path_buf(), 41000..=41999, false);
+    let site = Site { id: format!("drag-{port}"), protocol: Protocol::Ftp, host: "127.0.0.1".into(), port, user: "test".into(), ..Default::default() };
+
+    let mut manager = super::RemoteManager::new(eframe::egui::Context::default());
+    let out = tempfile::tempdir().unwrap();
+    let deadline = || std::time::Instant::now() + Duration::from_secs(20);
+    let file = manager.send(&site, super::Request::Download { remote: "/www/a.txt".into(), local: out.path().join("a.txt"), is_dir: false });
+    let dir = manager.send(&site, super::Request::Download { remote: "/www/dir".into(), local: out.path().join("dir"), is_dir: true });
+    manager.wait_for(&site.id, &[file, dir], deadline()).unwrap();
+    assert_eq!(std::fs::read_to_string(out.path().join("a.txt")).unwrap(), "hallo");
+    assert_eq!(std::fs::read_to_string(out.path().join("dir/b.txt")).unwrap(), "welt");
+    // The app still sees everything (connection, finished transfers).
+    let events = manager.poll();
+    assert!(events.iter().any(|e| matches!(e.reply, super::Reply::Connected { .. })));
+    assert!(events.iter().any(|e| e.tag == file && matches!(e.reply, super::Reply::Transferred { .. })));
+
+    let missing = manager.send(&site, super::Request::Download { remote: "/www/fehlt.txt".into(), local: out.path().join("fehlt.txt"), is_dir: false });
+    assert!(manager.wait_for(&site.id, &[missing], deadline()).is_err());
+    // An already passed deadline gives up right away.
+    let late = manager.send(&site, super::Request::Download { remote: "/www/a.txt".into(), local: out.path().join("b.txt"), is_dir: false });
+    assert!(manager.wait_for(&site.id, &[late], std::time::Instant::now()).is_err());
+}

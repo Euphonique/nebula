@@ -44,9 +44,13 @@ pub fn export(sites: &Sites) -> Result<Vec<u8>> {
     Ok(serde_json::to_vec_pretty(&list)?)
 }
 
-/// `%APPDATA%\FileZilla\sitemanager.xml`, if FileZilla is installed.
+/// FileZilla's `sitemanager.xml` (`%APPDATA%\FileZilla` or `~/.config/filezilla`),
+/// if FileZilla is installed.
 pub fn filezilla_path() -> Option<PathBuf> {
+    #[cfg(windows)]
     let p = PathBuf::from(std::env::var_os("APPDATA")?).join("FileZilla").join("sitemanager.xml");
+    #[cfg(not(windows))]
+    let p = directories::BaseDirs::new()?.config_dir().join("filezilla").join("sitemanager.xml");
     p.is_file().then_some(p)
 }
 

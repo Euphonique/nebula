@@ -98,6 +98,15 @@ fn drive(s: &mut AgentSession, files: &mut std::collections::HashMap<String, Str
     }
 }
 
+/// A project folder that never exists (the files live in the test's map).
+fn projekt() -> std::path::PathBuf {
+    std::path::PathBuf::from(if cfg!(windows) { r"C:\projekt" } else { "/projekt" })
+}
+
+fn projekt_file(name: &str) -> String {
+    projekt().join(name).to_string_lossy().into_owned()
+}
+
 #[test]
 fn reads_edits_and_answers() {
     let (port, seen) = fake_server(vec![
@@ -105,7 +114,7 @@ fn reads_edits_and_answers() {
         tool_call("c2", "edit_file", json!({ "path": "a.txt", "old_string": "alt", "new_string": "neu" })),
         sse(&[json!({ "choices": [{ "delta": { "content": "Erledigt." }, "finish_reason": "stop" }] })]),
     ]);
-    let cwd = std::path::PathBuf::from(r"C:\projekt");
+    let cwd = projekt();
     let cfg = AgentConfig {
         name: "Test-Agent eingebaut".into(),
         command: super::COMMAND.into(),
@@ -113,7 +122,7 @@ fn reads_edits_and_answers() {
         env: [(super::BASE_URL.to_string(), format!("http://127.0.0.1:{port}/v1"))].into(),
         ..Default::default()
     };
-    let mut files = std::collections::HashMap::from([(r"C:\projekt\a.txt".to_string(), "Zeile alt\n".to_string())]);
+    let mut files = std::collections::HashMap::from([(projekt_file("a.txt"), "Zeile alt\n".to_string())]);
     let mut s = AgentSession::start(cfg, cwd, || {});
     drive(&mut s, &mut files, "allow", |s| s.phase != Phase::Starting);
     assert_eq!(s.phase, Phase::Ready, "{:?}", s.phase);
@@ -126,7 +135,7 @@ fn reads_edits_and_answers() {
 
     s.prompt("Ersetze alt durch neu", &[]);
     drive(&mut s, &mut files, "allow", |s| s.phase == Phase::Ready);
-    assert_eq!(files[r"C:\projekt\a.txt"], "Zeile neu\n");
+    assert_eq!(files[&projekt_file("a.txt")], "Zeile neu\n");
     let tools: Vec<String> = s.entries.iter().filter_map(|e| if let Entry::Tool(t) = e { Some(t.title.clone()) } else { None }).collect();
     assert_eq!(tools, ["a.txt", "a.txt"]);
     assert!(matches!(s.entries.last(), Some(Entry::Agent(t)) if t == "Erledigt."));
@@ -151,7 +160,7 @@ fn rejected_edit_is_not_written() {
         ..Default::default()
     };
     let mut files = std::collections::HashMap::new();
-    let mut s = AgentSession::start(cfg, std::path::PathBuf::from(r"C:\projekt"), || {});
+    let mut s = AgentSession::start(cfg, projekt(), || {});
     drive(&mut s, &mut files, "reject", |s| s.phase != Phase::Starting);
     s.prompt("Lege neu.txt an", &[]);
     drive(&mut s, &mut files, "reject", |s| s.phase == Phase::Ready);
@@ -173,7 +182,8 @@ fn missing_key_is_reported() {
 fn reads_attached_files_from_the_prompt() {
     let blocks = json!([
         { "type": "text", "text": "Was macht das?" },
-        { "type": "resource", "resource": { "uri": "file:///C:/p/a%20b.js", "text": "let x;" } },
+        { "type": "resource", "resource": { "uri": if cfg!(windows) { "file:///C:/p/a%20b.js" } else { "file:///p/a%20b.js" }, "text": "let x;" } },
     ]);
-    assert_eq!(super::prompt_text(&blocks), "Was macht das?\n\nAttached file C:\\p\\a b.js:\n```\nlet x;\n```");
+    let name = if cfg!(windows) { "C:\\p\\a b.js" } else { "/p/a b.js" };
+    assert_eq!(super::prompt_text(&blocks), format!("Was macht das?\n\nAttached file {name}:\n```\nlet x;\n```"));
 }

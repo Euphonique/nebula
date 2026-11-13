@@ -1,5 +1,5 @@
-//! Settings page "Windows": installing Nebula for the current user, the
-//! Explorer context menu and the file types Nebula opens.
+//! Settings page "System": installing Nebula for the current user, "Open
+//! with Nebula" in the file manager and the file types Nebula opens.
 
 use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant};
@@ -10,8 +10,8 @@ use eframe::egui::{self, RichText, Sense, Ui, vec2};
 use super::{NebulaApp, primary_button};
 use crate::integration::{self, Handler};
 
-/// The registered file types as Windows sees them; read again every few
-/// seconds, because the default program is changed in Windows' settings.
+/// The registered file types as the system sees them; read again every few
+/// seconds, because the default program can be changed elsewhere.
 pub(super) struct FileTypes {
     registered: BTreeSet<String>,
     handlers: HashMap<&'static str, Handler>,
@@ -25,8 +25,7 @@ pub(super) struct FileTypes {
 impl FileTypes {
     fn read() -> Self {
         let registered = integration::registered_types();
-        let handlers: HashMap<&'static str, Handler> =
-            integration::FILE_TYPES.iter().map(|ext| (*ext, integration::handler_of(ext))).collect();
+        let handlers: HashMap<&'static str, Handler> = integration::handlers(integration::FILE_TYPES);
         let conflicts = integration::FILE_TYPES
             .iter()
             .filter(|ext| registered.contains(**ext))
@@ -34,7 +33,8 @@ impl FileTypes {
                 Handler::Nebula => None,
                 Handler::NebulaLegacy => Some((*ext, t!("Nebula (altes Symbol)").to_string())),
                 Handler::Other(name) => Some((*ext, name.clone())),
-                Handler::Ask => Some((*ext, t!("keins – Windows fragt nach").to_string())),
+                Handler::Ask if cfg!(windows) => Some((*ext, t!("keins – Windows fragt nach").to_string())),
+                Handler::Ask => Some((*ext, t!("keins – das System wählt").to_string())),
             })
             .collect();
         Self { registered, handlers, conflicts, read: Instant::now(), job: None }
@@ -46,7 +46,7 @@ impl NebulaApp {
         let theme = self.theme.clone();
         let faint = |t: &str| RichText::new(t.to_string()).small().color(theme.text_faint);
 
-        ui.heading(t!("Windows-Integration"));
+        ui.heading(t!("System"));
         ui.label(faint(t!("Alles gilt nur für dein Benutzerkonto, braucht keine Administratorrechte und kein zusätzliches Programm.")));
         ui.add_space(14.0);
 
@@ -58,27 +58,41 @@ impl NebulaApp {
             (Some(c), Some(i)) => c.canonicalize().ok() == i.canonicalize().ok(),
             _ => false,
         };
-        if integration::is_installed() {
+        if integration::packaged() {
+            ui.label(t!("Installiert über die Paketverwaltung ({install_dir})", install_dir = integration::install_dir().display()));
+            ui.label(faint(t!("Aktualisieren und Entfernen über die Paketverwaltung, z. B. „sudo apt remove nebula“.")));
+        } else if integration::is_installed() {
             ui.label(t!("Installiert in {install_dir}", install_dir = integration::install_dir().display()));
-            ui.label(faint(t!("Mit Startmenü-Eintrag; entfernen unter Windows-Einstellungen › Apps oder hier.")));
+            if cfg!(windows) {
+                ui.label(faint(t!("Mit Startmenü-Eintrag; entfernen unter Windows-Einstellungen › Apps oder hier.")));
+            } else {
+                ui.label(faint(t!("Mit Eintrag im Anwendungsmenü; entfernen hier.")));
+            }
         } else {
             ui.label(t!("Nebula läuft ohne Installation (z. B. direkt aus dem Build-Ordner)."));
-            ui.label(faint(&t!("„Installieren“ kopiert Nebula nach {install_dir}, legt einen Startmenü-Eintrag an und trägt es unter „Apps“ ein.", install_dir = integration::install_dir().display())));
+            let dir = integration::install_dir();
+            if cfg!(windows) {
+                ui.label(faint(&t!("„Installieren“ kopiert Nebula nach {install_dir}, legt einen Startmenü-Eintrag an und trägt es unter „Apps“ ein.", install_dir = dir.display())));
+            } else {
+                ui.label(faint(&t!("„Installieren“ kopiert Nebula nach {install_dir} und legt einen Eintrag im Anwendungsmenü an.", install_dir = dir.display())));
+            }
         }
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            let label = if integration::is_installed() && !running_installed { t!("Installation aktualisieren") } else { t!("Installieren") };
-            if (!running_installed || !integration::is_installed()) && ui.add(primary_button(label, theme.accent)).clicked() {
-                match integration::install() {
-                    Ok(exe) => self.info(t!("Nebula wurde installiert: {exe}", exe = exe.display())),
-                    Err(e) => self.error(t!("Installation fehlgeschlagen: {e}", e = format!("{:#}", e))),
+        if !integration::packaged() {
+            ui.horizontal(|ui| {
+                let label = if integration::is_installed() && !running_installed { t!("Installation aktualisieren") } else { t!("Installieren") };
+                if (!running_installed || !integration::is_installed()) && ui.add(primary_button(label, theme.accent)).clicked() {
+                    match integration::install() {
+                        Ok(exe) => self.info(t!("Nebula wurde installiert: {exe}", exe = exe.display())),
+                        Err(e) => self.error(t!("Installation fehlgeschlagen: {e}", e = format!("{:#}", e))),
+                    }
+                    self.file_types = None;
                 }
-                self.file_types = None;
-            }
-            if integration::is_installed() && ui.button(t!("Deinstallieren…")).clicked() {
-                self.confirm_uninstall = true;
-            }
-        });
+                if integration::is_installed() && ui.button(t!("Deinstallieren…")).clicked() {
+                    self.confirm_uninstall = true;
+                }
+            });
+        }
         if self.confirm_uninstall {
             ui.add_space(6.0);
             ui.label(RichText::new(t!("Nebula aus dem Programmordner entfernen? Die Einstellungen bleiben erhalten.")).color(theme.modified));
@@ -86,7 +100,7 @@ impl NebulaApp {
                 if ui.button(t!("Ja, entfernen")).clicked() {
                     self.confirm_uninstall = false;
                     match integration::uninstall() {
-                        Ok(()) if running_installed => self.info(t!("Nebula wurde entfernt; der Programmordner wird beim Beenden gelöscht.")),
+                        Ok(()) if running_installed && cfg!(windows) => self.info(t!("Nebula wurde entfernt; der Programmordner wird beim Beenden gelöscht.")),
                         Ok(()) => self.info(t!("Nebula wurde entfernt.")),
                         Err(e) => self.error(t!("Entfernen fehlgeschlagen: {e}", e = format!("{:#}", e))),
                     }
@@ -99,7 +113,7 @@ impl NebulaApp {
         }
 
         ui.add_space(18.0);
-        ui.label(RichText::new(t!("Explorer")).strong());
+        ui.label(RichText::new(if cfg!(windows) { t!("Explorer") } else { t!("Dateimanager") }).strong());
         ui.add_space(4.0);
         let mut menu = integration::context_menu_enabled();
         if ui.checkbox(&mut menu, t!("„Mit Nebula öffnen“ im Kontextmenü von Dateien und Ordnern")).changed()
@@ -107,7 +121,11 @@ impl NebulaApp {
         {
             self.error(t!("Kontextmenü konnte nicht geändert werden: {e}", e = format!("{:#}", e)));
         }
-        ui.label(faint(t!("Unter Windows 11 steht der Eintrag unter „Weitere Optionen anzeigen“. Ordner öffnen sich als Projekt.")));
+        if cfg!(windows) {
+            ui.label(faint(t!("Unter Windows 11 steht der Eintrag unter „Weitere Optionen anzeigen“. Ordner öffnen sich als Projekt.")));
+        } else {
+            ui.label(faint(t!("Der Eintrag steht im Kontextmenü unter „Öffnen mit …“. Ordner öffnen sich als Projekt.")));
+        }
 
         ui.add_space(18.0);
         let any_types = self.file_types_section(ui);
@@ -123,7 +141,11 @@ impl NebulaApp {
         ui.add_space(18.0);
         ui.label(RichText::new(t!("Fenster")).strong());
         ui.add_space(4.0);
-        ui.label(faint(t!("Läuft Nebula schon, öffnen sich Dateien aus dem Explorer im vorhandenen Fenster. Ein zweites Fenster erzwingt der Start mit --new-instance.")));
+        if cfg!(windows) {
+            ui.label(faint(t!("Läuft Nebula schon, öffnen sich Dateien aus dem Explorer im vorhandenen Fenster. Ein zweites Fenster erzwingt der Start mit --new-instance.")));
+        } else {
+            ui.label(faint(t!("Läuft Nebula schon, öffnen sich Dateien aus dem Dateimanager im vorhandenen Fenster. Ein zweites Fenster erzwingt der Start mit --new-instance.")));
+        }
     }
 
     /// The list of file types with checkboxes; returns whether any is registered.
@@ -152,7 +174,11 @@ impl NebulaApp {
 
         ui.label(RichText::new(t!("Dateitypen")).strong());
         ui.add_space(4.0);
-        ui.label(faint(t!("Angehakte Typen öffnet Nebula per Doppelklick und zeigt sie im Explorer mit demselben Symbol wie in der Dateiliste.")));
+        if cfg!(windows) {
+            ui.label(faint(t!("Angehakte Typen öffnet Nebula per Doppelklick und zeigt sie im Explorer mit demselben Symbol wie in der Dateiliste.")));
+        } else {
+            ui.label(faint(t!("Angehakte Typen öffnet Nebula per Doppelklick im Dateimanager. Endungen ohne eigenen Typ (.ini, .env, .jsx …) zählen als Text (.txt).")));
+        }
         ui.add_space(6.0);
 
         let mut wanted: Option<BTreeSet<String>> = None;
@@ -165,8 +191,8 @@ impl NebulaApp {
                     wanted = Some(BTreeSet::new());
                 }
             });
-            if ui.add_enabled(!types.registered.is_empty(), egui::Button::new(t!("Standard-Apps öffnen…"))).clicked() {
-                crate::win32::open_url(integration::DEFAULT_APPS_PAGE);
+            if cfg!(windows) && ui.add_enabled(!types.registered.is_empty(), egui::Button::new(t!("Standard-Apps öffnen…"))).clicked() {
+                crate::platform::open_url(integration::DEFAULT_APPS_PAGE);
             }
             if busy {
                 ui.spinner();
@@ -197,7 +223,11 @@ impl NebulaApp {
                         ui.label(format!(".{ext}"));
                         if types.handlers.get(ext) == Some(&Handler::Nebula) {
                             ui.label(RichText::new("✓").small().color(theme.accent))
-                                .on_hover_text(t!("Windows öffnet .{ext} mit Nebula.", ext = ext));
+                                .on_hover_text(if cfg!(windows) {
+                                    t!("Windows öffnet .{ext} mit Nebula.", ext = ext)
+                                } else {
+                                    t!("Das System öffnet .{ext} mit Nebula.", ext = ext)
+                                });
                         }
                     });
                     if (i + 1) % columns == 0 {
@@ -213,7 +243,12 @@ impl NebulaApp {
             ui.add_space(12.0);
             egui::Frame::new().fill(theme.hover).corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.label(RichText::new(t!("⚠ Diese Typen öffnet Windows noch mit einem anderen Programm:")).color(theme.modified));
+                let warning = if cfg!(windows) {
+                    t!("⚠ Diese Typen öffnet Windows noch mit einem anderen Programm:")
+                } else {
+                    t!("⚠ Diese Typen öffnet das System inzwischen mit einem anderen Programm:")
+                };
+                ui.label(RichText::new(warning).color(theme.modified));
                 ui.add_space(6.0);
                 egui::Grid::new("file-type-conflicts").spacing(vec2(18.0, 4.0)).show(ui, |ui| {
                     for (ext, program) in &types.conflicts {
@@ -228,11 +263,15 @@ impl NebulaApp {
                     }
                 });
                 ui.add_space(10.0);
-                if ui.add(primary_button(t!("In den Windows-Einstellungen umstellen…"), theme.accent)).clicked() {
-                    crate::win32::open_url(integration::DEFAULT_APPS_PAGE);
+                if cfg!(windows) {
+                    if ui.add(primary_button(t!("In den Windows-Einstellungen umstellen…"), theme.accent)).clicked() {
+                        crate::platform::open_url(integration::DEFAULT_APPS_PAGE);
+                    }
+                    ui.add_space(4.0);
+                    ui.label(faint(t!("Dort öffnet sich die Seite von Nebula unter Standard-Apps: beim jeweiligen Typ auf das Programm klicken und Nebula wählen. Programme dürfen diese Wahl aus Sicherheitsgründen nicht selbst ändern.")));
+                } else if ui.add(primary_button(t!("Wieder mit Nebula öffnen"), theme.accent)).clicked() {
+                    wanted = Some(types.registered.clone());
                 }
-                ui.add_space(4.0);
-                ui.label(faint(t!("Dort öffnet sich die Seite von Nebula unter Standard-Apps: beim jeweiligen Typ auf das Programm klicken und Nebula wählen. Programme dürfen diese Wahl aus Sicherheitsgründen nicht selbst ändern.")));
             });
         }
 

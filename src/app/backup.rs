@@ -53,9 +53,21 @@ fn root() -> PathBuf {
     crate::settings::config_dir().join("backup")
 }
 
+/// Opens the folder's lock file exclusively; `None` while another running
+/// Nebula holds it (the lock ends with that process, also on a crash).
+#[cfg(windows)]
 fn lock(dir: &Path) -> Option<std::fs::File> {
     use std::os::windows::fs::OpenOptionsExt;
     std::fs::OpenOptions::new().create(true).truncate(false).write(true).share_mode(0).open(dir.join("lock")).ok()
+}
+
+#[cfg(unix)]
+fn lock(dir: &Path) -> Option<std::fs::File> {
+    use std::os::fd::AsRawFd;
+    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join("lock")).ok()?;
+    // SAFETY: a valid descriptor owned by `file`.
+    let locked = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
+    locked.then_some(file)
 }
 
 impl Default for Backups {

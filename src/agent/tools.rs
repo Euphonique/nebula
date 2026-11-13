@@ -60,7 +60,11 @@ pub fn definitions() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "run_command",
-            description: "Run a command in cmd.exe in the project folder (timeout 2 minutes) and return its output. The user approves it first.",
+            description: if cfg!(windows) {
+                "Run a command in cmd.exe in the project folder (timeout 2 minutes) and return its output. The user approves it first."
+            } else {
+                "Run a command in sh in the project folder (timeout 2 minutes) and return its output. The user approves it first."
+            },
             schema: json!({ "type": "object", "properties": {
                 "command": { "type": "string" }
             }, "required": ["command"] }),
@@ -178,20 +182,35 @@ pub fn replace(text: &str, old: &str, new: &str, all: bool) -> Result<String, St
     Ok(if crlf { result.replace('\n', "\r\n") } else { result })
 }
 
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_OUTPUT: usize = 30_000;
 
-/// Runs a command in cmd.exe; returns exit code and output (stdout and stderr).
-pub fn run_command(cwd: &Path, command: &str, cancel: &AtomicBool) -> Result<(Option<i32>, String), String> {
+/// The system shell for a command line: cmd.exe on Windows, sh elsewhere.
+#[cfg(windows)]
+fn shell_command(command: &str) -> std::process::Command {
     use std::os::windows::process::CommandExt;
-    let mut child = std::process::Command::new("cmd")
-        .raw_arg(format!("/D /S /C \"{command}\""))
+    let mut cmd = std::process::Command::new("cmd");
+    cmd.raw_arg(format!("/D /S /C \"{command}\"")).creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+#[cfg(not(windows))]
+fn shell_command(command: &str) -> std::process::Command {
+    use crate::platform::ProcessGroupExt;
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c").arg(command).own_process_group();
+    cmd
+}
+
+/// Runs a command in the system shell; returns exit code and output (stdout and stderr).
+pub fn run_command(cwd: &Path, command: &str, cancel: &AtomicBool) -> Result<(Option<i32>, String), String> {
+    let mut child = shell_command(command)
         .current_dir(cwd)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map_err(|e| e.to_string())?;
     let read = |mut pipe: Box<dyn Read + Send>| {
@@ -217,8 +236,8 @@ pub fn run_command(cwd: &Path, command: &str, cancel: &AtomicBool) -> Result<(Op
         }
         std::thread::sleep(Duration::from_millis(100));
     };
-    let mut text = crate::win32::console_text(&out.join().unwrap_or_default());
-    let stderr = crate::win32::console_text(&err.join().unwrap_or_default());
+    let mut text = crate::platform::console_text(&out.join().unwrap_or_default());
+    let stderr = crate::platform::console_text(&err.join().unwrap_or_default());
     if !stderr.trim().is_empty() {
         if !text.is_empty() && !text.ends_with('\n') {
             text.push('\n');
@@ -241,6 +260,17 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(windows))]
+    fn resolves_unix_paths_in_the_project() {
+        let cwd = Path::new("/proj");
+        assert_eq!(resolve(cwd, "src/a.rs"), PathBuf::from("/proj/src/a.rs"));
+        assert_eq!(resolve(cwd, "./src/../b.txt"), PathBuf::from("/proj/b.txt"));
+        assert_eq!(resolve(cwd, "/x.txt"), PathBuf::from("/x.txt"));
+        assert_eq!(display(cwd, &resolve(cwd, "src/a.rs")), "src/a.rs");
+    }
+
+    #[test]
+    #[cfg(windows)]
     fn resolves_paths_in_the_project() {
         let cwd = Path::new(r"C:\proj");
         assert_eq!(resolve(cwd, "src/a.rs"), PathBuf::from(r"C:\proj\src\a.rs"));

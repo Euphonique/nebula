@@ -52,7 +52,7 @@ pub(super) fn tab_menu(ui: &mut egui::Ui, doc: &Document, i: usize, count: usize
         item(ui, t!("Vergleichen mit Datei…"), "", true, TabCmd::CompareFile);
         item(ui, t!("Pfad kopieren"), "", true, TabCmd::CopyPath);
         if matches!(doc.source, DocSource::Local(_)) {
-            item(ui, t!("Im Explorer zeigen"), "", true, TabCmd::Reveal);
+            item(ui, if cfg!(windows) { t!("Im Explorer zeigen") } else { t!("Im Dateimanager zeigen") }, "", true, TabCmd::Reveal);
         }
     }
 }
@@ -83,7 +83,7 @@ impl NebulaApp {
             TabCmd::CopyPath => ctx.copy_text(self.docs[i].source.path_string()),
             TabCmd::Reveal => {
                 if let DocSource::Local(p) = &self.docs[i].source {
-                    let _ = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
+                    crate::platform::reveal_in_file_manager(p);
                 }
             }
             TabCmd::History => self.open_history(i),

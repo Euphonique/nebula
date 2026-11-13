@@ -468,7 +468,7 @@
 
   // ---- paths ----------------------------------------------------------------------------
 
-  const HOME = (call("env").USERPROFILE || "C:/Users").replace(/\\/g, "/");
+  const HOME = (call("env").USERPROFILE || call("env").HOME || "C:/Users").replace(/\\/g, "/");
   const path = {
     _norm(p) { return String(p === undefined || p === null ? "" : p).replace(/\\/g, "/"); },
     isAbsolute(p) { p = path._norm(p); return /^[A-Za-z]:(\/|$)/.test(p) || p.startsWith("/"); },

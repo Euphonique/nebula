@@ -528,6 +528,7 @@ impl NebulaApp {
 impl NebulaApp {
     /// Creates, positions or hides the web view after the layout pass.
     pub(super) fn place_preview(&mut self, ctx: &egui::Context, frame: &eframe::Frame, rect: Option<Rect>) {
+        self.preview.pump(ctx);
         if !self.settings.preview || self.docs.is_empty() {
             self.preview.place(None, 1.0);
             self.preview_state.covered_width = 0.0;

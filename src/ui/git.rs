@@ -233,7 +233,7 @@ impl BlameCommit {
 
     /// Date and time of the commit in local time.
     pub fn date(&self) -> String {
-        let t = crate::win32::local_time(self.time.max(0) as u64 * 1000);
+        let t = crate::platform::local_time(self.time.max(0) as u64 * 1000);
         format!("{:02}.{:02}.{} {:02}:{:02}", t.day, t.month, t.year, t.hour, t.minute)
     }
 }
@@ -328,7 +328,7 @@ fn parse_changes(top: &Path, text: &str) -> Vec<Change> {
             entries.next(); // original name
         }
         let rel = e[3..].trim_end_matches('/').to_string();
-        out.push(Change { path: top.join(rel.replace('/', "\\")), rel, index, worktree });
+        out.push(Change { path: top.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR)), rel, index, worktree });
     }
     out
 }
@@ -469,6 +469,19 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(windows))]
+    fn parses_porcelain_output_unix() {
+        let files: HashMap<PathBuf, FileState> = parse_changes(Path::new("/p"), " M src/a.css\0?? new.html\0R  b.js\0old.js\0")
+            .into_iter()
+            .map(|c| (c.path.clone(), c.state()))
+            .collect();
+        assert_eq!(files[&PathBuf::from("/p/src/a.css")], FileState::Modified);
+        assert_eq!(files[&PathBuf::from("/p/new.html")], FileState::Untracked);
+        assert_eq!(files[&PathBuf::from("/p/b.js")], FileState::Renamed);
+    }
+
+    #[test]
+    #[cfg(windows)]
     fn parses_porcelain_output() {
         let top = Path::new(r"C:\p");
         let files: HashMap<PathBuf, FileState> = parse_changes(top, " M src/a.css\0?? new.html\0R  b.js\0old.js\0A  c.php\0")
@@ -510,6 +523,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
+    fn repo_top_climbs_unix_paths() {
+        assert_eq!(repo_top(Path::new("/dev/proj"), "\n"), PathBuf::from("/dev/proj"));
+        assert_eq!(repo_top(Path::new("/dev/proj/web"), "../\n"), PathBuf::from("/dev/proj"));
+        assert_eq!(repo_top(Path::new("/dev/proj/a/b"), "../../"), PathBuf::from("/dev/proj"));
+    }
+
+    #[test]
+    #[cfg(windows)]
     fn repo_top_keeps_drive_letter() {
         assert_eq!(repo_top(Path::new(r"A:\Dev\proj"), "\n"), PathBuf::from(r"A:\Dev\proj"));
         assert_eq!(repo_top(Path::new(r"A:\Dev\proj\web"), "../\n"), PathBuf::from(r"A:\Dev\proj"));

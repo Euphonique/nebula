@@ -44,9 +44,9 @@ pub fn caption_buttons(ui: &mut Ui, theme: &Theme, bar: Rect) {
         let painter = ui.painter();
         let mut hovered = resp.hovered();
         if kind == 1 {
-            // Windows handles this button itself (snap layouts), see win32.rs.
-            crate::win32::set_maximize_button(rect, ctx.pixels_per_point());
-            hovered |= crate::win32::maximize_hovered();
+            // Windows handles this button itself (snap layouts), see platform/windows.rs.
+            crate::platform::set_maximize_button(rect, ctx.pixels_per_point());
+            hovered |= crate::platform::maximize_hovered();
         }
         let (bg, fg) = match (kind, hovered) {
             (2, true) => (Color32::from_rgb(196, 43, 28), Color32::WHITE),

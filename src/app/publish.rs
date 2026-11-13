@@ -199,7 +199,7 @@ impl NebulaApp {
                 url
             }
         };
-        if !crate::win32::open_url(&url) {
+        if !crate::platform::open_url(&url) {
             self.error(t!("{url} konnte nicht geöffnet werden.", url = url));
         } else if dirty && matches!(self.docs[i].source, DocSource::Local(_) | DocSource::Remote { .. }) {
             self.info(t!("Der Browser zeigt die gespeicherte Fassung – ungesicherte Änderungen fehlen noch."));

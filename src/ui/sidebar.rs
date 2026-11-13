@@ -1559,8 +1559,8 @@ fn item_menu(
                 actions.push(SidebarAction::CopyText(p.display().to_string()));
                 close = true;
             }
-            if menu_button(ui, t!("Im Explorer zeigen"), "") {
-                let _ = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
+            if menu_button(ui, if cfg!(windows) { t!("Im Explorer zeigen") } else { t!("Im Dateimanager zeigen") }, "") {
+                crate::platform::reveal_in_file_manager(p);
                 close = true;
             }
         }
@@ -1632,9 +1632,9 @@ fn dir_menu(ui: &mut Ui, dir: &DirRef, clipboard_ready: bool, actions: &mut Vec<
         close = true;
     }
     if let DirRef::Local(d) = dir
-        && menu_button(ui, t!("Im Explorer öffnen"), "")
+        && menu_button(ui, if cfg!(windows) { t!("Im Explorer öffnen") } else { t!("Im Dateimanager öffnen") }, "")
     {
-        let _ = std::process::Command::new("explorer").arg(d).spawn();
+        crate::platform::open_folder(d);
         close = true;
     }
     if close {

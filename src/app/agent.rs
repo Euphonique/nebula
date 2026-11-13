@@ -362,7 +362,7 @@ impl NebulaApp {
         {
             return dir.to_path_buf();
         }
-        std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
+        directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()).unwrap_or_else(std::env::temp_dir)
     }
 
     fn start_agent(&mut self, ctx: &egui::Context) {

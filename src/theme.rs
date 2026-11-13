@@ -251,7 +251,29 @@ fn light_syntax(name: &str) -> Option<Color32> {
     })
 }
 
+/// The GNOME accent color (GNOME 47+), if the desktop has one.
+#[cfg(not(windows))]
+fn system_accent() -> Option<Color32> {
+    let out = std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", "accent-color"]).output().ok()?;
+    let name = String::from_utf8_lossy(&out.stdout).trim().trim_matches('\'').to_string();
+    // libadwaita's accent palette.
+    let (r, g, b) = match name.as_str() {
+        "blue" => (0x35, 0x84, 0xe4),
+        "teal" => (0x21, 0x90, 0xa4),
+        "green" => (0x3a, 0x94, 0x4a),
+        "yellow" => (0xc8, 0x88, 0x00),
+        "orange" => (0xed, 0x5b, 0x00),
+        "red" => (0xe6, 0x2d, 0x42),
+        "pink" => (0xd5, 0x61, 0x99),
+        "purple" => (0x91, 0x41, 0xac),
+        "slate" => (0x6f, 0x83, 0x96),
+        _ => return None,
+    };
+    Some(Color32::from_rgb(r, g, b))
+}
+
 /// The Windows accent color, if one is configured.
+#[cfg(windows)]
 fn system_accent() -> Option<Color32> {
     let key = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
         .open_subkey(r"Software\Microsoft\Windows\DWM")
@@ -681,7 +703,7 @@ impl Theme {
     pub fn for_settings(settings: &crate::settings::AppSettings) -> Self {
         // A Windows contrast theme wins (it is an accessibility setting).
         if settings.follow_high_contrast
-            && let Some(dark) = crate::win32::high_contrast()
+            && let Some(dark) = crate::platform::high_contrast()
         {
             return Self::contrast(dark);
         }
@@ -692,13 +714,15 @@ impl Theme {
             .find(|f| f.name == wanted)
             .map(Theme::from_file)
             .unwrap_or_else(|| if dark { Theme::dark() } else { Theme::light() });
-        if settings.mica {
+        // Mica exists only on Windows 11; elsewhere the sidebar stays opaque.
+        let mica = settings.mica && cfg!(windows);
+        if mica {
             // Let the backdrop shine through the sidebar, slightly tinted.
             let c = t.sidebar_bg;
             let a = if t.dark { 0.55 } else { 0.5 };
             t.sidebar_bg = Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (a * 255.0) as u8);
         }
-        t.mica = settings.mica;
+        t.mica = mica;
         t
     }
 }

@@ -31,8 +31,68 @@ pub fn install() {
     native::install();
 }
 
+/// Hard crashes in native code (segfaults in drivers, WebKit, …) never reach
+/// the panic hook; the signal handler writes the report, then the default
+/// action ends the process as before (core dump if enabled).
+#[cfg(unix)]
+mod native {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Only the first crash is written (a crash while writing must not loop).
+    static HANDLED: AtomicBool = AtomicBool::new(false);
+
+    const SIGNALS: [libc::c_int; 4] = [libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGFPE];
+
+    pub fn install() {
+        for sig in SIGNALS {
+            // SAFETY: a zeroed sigaction with our handler; SA_ONSTACK uses the
+            // alternate stack std sets up, so stack overflows are caught too.
+            unsafe {
+                let mut action: libc::sigaction = std::mem::zeroed();
+                action.sa_sigaction = handler as *const () as usize;
+                action.sa_flags = libc::SA_SIGINFO | libc::SA_ONSTACK | libc::SA_RESETHAND;
+                libc::sigemptyset(&mut action.sa_mask);
+                libc::sigaction(sig, &action, std::ptr::null_mut());
+            }
+        }
+    }
+
+    fn signal_name(sig: libc::c_int) -> &'static str {
+        match sig {
+            libc::SIGSEGV => "Zugriffsverletzung (SIGSEGV)",
+            libc::SIGBUS => "Busfehler (SIGBUS)",
+            libc::SIGILL => "Ungültiger Befehl (SIGILL)",
+            libc::SIGFPE => "Rechenfehler (SIGFPE)",
+            _ => "Signal",
+        }
+    }
+
+    extern "C" fn handler(sig: libc::c_int, info: *mut libc::siginfo_t, _context: *mut libc::c_void) {
+        if !HANDLED.swap(true, Ordering::SeqCst) {
+            // SAFETY: the kernel passes valid signal info for SA_SIGINFO handlers.
+            let addr = if info.is_null() { 0 } else { unsafe { (*info).si_addr() as usize } };
+            let message = signal_name(sig).to_string();
+            let location = format!("Adresse 0x{addr:X}");
+            let thread = std::thread::current().name().unwrap_or("unbenannt").to_string();
+            let backtrace = std::backtrace::Backtrace::force_capture().to_string();
+            // Not async-signal-safe, but the process is lost anyway: best effort.
+            let _ = super::write_report(&super::dir(), &message, &location, &thread, &backtrace);
+        }
+        // SA_RESETHAND restored the default action; raising again ends the process.
+        // SAFETY: plain signal to ourselves.
+        unsafe { libc::raise(sig) };
+    }
+
+    /// Crashes on purpose (NEBULA_CRASH_TEST=native).
+    pub fn crash_now() {
+        // SAFETY: the handler above runs, then the process ends.
+        unsafe { libc::raise(libc::SIGSEGV) };
+    }
+}
+
 /// Hard crashes in native code (access violations in drivers, WebView, …)
 /// never reach the panic hook; Windows hands them to this filter.
+#[cfg(windows)]
 mod native {
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -145,7 +205,7 @@ fn write_report(dir: &std::path::Path, message: &str, location: &str, thread: &s
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or_default();
-    let t = crate::win32::local_time(ms);
+    let t = crate::platform::local_time(ms);
     let stamp = format!("{:04}-{:02}-{:02} {:02}:{:02}", t.year, t.month, t.day, t.hour, t.minute);
     // Seconds are the same in every time zone.
     let name = format!("crash-{:04}{:02}{:02}-{:02}{:02}{:02}-{:03}.txt", t.year, t.month, t.day, t.hour, t.minute, ms / 1000 % 60, ms % 1000);

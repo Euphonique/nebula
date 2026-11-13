@@ -1,6 +1,7 @@
 //! Subprocesses for extensions (the Process API). Nova extensions are
 //! written for macOS, so Unix-style launches like `/usr/bin/env node` are
-//! mapped to their Windows equivalents.
+//! mapped to their Windows equivalents. On Linux they mostly run as they are.
+#![cfg_attr(not(windows), allow(dead_code))]
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -42,11 +43,14 @@ fn path_dirs(env: &HashMap<String, String>) -> Vec<PathBuf> {
         .map(|(_, v)| v.clone())
         .or_else(|| std::env::var("PATH").ok())
         .unwrap_or_default();
+    #[allow(unused_mut)]
     let mut dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
     // Node installed per user (nvm, volta) or globally.
+    #[cfg(windows)]
     for extra in [r"C:\Program Files\nodejs", r"C:\Program Files\Git\bin", r"C:\Program Files\Git\usr\bin"] {
         dirs.push(PathBuf::from(extra));
     }
+    #[cfg(windows)]
     if let Some(appdata) = std::env::var_os("APPDATA") {
         dirs.push(PathBuf::from(appdata).join("npm"));
     }
@@ -92,7 +96,31 @@ fn bash(env: &HashMap<String, String>) -> Option<PathBuf> {
         .or_else(|| which("bash", env).filter(|p| !p.to_string_lossy().to_lowercase().contains("system32")))
 }
 
+/// Turns a macOS-style launch into (program, args). Unix launches work as
+/// they are; only macOS' `open` and plain .js files need a stand-in.
+#[cfg(not(windows))]
+pub fn resolve(command: &str, args: &[String], env: &mut HashMap<String, String>) -> Result<(PathBuf, Vec<String>), String> {
+    let mut args = args.to_vec();
+    let command = if command == "open" && which("open", env).is_none() { "xdg-open" } else { command };
+    let lower = command.to_lowercase();
+    let script = lower.ends_with(".js") || lower.ends_with(".mjs") || lower.ends_with(".cjs");
+    if script && !is_executable(Path::new(command)) {
+        let node = which("node", env).ok_or(t!("Node.js wurde nicht gefunden."))?;
+        args.insert(0, command.to_string());
+        return Ok((node, args));
+    }
+    let exe = which(command, env).ok_or_else(|| t!("Programm nicht gefunden: {command}", command = command))?;
+    Ok((exe, args))
+}
+
+#[cfg(not(windows))]
+fn is_executable(p: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(p).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+}
+
 /// Turns a macOS-style launch into (program, args).
+#[cfg(windows)]
 pub fn resolve(command: &str, args: &[String], env: &mut HashMap<String, String>) -> Result<(PathBuf, Vec<String>), String> {
     let mut command = command.to_string();
     let mut args = args.to_vec();
@@ -262,7 +290,8 @@ pub fn spawn(id: u64, spec: Spawn, events: Sender<ProcEvent>, wake: impl Fn() + 
             let line = std::iter::once(spec.command.clone()).chain(spec.args.iter().map(|a| shell_quote(a))).collect::<Vec<_>>().join(" ");
             match bash(&env).filter(|_| shell != "cmd") {
                 Some(b) => (b, vec!["-lc".into(), line]),
-                None => (PathBuf::from("cmd.exe"), vec!["/D".into(), "/C".into(), line]),
+                None if cfg!(windows) => (PathBuf::from("cmd.exe"), vec!["/D".into(), "/C".into(), line]),
+                None => (PathBuf::from("sh"), vec!["-c".into(), line]),
             }
         }
         None => resolve(&spec.command, &spec.args, &mut env)?,
@@ -273,9 +302,11 @@ pub fn spawn(id: u64, spec: Spawn, events: Sender<ProcEvent>, wake: impl Fn() + 
         cmd.current_dir(cwd);
     }
     {
-        use std::os::windows::process::CommandExt;
+        use crate::platform::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    // Its own process group, so `kill` also ends the children.
+    crate::platform::ProcessGroupExt::own_process_group(&mut cmd);
     let pipe = |s: &str| if s == "ignore" { Stdio::null() } else { Stdio::piped() };
     cmd.stdin(pipe(&spec.stdio[0])).stdout(pipe(&spec.stdio[1])).stderr(pipe(&spec.stdio[2]));
     let mut child: Child = cmd.spawn().map_err(|e| format!("{}: {e}", program.display()))?;
@@ -391,9 +422,22 @@ pub fn write_jsonrpc(stdin: &mut ChildStdin, body: &str) -> std::io::Result<()> 
     stdin.flush()
 }
 
-/// Ends a process and its children.
+/// Ends a process and its children: its process group if it leads one
+/// (see `spawn`), and the process itself in any case.
+#[cfg(unix)]
 pub fn kill(pid: u32) {
-    use std::os::windows::process::CommandExt;
+    let pid = pid as libc::pid_t;
+    // SAFETY: plain signals; a stale id or a missing group only yields ESRCH.
+    unsafe {
+        libc::kill(-pid, libc::SIGKILL);
+        libc::kill(pid, libc::SIGKILL);
+    }
+}
+
+/// Ends a process and its children.
+#[cfg(windows)]
+pub fn kill(pid: u32) {
+    use crate::platform::CommandExt;
     let _ = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .creation_flags(CREATE_NO_WINDOW)
@@ -407,6 +451,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(windows)]
     fn env_launch_resolves_through_path() {
         let mut env = HashMap::new();
         let (prog, args) = resolve("/usr/bin/env", &["FOO=1".into(), "cmd".into(), "/C".into(), "echo".into()], &mut env).unwrap();
@@ -416,6 +461,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn npm_shims_resolve_to_scripts() {
         let tmp = tempfile::tempdir().unwrap();
         let bin = tmp.path().join("node_modules").join(".bin");
@@ -436,8 +482,8 @@ fi
     fn runs_and_reads_lines() {
         let (tx, rx) = crossbeam_channel::unbounded();
         let spec = Spawn {
-            command: "cmd".into(),
-            args: vec!["/C".into(), "echo hallo".into()],
+            command: if cfg!(windows) { "cmd" } else { "sh" }.into(),
+            args: vec![if cfg!(windows) { "/C" } else { "-c" }.into(), "echo hallo".into()],
             env: HashMap::new(),
             cwd: None,
             stdio: ["pipe".into(), "pipe".into(), "pipe".into()],

@@ -22,7 +22,9 @@ fn make_ext(dir: &std::path::Path, id: &str, main: &str, extra: serde_json::Valu
         manifest[k] = v.clone();
     }
     std::fs::write(dir.join("extension.json"), manifest.to_string()).unwrap();
-    std::fs::write(dir.join("Scripts").join("main.js"), main).unwrap();
+    // The echo through /usr/bin/env: cmd's built-in on Windows, the program elsewhere.
+    let echo = if cfg!(windows) { r#""cmd", "/C", "echo""# } else { r#""echo""# };
+    std::fs::write(dir.join("Scripts").join("main.js"), main.replace("__ECHO__", echo)).unwrap();
     Extension::load(dir).unwrap()
 }
 
@@ -84,7 +86,7 @@ fn extension_host_end_to_end() {
             });
         });
         nova.commands.register("test.info", (workspace) => {
-            const p = new Process("/usr/bin/env", { args: ["cmd", "/C", "echo", "prozess-ausgabe"] });
+            const p = new Process("/usr/bin/env", { args: [__ECHO__, "prozess-ausgabe"] });
             let out = "";
             p.onStdout((l) => { out += l; });
             p.onDidExit((code) => {

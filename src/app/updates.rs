@@ -82,7 +82,7 @@ impl NebulaApp {
         let label = egui::RichText::new(t!("⬆ Version {version} verfügbar", version = r.version)).size(11.5).color(self.theme.accent);
         let resp = ui.add(egui::Label::new(label).sense(egui::Sense::click())).on_hover_text(t!("Release-Seite öffnen"));
         if resp.clicked() {
-            crate::win32::open_url(&r.url);
+            crate::platform::open_url(&r.url);
         }
         resp.context_menu(|ui| {
             if ui.button(t!("Diese Version überspringen")).clicked() {

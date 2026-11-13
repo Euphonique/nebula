@@ -245,7 +245,7 @@ impl DbView {
         if ui.add_enabled(ready, egui::Button::new(t!("Speichern und verbinden"))).clicked() {
             *action = Action::Save { site_id: s.site_id.clone(), settings: s.form.clone(), password: std::mem::take(&mut s.password) };
         }
-        ui.label(RichText::new(t!("Das Passwort wird in der Windows-Anmeldeinformationsverwaltung gespeichert.")).small().color(theme.text_faint));
+        ui.label(RichText::new(if cfg!(windows) { t!("Das Passwort wird in der Windows-Anmeldeinformationsverwaltung gespeichert.") } else { t!("Das Passwort wird im Schlüsselbund des Systems gespeichert.") }).small().color(theme.text_faint));
     }
 
     fn table_list(ui: &mut egui::Ui, s: &mut State, theme: &Theme) {
