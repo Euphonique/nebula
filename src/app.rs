@@ -1489,12 +1489,16 @@ impl NebulaApp {
             return;
         }
         egui::DragAndDrop::clear_payload(ctx);
-        let items: Vec<crate::ui::sidebar::Item> = items.0.clone();
-        let remote = items.iter().any(|i| matches!(i.file, FileRef::Remote { .. }));
-        if remote && !crate::platform::LAZY_DRAG_OUT {
-            self.info(t!("Dateien vom Server lassen sich nicht direkt hinausziehen – nutze „Herunterladen nach…“."));
-            return;
+        let mut items: Vec<crate::ui::sidebar::Item> = items.0.clone();
+        if !crate::platform::LAZY_DRAG_OUT {
+            // Only the local files of a mixed selection go out.
+            items.retain(|i| matches!(i.file, FileRef::Local(_)));
+            if items.is_empty() {
+                self.info(t!("Dateien vom Server lassen sich nicht direkt hinausziehen – nutze „Herunterladen nach…“."));
+                return;
+            }
         }
+        let remote = items.iter().any(|i| matches!(i.file, FileRef::Remote { .. }));
         let mut fetch = || self.files_for_drop(&items);
         match crate::platform::drag_files_out_with(&mut fetch) {
             Ok(true) if !remote => self.sidebar.refresh_local(None),
