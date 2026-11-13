@@ -219,8 +219,10 @@ fn percent_decode(s: &str) -> String {
 fn file_uri(path: &std::path::Path) -> String {
     let p = crate::ext::host::js_path(path);
     let mut out = String::from("file:///");
-    // "C:/x" and "/home/x" both become file:///…
-    for b in p.trim_start_matches('/').bytes() {
+    // "C:/x" and "/home/x" both become file:///…; on Windows the leading
+    // slashes of a UNC path ("//server/share") stay as before.
+    let p = if cfg!(windows) { p.as_str() } else { p.trim_start_matches('/') };
+    for b in p.bytes() {
         if b.is_ascii_alphanumeric() || b"/-_.~:!$&'()*+,;=@".contains(&b) {
             out.push(b as char);
         } else {
