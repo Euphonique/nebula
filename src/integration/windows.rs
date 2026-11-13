@@ -209,7 +209,6 @@ pub fn handler_of(ext: &str) -> Handler {
     }
 }
 
-/// Nebula's page under Settings › Apps › Default apps, listing its types.
 /// Only Linux knows installs through a package manager.
 pub fn packaged() -> bool {
     false
@@ -220,6 +219,7 @@ pub fn handlers<'a>(exts: &[&'a str]) -> std::collections::HashMap<&'a str, Hand
     exts.iter().map(|ext| (*ext, handler_of(ext))).collect()
 }
 
+/// Nebula's page under Settings › Apps › Default apps, listing its types.
 pub const DEFAULT_APPS_PAGE: &str = "ms-settings:defaultapps?registeredAppUser=Nebula";
 
 /// Whether the user never chose a program for `.ext` in Windows (then the
