@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Name=Nebula
+GenericName=Code Editor
+GenericName[de]=Code-Editor
+Comment=Fast code editor with FTP/SFTP
+Comment[de]=Schneller Code-Editor mit FTP/SFTP
+Exec=nebula %F
+Icon=nebula
+Terminal=false
+StartupNotify=true
+StartupWMClass=nebula
+Categories=Development;TextEditor;IDE;
+Keywords=editor;code;ftp;sftp;html;css;php;
+MimeType=text/plain;inode/directory;
+Actions=new-window;
+NoDisplay=false
+X-Nebula-ContextMenu=true
+X-Nebula-FileTypes=
+
+[Desktop Action new-window]
+Name=New Window
+Name[de]=Neues Fenster
+Exec=nebula --window

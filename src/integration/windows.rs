@@ -210,6 +210,11 @@ pub fn handler_of(ext: &str) -> Handler {
 }
 
 /// Nebula's page under Settings › Apps › Default apps, listing its types.
+/// Only Linux knows installs through a package manager.
+pub fn packaged() -> bool {
+    false
+}
+
 /// `handler_of` for many types.
 pub fn handlers<'a>(exts: &[&'a str]) -> std::collections::HashMap<&'a str, Handler> {
     exts.iter().map(|ext| (*ext, handler_of(ext))).collect()

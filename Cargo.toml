@@ -2,7 +2,10 @@
 name = "nebula"
 version = "1.1.0"
 edition = "2024"
-description = "Fast native code editor for Windows and Linux with built-in FTP/SFTP remote editing"
+description = "Fast native code editor with built-in FTP/SFTP remote editing"
+license = "MIT"
+homepage = "https://github.com/Euphonique/nebula"
+repository = "https://github.com/Euphonique/nebula"
 
 [dependencies]
 eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "wgpu", "persistence"] }
@@ -90,6 +93,44 @@ cairo-rs = { version = "0.18", features = ["png"] }
 # Releasing winit's pointer grab before a GTK drag starts (same version as wry).
 x11-dl = "2.21"
 libc = "0.2"
+
+# The Linux package (cargo install cargo-deb):
+#   cargo deb --compress-debug-symbols=zlib
+# zlib keeps the separate debug symbols readable for Rust's backtraces.
+[package.metadata.deb]
+maintainer = "Pascal Pagel"
+copyright = "2026 Euphonique"
+license-file = ["LICENSE", "0"]
+section = "editors"
+priority = "optional"
+# Line tables go into a separate nebula-dbgsym package; the program keeps
+# its symbol table, so crash reports still name functions.
+dbgsym = true
+extended-description = """\
+Nebula is a fast native code editor with built-in FTP/SFTP remote editing: \
+open server files like local ones, upload on save, sync and publish projects, \
+a live HTML/PHP preview, an integrated terminal, Git status, spell checking \
+and AI agents (ACP/MCP)."""
+# $auto: the shared libraries (WebKitGTK, GTK 3 …) found by dpkg-shlibdeps.
+depends = "$auto, xdg-utils"
+# Command line tools Nebula calls: spell checking, trash/settings/D-Bus,
+# opening links, the application menu cache, a terminal for agent logins.
+recommends = "enchant-2, hunspell-en-us, libglib2.0-bin, libgtk-3-bin, desktop-file-utils, gnome-terminal | x-terminal-emulator"
+suggests = "hunspell-de-de, git, nodejs"
+assets = [
+    ["target/release/nebula", "usr/bin/", "755"],
+    ["packaging/linux/nebula.desktop", "usr/share/applications/", "644"],
+    ["target/release/icons/16x16/nebula.png", "usr/share/icons/hicolor/16x16/apps/", "644"],
+    ["target/release/icons/24x24/nebula.png", "usr/share/icons/hicolor/24x24/apps/", "644"],
+    ["target/release/icons/32x32/nebula.png", "usr/share/icons/hicolor/32x32/apps/", "644"],
+    ["target/release/icons/48x48/nebula.png", "usr/share/icons/hicolor/48x48/apps/", "644"],
+    ["target/release/icons/64x64/nebula.png", "usr/share/icons/hicolor/64x64/apps/", "644"],
+    ["target/release/icons/128x128/nebula.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
+    ["target/release/icons/256x256/nebula.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["target/release/icons/512x512/nebula.png", "usr/share/icons/hicolor/512x512/apps/", "644"],
+    ["README.md", "usr/share/doc/nebula/", "644"],
+    ["CHANGELOG.md", "usr/share/doc/nebula/", "644"],
+]
 
 [profile.release]
 opt-level = 3

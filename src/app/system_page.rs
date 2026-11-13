@@ -58,7 +58,10 @@ impl NebulaApp {
             (Some(c), Some(i)) => c.canonicalize().ok() == i.canonicalize().ok(),
             _ => false,
         };
-        if integration::is_installed() {
+        if integration::packaged() {
+            ui.label(t!("Installiert über die Paketverwaltung ({install_dir})", install_dir = integration::install_dir().display()));
+            ui.label(faint(t!("Aktualisieren und Entfernen über die Paketverwaltung, z. B. „sudo apt remove nebula“.")));
+        } else if integration::is_installed() {
             ui.label(t!("Installiert in {install_dir}", install_dir = integration::install_dir().display()));
             if cfg!(windows) {
                 ui.label(faint(t!("Mit Startmenü-Eintrag; entfernen unter Windows-Einstellungen › Apps oder hier.")));
@@ -75,19 +78,21 @@ impl NebulaApp {
             }
         }
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            let label = if integration::is_installed() && !running_installed { t!("Installation aktualisieren") } else { t!("Installieren") };
-            if (!running_installed || !integration::is_installed()) && ui.add(primary_button(label, theme.accent)).clicked() {
-                match integration::install() {
-                    Ok(exe) => self.info(t!("Nebula wurde installiert: {exe}", exe = exe.display())),
-                    Err(e) => self.error(t!("Installation fehlgeschlagen: {e}", e = format!("{:#}", e))),
+        if !integration::packaged() {
+            ui.horizontal(|ui| {
+                let label = if integration::is_installed() && !running_installed { t!("Installation aktualisieren") } else { t!("Installieren") };
+                if (!running_installed || !integration::is_installed()) && ui.add(primary_button(label, theme.accent)).clicked() {
+                    match integration::install() {
+                        Ok(exe) => self.info(t!("Nebula wurde installiert: {exe}", exe = exe.display())),
+                        Err(e) => self.error(t!("Installation fehlgeschlagen: {e}", e = format!("{:#}", e))),
+                    }
+                    self.file_types = None;
                 }
-                self.file_types = None;
-            }
-            if integration::is_installed() && ui.button(t!("Deinstallieren…")).clicked() {
-                self.confirm_uninstall = true;
-            }
-        });
+                if integration::is_installed() && ui.button(t!("Deinstallieren…")).clicked() {
+                    self.confirm_uninstall = true;
+                }
+            });
+        }
         if self.confirm_uninstall {
             ui.add_space(6.0);
             ui.label(RichText::new(t!("Nebula aus dem Programmordner entfernen? Die Einstellungen bleiben erhalten.")).color(theme.modified));

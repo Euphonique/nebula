@@ -5,6 +5,11 @@
 //!
 //! The desktop entry also holds Nebula's own state (`X-Nebula-*` keys), so
 //! there is nothing else to keep in sync.
+//!
+//! Installed from a package (.deb), the package owns the program, its menu
+//! entry and icon; a user entry of the same name then only overrides "Open
+//! With" and the file types, and is removed again once it matches the
+//! package's entry.
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -113,15 +118,43 @@ fn icon_file() -> PathBuf {
     data_home().join("icons/hicolor/256x256/apps/nebula.png")
 }
 
-/// Where "Install" puts Nebula (usually in PATH).
+/// The package's desktop entry (`/usr/share/applications/nebula.desktop`).
+fn system_entry_file() -> Option<PathBuf> {
+    xdg_dirs("XDG_DATA_DIRS", "/usr/local/share:/usr/share")
+        .into_iter()
+        .map(|d| d.join("applications").join(DESKTOP_ID))
+        .find(|p| p.is_file())
+}
+
+/// The program installed by the package: `<prefix>/bin/nebula` next to
+/// `<prefix>/share/applications/nebula.desktop`.
+fn packaged_exe() -> Option<PathBuf> {
+    let entry = system_entry_file()?;
+    let prefix = entry.parent()?.parent()?.parent()?;
+    let exe = prefix.join("bin").join("nebula");
+    exe.is_file().then_some(exe)
+}
+
+/// Installed through the package manager (the settings page then offers no
+/// install/uninstall of its own).
+pub fn packaged() -> bool {
+    packaged_exe().is_some()
+}
+
+/// Where "Install" puts Nebula (usually in PATH); for a package, where it is.
 pub fn install_dir() -> PathBuf {
-    home().join(".local").join("bin")
+    match packaged_exe() {
+        Some(exe) => exe.parent().map(Path::to_path_buf).unwrap_or_default(),
+        None => home().join(".local").join("bin"),
+    }
 }
 
 /// The installed copy, if Nebula has been installed.
 pub fn installed_exe() -> Option<PathBuf> {
-    let exe = install_dir().join("nebula");
-    exe.is_file().then_some(exe)
+    packaged_exe().or_else(|| {
+        let exe = home().join(".local").join("bin").join("nebula");
+        exe.is_file().then_some(exe)
+    })
 }
 
 /// The program the entries should point to: the installed copy if there is
@@ -137,7 +170,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 // ---- the desktop entry ---------------------------------------------------------------
 
 /// What Nebula's desktop entry stands for.
-#[derive(Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 struct Entry {
     /// Shown in the application menu (installed).
     menu: bool,
@@ -147,8 +180,13 @@ struct Entry {
     types: BTreeSet<String>,
 }
 
+/// The entry in effect: the user's, else the package's.
 fn read_entry() -> Option<Entry> {
-    Some(parse_entry(&std::fs::read_to_string(desktop_file()).ok()?))
+    let text = match std::fs::read_to_string(desktop_file()) {
+        Ok(t) => t,
+        Err(_) => std::fs::read_to_string(system_entry_file()?).ok()?,
+    };
+    Some(parse_entry(&text))
 }
 
 fn parse_entry(text: &str) -> Entry {
@@ -210,8 +248,13 @@ fn render_entry(e: &Entry, exe: &Path) -> String {
          Keywords=editor;code;ftp;sftp;html;css;php;\n\
          MimeType={mime}\n\
          NoDisplay={hidden}\n\
+         Actions=new-window;\n\
          X-Nebula-ContextMenu={context}\n\
-         X-Nebula-FileTypes={types}\n",
+         X-Nebula-FileTypes={types}\n\
+         \n\
+         [Desktop Action new-window]\n\
+         Name={new_window}\n\
+         Exec={exec} --window\n",
         generic = t!("Code-Editor"),
         comment = t!("Schneller Code-Editor mit FTP/SFTP"),
         exec = exec_quote(exe),
@@ -219,6 +262,7 @@ fn render_entry(e: &Entry, exe: &Path) -> String {
         hidden = !e.menu,
         context = e.context_menu,
         types = list(&mut e.types.iter().map(String::as_str)),
+        new_window = t!("Neues Fenster"),
     )
 }
 
@@ -226,7 +270,11 @@ fn render_entry(e: &Entry, exe: &Path) -> String {
 /// desktop pick up the change.
 fn write_entry(e: &Entry) -> Result<()> {
     let file = desktop_file();
-    if !e.menu && !e.context_menu && e.types.is_empty() {
+    // The package's entry stays in the menu; the user's copy only overrides
+    // it where it differs.
+    let package = system_entry_file().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| parse_entry(&t));
+    let e = &Entry { menu: e.menu || package.is_some(), ..e.clone() };
+    if package.as_ref() == Some(e) || (!e.menu && !e.context_menu && e.types.is_empty()) {
         let _ = std::fs::remove_file(&file);
     } else {
         std::fs::create_dir_all(applications_dir()).with_context(|| applications_dir().display().to_string())?;
@@ -409,6 +457,9 @@ fn app_name(id: &str) -> String {
 /// Copies the running program into `~/.local/bin` and adds the application
 /// menu entry. Returns the installed program.
 pub fn install() -> Result<PathBuf> {
+    if packaged() {
+        anyhow::bail!("{}", t!("Nebula ist über die Paketverwaltung installiert."));
+    }
     let current = std::env::current_exe().context(t!("Programmpfad nicht gefunden"))?;
     let dir = install_dir();
     std::fs::create_dir_all(&dir).with_context(|| t!("{dir} konnte nicht angelegt werden", dir = dir.display()))?;
@@ -431,12 +482,18 @@ pub fn install() -> Result<PathBuf> {
 }
 
 pub fn is_installed() -> bool {
-    installed_exe().is_some() && read_entry().is_some_and(|e| e.menu)
+    packaged() || (installed_exe().is_some() && read_entry().is_some_and(|e| e.menu))
 }
 
 /// Removes the program, the menu entry, "Open With" and the file type defaults.
+/// For a package only Nebula's own changes (the package manager removes the rest).
 pub fn uninstall() -> Result<()> {
     let _ = set_file_types(&BTreeSet::new());
+    if packaged() {
+        let _ = std::fs::remove_file(desktop_file());
+        refresh_desktop_database();
+        return Ok(());
+    }
     let _ = std::fs::remove_file(desktop_file());
     let _ = std::fs::remove_file(icon_file());
     refresh_desktop_database();
@@ -551,6 +608,8 @@ mod tests {
         // SAFETY: the test runs on its own (ignored by default).
         unsafe {
             std::env::set_var("HOME", home.path());
+            // No package installed here, even if there is one on this machine.
+            std::env::set_var("XDG_DATA_DIRS", home.path().join("system"));
             std::env::remove_var("XDG_DATA_HOME");
             std::env::remove_var("XDG_CONFIG_HOME");
         }
@@ -581,6 +640,50 @@ mod tests {
         uninstall().unwrap();
         assert!(!is_installed() && !desktop_file().exists() && !exe.exists());
         assert_eq!(std::fs::read_to_string(&list).unwrap(), "[Default Applications]\ntext/css=org.gnome.TextEditor.desktop;\n");
+    }
+
+    /// Installed from a package (prefix in a temporary folder): the settings
+    /// only override "Open With" and the types, never hide the menu entry.
+    #[test]
+    #[ignore]
+    fn package_install_in_a_temporary_prefix() {
+        let home = tempfile::tempdir().unwrap();
+        let prefix = home.path().join("usr");
+        std::fs::create_dir_all(prefix.join("share/applications")).unwrap();
+        std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        let package_entry = include_str!("../../packaging/linux/nebula.desktop");
+        std::fs::write(prefix.join("share/applications/nebula.desktop"), package_entry).unwrap();
+        std::fs::write(prefix.join("bin/nebula"), "").unwrap();
+        // SAFETY: the test runs on its own (ignored by default).
+        unsafe {
+            std::env::set_var("HOME", home.path());
+            std::env::set_var("XDG_DATA_DIRS", prefix.join("share"));
+            std::env::remove_var("XDG_DATA_HOME");
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+        assert!(packaged() && is_installed());
+        assert_eq!(installed_exe(), Some(prefix.join("bin/nebula")));
+        assert!(install().is_err());
+        // The package's entry offers "Open With" for text and folders.
+        assert!(context_menu_enabled());
+        assert!(!desktop_file().exists());
+
+        set_file_types(&["css".to_string()].into()).unwrap();
+        let user = std::fs::read_to_string(desktop_file()).unwrap();
+        assert!(user.contains("NoDisplay=false") && user.contains(&format!("Exec={} %F", prefix.join("bin/nebula").display())), "{user}");
+        set_context_menu(false).unwrap();
+        assert!(!context_menu_enabled());
+        // Back to the package's state: the override goes away.
+        set_context_menu(true).unwrap();
+        set_file_types(&BTreeSet::new()).unwrap();
+        assert!(!desktop_file().exists());
+        assert!(context_menu_enabled());
+    }
+
+    #[test]
+    fn package_entry_matches_what_nebula_reads() {
+        let e = parse_entry(include_str!("../../packaging/linux/nebula.desktop"));
+        assert_eq!(e, Entry { menu: true, context_menu: true, types: BTreeSet::new() });
     }
 
     #[test]
