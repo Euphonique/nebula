@@ -1,4 +1,5 @@
-//! Spell checking with the Windows spell checker (`ISpellChecker`).
+//! Spell checking with the system's spell checker: `ISpellChecker` on
+//! Windows, Enchant (Hunspell/Aspell dictionaries) on Linux.
 //!
 //! Prose is checked: comments in code, text in Markdown, HTML and plain text.
 //! Lines are checked on a worker thread and cached by their content, so the
@@ -40,7 +41,7 @@ struct Shared {
     cache: HashMap<u64, Arc<[Miss]>>,
     pending: HashSet<u64>,
     suggestions: HashMap<String, Arc<Vec<String>>>,
-    /// Language tags Windows can check.
+    /// Language tags the system can check.
     available: Vec<String>,
     /// Tags in use.
     active: Vec<String>,
@@ -68,7 +69,7 @@ fn send(msg: Msg) {
     }
 }
 
-/// Uses these language tags (`de-DE`, `en-US`; empty: Windows language and English).
+/// Uses these language tags (`de-DE`, `en-US`; empty: system language and English).
 pub fn configure(tags: &[String]) {
     let mut sh = SHARED.lock().unwrap();
     if sh.requested.as_deref() == Some(tags) {
@@ -79,7 +80,7 @@ pub fn configure(tags: &[String]) {
     send(Msg::Configure(tags.to_vec()));
 }
 
-/// Languages Windows can check and those in use.
+/// Languages the system can check and those in use.
 pub fn languages() -> (Vec<String>, Vec<String>) {
     let sh = SHARED.lock().unwrap();
     (sh.available.clone(), sh.active.clone())
@@ -124,7 +125,7 @@ fn suggest_key(word: &str) -> u64 {
     h.finish()
 }
 
-/// Adds a word to the Windows user dictionary.
+/// Adds a word to the user dictionary of the system.
 pub fn add(word: &str) {
     forget(word);
     send(Msg::Add(word.to_string()));
@@ -254,6 +255,240 @@ fn mask_code(text: &str) -> String {
     out
 }
 
+/// The system language (e.g. de-DE) and English.
+fn automatic(available: &[String]) -> Vec<String> {
+    let lang = crate::i18n::system_language();
+    let mut tags = Vec::new();
+    for want in [lang.as_str(), "en"] {
+        let pick = available
+            .iter()
+            .find(|t| t.eq_ignore_ascii_case(&format!("{want}-{}", want.to_uppercase())))
+            .or_else(|| available.iter().find(|t| t.split('-').next().is_some_and(|p| p.eq_ignore_ascii_case(want))));
+        if let Some(t) = pick
+            && !tags.contains(t)
+        {
+            tags.push(t.clone());
+        }
+    }
+    tags
+}
+
+/// Enchant (`enchant-2 -a`, the ispell pipe protocol) with the system's
+/// Hunspell and Aspell dictionaries; one process per language.
+#[cfg(not(windows))]
+mod worker {
+    use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+
+    struct Checker {
+        child: Child,
+        stdin: ChildStdin,
+        stdout: BufReader<ChildStdout>,
+    }
+
+    /// A rejected word: char offset in the line, the word, suggestions.
+    type Reject = (usize, String, Vec<String>);
+
+    impl Checker {
+        fn start(tag: &str) -> Option<Self> {
+            let mut child = Command::new("enchant-2")
+                .args(["-a", "-d", &tag.replace('-', "_")])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .ok()?;
+            let stdin = child.stdin.take()?;
+            let mut stdout = BufReader::new(child.stdout.take()?);
+            let mut banner = String::new();
+            if stdout.read_line(&mut banner).is_err() || !banner.starts_with("@(#)") {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Some(Self { child, stdin, stdout })
+        }
+
+        /// Checks one line; `None` if the process is gone.
+        fn line(&mut self, text: &str) -> Option<Vec<Reject>> {
+            // One input line is one answer block; "^" keeps the text from being read as a command.
+            let clean: String = text.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+            writeln!(self.stdin, "^{clean}").ok()?;
+            self.stdin.flush().ok()?;
+            let mut out = Vec::new();
+            loop {
+                let mut l = String::new();
+                if self.stdout.read_line(&mut l).ok()? == 0 {
+                    return None;
+                }
+                let l = l.trim_end_matches(['\n', '\r']);
+                if l.is_empty() {
+                    return Some(out);
+                }
+                // "& word count offset: a, b" (suggestions) or "# word offset" (none);
+                // offsets count chars and include the "^".
+                let (head, suggestions) = match (l.strip_prefix("& "), l.strip_prefix("# ")) {
+                    (Some(rest), _) => rest.split_once(": ").map_or((rest, ""), |(h, s)| (h, s)),
+                    (_, Some(rest)) => (rest, ""),
+                    _ => continue,
+                };
+                let parts: Vec<&str> = head.split(' ').collect();
+                let (Some(word), Some(offset)) = (parts.first(), parts.last().and_then(|o| o.parse::<usize>().ok())) else { continue };
+                let list = suggestions.split(", ").map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect();
+                out.push((offset.saturating_sub(1), word.to_string(), list));
+            }
+        }
+
+        fn accepts(&mut self, word: &str) -> bool {
+            self.line(word).is_some_and(|r| r.is_empty())
+        }
+
+        /// `*word` (personal dictionary), `@word` (this session), `#` (save): no answer.
+        fn command(&mut self, cmd: &str) {
+            let _ = writeln!(self.stdin, "{cmd}").and_then(|()| self.stdin.flush());
+        }
+    }
+
+    impl Drop for Checker {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    /// Dictionaries Enchant offers, as language tags (`de-DE`, `en`); variants
+    /// like `de_DE_frami` are left out.
+    fn available_tags() -> Vec<String> {
+        let out = Command::new("enchant-lsmod-2").arg("-list-dicts").stderr(Stdio::null()).output();
+        let text = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+        let mut tags: Vec<String> = text
+            .lines()
+            .filter_map(|l| l.split_whitespace().next())
+            .filter(|d| {
+                let mut parts = d.split('_');
+                let lang = parts.next().unwrap_or("");
+                let region = parts.next();
+                (2..=3).contains(&lang.len())
+                    && lang.chars().all(|c| c.is_ascii_lowercase())
+                    && region.is_none_or(|r| r.len() == 2 && r.chars().all(|c| c.is_ascii_uppercase()))
+                    && parts.next().is_none()
+            })
+            .map(|d| d.replace('_', "-"))
+            .collect();
+        tags.sort();
+        tags.dedup();
+        tags
+    }
+
+    pub(super) fn run(rx: crossbeam_channel::Receiver<Msg>, ctx: egui::Context) {
+        let available = available_tags();
+        SHARED.lock().unwrap().available = available.clone();
+        let mut checkers: Vec<Checker> = Vec::new();
+        for msg in rx {
+            match msg {
+                Msg::Configure(tags) => {
+                    let tags: Vec<String> = if tags.is_empty() { automatic(&available) } else { tags };
+                    let tags: Vec<String> = tags.into_iter().filter(|t| available.contains(t)).collect();
+                    checkers = tags.iter().filter_map(|t| Checker::start(t)).collect();
+                    let ignored: Vec<String> = SHARED.lock().unwrap().ignored.iter().cloned().collect();
+                    for c in &mut checkers {
+                        for w in &ignored {
+                            c.command(&format!("@{w}"));
+                        }
+                    }
+                    let mut sh = SHARED.lock().unwrap();
+                    sh.active = tags;
+                    sh.cache.clear();
+                    sh.pending.clear();
+                    sh.suggestions.clear();
+                }
+                Msg::Check { key, segments } => {
+                    let misses: Vec<Miss> = segments.iter().flat_map(|(start, text)| check_text(&mut checkers, *start, text)).collect();
+                    let mut sh = SHARED.lock().unwrap();
+                    if sh.pending.remove(&key) {
+                        sh.cache.insert(key, Arc::from(misses));
+                        if sh.cache.len() > 50_000 {
+                            sh.cache.clear();
+                        }
+                    }
+                }
+                Msg::Suggest(word) => {
+                    let mut list: Vec<String> = Vec::new();
+                    for c in &mut checkers {
+                        for (_, w, more) in c.line(&word).unwrap_or_default() {
+                            if w == word {
+                                for s in more {
+                                    if !list.contains(&s) {
+                                        list.push(s);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    list.truncate(8);
+                    let mut sh = SHARED.lock().unwrap();
+                    sh.pending.remove(&suggest_key(&word));
+                    sh.suggestions.insert(word, Arc::new(list));
+                }
+                Msg::Add(word) => {
+                    if let Some(c) = checkers.first_mut() {
+                        c.command(&format!("*{word}"));
+                        c.command("#");
+                    }
+                }
+                Msg::Ignore(word) => {
+                    for c in &mut checkers {
+                        c.command(&format!("@{word}"));
+                    }
+                }
+            }
+            ctx.request_repaint();
+        }
+    }
+
+    /// Words of `text` that every checker rejects.
+    fn check_text(checkers: &mut [Checker], start: usize, text: &str) -> Vec<Miss> {
+        let Some((first, others)) = checkers.split_first_mut() else { return Vec::new() };
+        let Some(rejected) = first.line(text) else { return Vec::new() };
+        let chars: Vec<char> = text.chars().collect();
+        let mut out = Vec::new();
+        for (offset, word, _) in rejected {
+            // Enchant may include punctuation ("Fhler."): trim it off.
+            let lead = word.chars().take_while(|c| !c.is_alphanumeric()).count();
+            let core: String = word.chars().skip(lead).collect::<String>().trim_end_matches(|c: char| !c.is_alphanumeric()).to_string();
+            let len = core.chars().count();
+            let from = offset + lead;
+            if len == 0 || chars.get(from..from + len).is_none_or(|s| s.iter().collect::<String>() != core) {
+                continue;
+            }
+            if others.iter_mut().any(|c| c.accepts(&core)) {
+                continue;
+            }
+            out.push(Miss { range: start + from..start + from + len, word: core });
+        }
+        out
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn finds_misspelled_words_with_char_ranges() {
+            if !available_tags().iter().any(|t| t == "de-DE") {
+                eprintln!("skipped: no de_DE dictionary");
+                return;
+            }
+            let mut checkers: Vec<Checker> = Checker::start("de-DE").into_iter().collect();
+            let misses = check_text(&mut checkers, 10, "Grüße aus Müncen, ein Fhler.");
+            let found: Vec<(String, std::ops::Range<usize>)> = misses.into_iter().map(|m| (m.word, m.range)).collect();
+            assert_eq!(found, [("Müncen".to_string(), 20..26), ("Fhler".to_string(), 32..37)]);
+            assert!(checkers[0].line("Fhler").unwrap()[0].2.contains(&"Fehler".to_string()));
+        }
+    }
+}
+
 #[cfg(windows)]
 mod worker {
     use super::*;
@@ -339,23 +574,6 @@ mod worker {
         }
     }
 
-    /// Windows' language (e.g. de-DE) and English.
-    fn automatic(available: &[String]) -> Vec<String> {
-        let lang = crate::i18n::system_language();
-        let mut tags = Vec::new();
-        for want in [lang.as_str(), "en"] {
-            let pick = available
-                .iter()
-                .find(|t| t.eq_ignore_ascii_case(&format!("{want}-{}", want.to_uppercase())))
-                .or_else(|| available.iter().find(|t| t.split('-').next().is_some_and(|p| p.eq_ignore_ascii_case(want))));
-            if let Some(t) = pick
-                && !tags.contains(t)
-            {
-                tags.push(t.clone());
-            }
-        }
-        tags
-    }
 
     /// Words of `text` that every checker rejects.
     fn check_text(checkers: &[ISpellChecker], start: usize, text: &str) -> Vec<Miss> {

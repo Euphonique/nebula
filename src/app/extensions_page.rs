@@ -197,7 +197,7 @@ impl NebulaApp {
             if ui.button(t!("Ordner öffnen")).clicked() {
                 let dir = crate::ext::manifest::extensions_dir();
                 let _ = std::fs::create_dir_all(&dir);
-                let _ = std::process::Command::new("explorer").arg(dir).spawn();
+                crate::platform::open_folder(&dir);
             }
         });
         ui.add_space(6.0);
@@ -294,8 +294,8 @@ impl NebulaApp {
                 self.settings.disabled_extensions.retain(|d| d != &ext.identifier);
                 self.ext.reload(&self.settings.disabled_extensions.clone());
             }
-            if ui.button(t!("Im Explorer zeigen")).clicked() {
-                let _ = std::process::Command::new("explorer").arg(&ext.path).spawn();
+            if ui.button(if cfg!(windows) { t!("Im Explorer zeigen") } else { t!("Im Dateimanager zeigen") }).clicked() {
+                crate::platform::open_folder(&ext.path);
             }
             if let Some(url) = ext.repository.as_ref().or(ext.homepage.as_ref()) {
                 ui.hyperlink_to(t!("Website"), url);

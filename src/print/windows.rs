@@ -1,8 +1,8 @@
-//! Printing a document through the Windows print dialog: monospaced text in
-//! the syntax colors of the light theme, with line numbers, wrapped long
-//! lines and page numbers.
+//! Printing through the Windows print dialog and GDI.
 
 use std::thread::JoinHandle;
+
+use super::PrintJob;
 
 use eframe::egui::{self, Color32};
 use windows_sys::Win32::Foundation::{GlobalFree, HWND, LPARAM, SIZE, WPARAM};
@@ -18,14 +18,6 @@ use windows_sys::Win32::UI::Controls::Dialogs::{
     PRINTDLGW, PrintDlgW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::WM_INITDIALOG;
-
-/// What to print, prepared on the UI thread.
-pub struct PrintJob {
-    pub title: String,
-    /// Per document line: text runs and their colors.
-    pub lines: Vec<Vec<(String, Color32)>>,
-    pub tab: usize,
-}
 
 /// Page margin in millimeters.
 const MARGIN_MM: f32 = 15.0;
@@ -43,7 +35,7 @@ fn colorref(c: Color32) -> u32 {
 /// the dialog runs its own message loop, which must not run inside a frame
 /// of the app. The handle yields the number of printed pages (0: cancelled).
 pub fn print(job: PrintJob, ctx: &egui::Context) -> Option<JoinHandle<Result<usize, String>>> {
-    let owner = crate::win32::window_handle()? as isize;
+    let owner = crate::platform::window_handle()? as isize;
     let ctx = ctx.clone();
     Some(std::thread::spawn(move || {
         // SAFETY: COM is initialized for this thread only and released below.

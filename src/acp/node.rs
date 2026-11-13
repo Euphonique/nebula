@@ -1,7 +1,7 @@
 //! Node.js for the agents: an installed Node is used, otherwise Nebula's own
-//! copy in `%APPDATA%\nebula\runtime\node`, downloaded from nodejs.org on
+//! copy in `<data dir>/runtime/node`, downloaded from nodejs.org on
 //! request (checked against the published SHA-256 sums). Packages fetched by
-//! npx land in `%APPDATA%\nebula\agents`, so everything stays in one place.
+//! npx land in `<data dir>/agents`, so everything stays in one place.
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -23,6 +23,28 @@ pub fn private_dir() -> PathBuf {
     runtime_dir().join("node")
 }
 
+/// The folder of Nebula's own `node` program (`bin` on Linux).
+fn private_bin_dir() -> PathBuf {
+    if cfg!(windows) { private_dir() } else { private_dir().join("bin") }
+}
+
+/// File name of `node`, `npx` or `npm` in a Node folder.
+fn tool_file(base: &str) -> String {
+    match (cfg!(windows), base) {
+        (true, "node") => "node.exe".into(),
+        (true, _) => format!("{base}.cmd"),
+        (false, _) => base.into(),
+    }
+}
+
+/// Node.js release flavor for this system in nodejs.org's index.
+#[cfg(windows)]
+const DIST: (&str, &str) = ("win-x64-zip", "win-x64.zip");
+#[cfg(all(not(windows), target_arch = "aarch64"))]
+const DIST: (&str, &str) = ("linux-arm64", "linux-arm64.tar.gz");
+#[cfg(all(not(windows), not(target_arch = "aarch64")))]
+const DIST: (&str, &str) = ("linux-x64", "linux-x64.tar.gz");
+
 /// npm cache for the agent packages.
 pub fn agents_dir() -> PathBuf {
     crate::settings::data_dir().join("agents")
@@ -38,7 +60,7 @@ pub enum Status {
 }
 
 pub fn status() -> Status {
-    if private_dir().join("node.exe").is_file() {
+    if private_bin_dir().join(tool_file("node")).is_file() {
         let version = std::fs::read_to_string(private_dir().join("VERSION")).unwrap_or_default();
         return Status::Private(version.trim().to_string());
     }
@@ -61,17 +83,20 @@ pub fn prepare(command: &str, mut env: HashMap<String, String>) -> Result<(PathB
         return Ok((program, env));
     }
     let dir = match status() {
-        Status::Private(_) => private_dir(),
+        Status::Private(_) => private_bin_dir(),
         Status::System(dir) => dir,
         Status::Missing => return Err(MISSING.into()),
     };
-    let program = if base == "node" { dir.join("node.exe") } else { dir.join(format!("{base}.cmd")) };
+    let program = dir.join(tool_file(&base));
     if !program.is_file() {
         return Err(t!("{program} wurde nicht gefunden.", program = program.display()));
     }
     // The agent itself starts node again: our Node first in PATH.
     let path = std::env::var("PATH").unwrap_or_default();
-    env.entry("PATH".into()).or_insert_with(|| format!("{};{path}", dir.display()));
+    env.entry("PATH".into()).or_insert_with(|| {
+        let dirs = std::iter::once(dir.clone()).chain(std::env::split_paths(&path));
+        std::env::join_paths(dirs).map_or(path.clone(), |p| p.to_string_lossy().into_owned())
+    });
     env.entry("npm_config_cache".into()).or_insert_with(|| agents_dir().to_string_lossy().into_owned());
     // No prompts or update notices from npm in a pipe.
     env.entry("npm_config_update_notifier".into()).or_insert_with(|| "false".into());
@@ -106,26 +131,26 @@ fn agent() -> ureq::Agent {
         .into()
 }
 
-/// Downloads the current LTS version of Node.js for Windows x64 into
+/// Downloads the current LTS version of Node.js for this system into
 /// `private_dir`. Returns the version.
 pub fn download(progress: Arc<Progress>) -> Result<String, String> {
     let http = agent();
     let get = |url: &str| http.get(url).call().map_err(|e| format!("{url}: {e}"));
 
-    // Newest LTS release that has a Windows zip.
+    // Newest LTS release that has a build for this system.
     let index: serde_json::Value =
         serde_json::from_reader(get("https://nodejs.org/dist/index.json")?.body_mut().as_reader()).map_err(|e| e.to_string())?;
     let version = index
         .as_array()
         .and_then(|list| {
             list.iter().find(|r| {
-                r["lts"].as_str().is_some() && r["files"].as_array().is_some_and(|f| f.iter().any(|x| x == "win-x64-zip"))
+                r["lts"].as_str().is_some() && r["files"].as_array().is_some_and(|f| f.iter().any(|x| x == DIST.0))
             })
         })
         .and_then(|r| r["version"].as_str())
         .ok_or(t!("Keine passende Node.js-Version gefunden."))?
         .to_string();
-    let file = format!("node-{version}-win-x64.zip");
+    let file = format!("node-{version}-{}", DIST.1);
 
     // Expected checksum.
     let sums = get(&format!("https://nodejs.org/dist/{version}/SHASUMS256.txt"))?
@@ -156,17 +181,60 @@ pub fn download(progress: Arc<Progress>) -> Result<String, String> {
     if actual != expected {
         return Err(t!("Die Prüfsumme des Downloads stimmt nicht – abgebrochen.").into());
     }
-    install_zip(&bytes, &version)?;
+    install_archive(&bytes, &version)?;
     Ok(version)
 }
 
-/// Unpacks `node-vX-win-x64/…` into `private_dir` (replacing an old copy).
-fn install_zip(bytes: &[u8], version: &str) -> Result<(), String> {
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+/// Unpacks `node-vX-…/…` into `private_dir` (replacing an old copy).
+fn install_archive(bytes: &[u8], version: &str) -> Result<(), String> {
     let runtime = runtime_dir();
     let tmp = runtime.join("node.download");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    unpack(bytes, &tmp)?;
+    let node = if cfg!(windows) { tmp.join(tool_file("node")) } else { tmp.join("bin").join("node") };
+    if !node.is_file() {
+        return Err(t!("Im Archiv fehlt node.exe.").into());
+    }
+    std::fs::write(tmp.join("VERSION"), version).map_err(|e| e.to_string())?;
+    // Swap by renaming: a Node still in use fails cleanly instead of being half deleted.
+    let dir = private_dir();
+    // Agents left over (e.g. after a crash of Nebula) keep node.exe open.
+    kill_processes_in(&dir);
+    let old = runtime.join("node.old");
+    let _ = std::fs::remove_dir_all(&old);
+    if dir.exists() {
+        std::fs::rename(&dir, &old).map_err(|e| t!("Node.js wird noch benutzt – laufende Agenten beenden und erneut versuchen ({e}).", e = e))?;
+    }
+    std::fs::rename(&tmp, &dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let _ = std::fs::remove_dir_all(&old);
+    Ok(())
+}
+
+/// The .tar.gz goes through the system's `tar`, which keeps the symlinks
+/// (`bin/npx` → `../lib/node_modules/…`) and the executable bits.
+#[cfg(not(windows))]
+fn unpack(bytes: &[u8], dest: &Path) -> Result<(), String> {
+    let archive = dest.with_extension("tar.gz");
+    std::fs::write(&archive, bytes).map_err(|e| e.to_string())?;
+    let status = std::process::Command::new("tar")
+        .arg("-xzf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(dest)
+        .arg("--strip-components=1")
+        .status();
+    let _ = std::fs::remove_file(&archive);
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("tar: {s}")),
+        Err(e) => Err(format!("tar: {e}")),
+    }
+}
+
+#[cfg(windows)]
+fn unpack(bytes: &[u8], tmp: &Path) -> Result<(), String> {
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
     for i in 0..zip.len() {
         let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
         let Some(path) = f.enclosed_name() else { continue };
@@ -186,26 +254,35 @@ fn install_zip(bytes: &[u8], version: &str) -> Result<(), String> {
             std::io::copy(&mut f, &mut out).map_err(|e| e.to_string())?;
         }
     }
-    if !tmp.join("node.exe").is_file() {
-        return Err(t!("Im Archiv fehlt node.exe.").into());
-    }
-    std::fs::write(tmp.join("VERSION"), version).map_err(|e| e.to_string())?;
-    // Swap by renaming: a Node still in use fails cleanly instead of being half deleted.
-    let dir = private_dir();
-    // Agents left over (e.g. after a crash of Nebula) keep node.exe open.
-    kill_processes_in(&dir);
-    let old = runtime.join("node.old");
-    let _ = std::fs::remove_dir_all(&old);
-    if dir.exists() {
-        std::fs::rename(&dir, &old).map_err(|e| t!("Node.js wird noch benutzt – laufende Agenten beenden und erneut versuchen ({e}).", e = e))?;
-    }
-    std::fs::rename(&tmp, &dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let _ = std::fs::remove_dir_all(&old);
     Ok(())
 }
 
 /// Ends all processes whose program lies in `dir` (only Nebula's own Node, never
 /// an installed one), and waits briefly until they are gone.
+#[cfg(not(windows))]
+pub fn kill_processes_in(dir: &Path) {
+    if dir.as_os_str().is_empty() {
+        return;
+    }
+    let Ok(procs) = std::fs::read_dir("/proc") else { return };
+    let mut killed = Vec::new();
+    for entry in procs.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<libc::pid_t>().ok()) else { continue };
+        if std::fs::read_link(entry.path().join("exe")).is_ok_and(|exe| exe.starts_with(dir)) {
+            // SAFETY: plain signal to a process of this user.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+            killed.push(pid);
+        }
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while killed.iter().any(|pid| Path::new(&format!("/proc/{pid}")).exists()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// Ends all processes whose program lies in `dir` (only Nebula's own Node, never
+/// an installed one), and waits briefly until they are gone.
+#[cfg(windows)]
 pub fn kill_processes_in(dir: &Path) {
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
@@ -266,6 +343,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(windows)]
     fn other_commands_pass_through() {
         let (program, env) = prepare("cmd", HashMap::new()).unwrap();
         assert!(program.to_string_lossy().to_lowercase().ends_with("cmd.exe"));
@@ -280,9 +358,9 @@ mod tests {
             return;
         }
         let (program, env) = prepare("npx", HashMap::new()).unwrap();
-        assert!(program.to_string_lossy().ends_with("npx.cmd"));
+        assert!(program.to_string_lossy().ends_with(&tool_file("npx")));
         assert!(env["npm_config_cache"].ends_with("agents"));
-        assert!(env["PATH"].contains(';'));
+        assert!(env["PATH"].contains(if cfg!(windows) { ';' } else { ':' }));
     }
 }
 
@@ -297,9 +375,9 @@ fn download_node() {
     assert!(version.starts_with('v'));
     assert!(progress.fraction().unwrap() > 0.99);
     assert_eq!(status(), Status::Private(version.clone()));
-    let out = std::process::Command::new(private_dir().join("node.exe")).arg("--version").output().unwrap();
+    let out = std::process::Command::new(private_bin_dir().join(tool_file("node"))).arg("--version").output().unwrap();
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), version);
-    assert!(private_dir().join("npx.cmd").is_file());
+    assert!(private_bin_dir().join(tool_file("npx")).exists());
 }
 
 
@@ -312,10 +390,10 @@ fn replace_node_in_use() {
     unsafe { std::env::set_var("NEBULA_CONFIG_DIR", tmp.path().join("config")) };
     download(Arc::new(Progress::default())).unwrap();
     // An "agent" left running from the old copy.
-    let mut child = std::process::Command::new(private_dir().join("node.exe")).args(["-e", "setTimeout(() => {}, 60000)"]).spawn().unwrap();
+    let mut child = std::process::Command::new(private_bin_dir().join(tool_file("node"))).args(["-e", "setTimeout(() => {}, 60000)"]).spawn().unwrap();
     std::thread::sleep(std::time::Duration::from_millis(500));
     download(Arc::new(Progress::default())).unwrap();
-    assert!(private_dir().join("node.exe").is_file());
+    assert!(private_bin_dir().join(tool_file("node")).is_file());
     assert!(!runtime_dir().join("node.old").exists() && !runtime_dir().join("node.download").exists());
     // The old process was ended.
     assert!(child.try_wait().unwrap().is_some());

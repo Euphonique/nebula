@@ -661,6 +661,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
+    fn scope_from_sidebar_folder_unix() {
+        let root = Path::new("/proj");
+        let sub = DirRef::Local(PathBuf::from("/proj/src/app"));
+        assert_eq!(Scope::for_dir(&sub, Some(root)), Scope::Local { dir: "src/app".into() });
+        assert_eq!(Scope::for_dir(&DirRef::Local(PathBuf::from("/other")), Some(root)), Scope::default());
+    }
+
+    #[test]
+    #[cfg(windows)]
     fn scope_from_sidebar_folder() {
         let root = Path::new(r"C:\proj");
         let sub = DirRef::Local(PathBuf::from(r"C:\proj\src\app"));

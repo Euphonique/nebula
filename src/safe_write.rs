@@ -25,7 +25,7 @@ pub fn write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let result = {
         // ReplaceFile keeps attributes and permissions; some network file
         // systems don't support it, a plain rename still replaces in one step.
-        crate::win32::replace_file(path, &tmp).or_else(|_| std::fs::rename(&tmp, path))
+        crate::platform::replace_file(path, &tmp).or_else(|_| std::fs::rename(&tmp, path))
     };
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);

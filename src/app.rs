@@ -1318,7 +1318,7 @@ impl NebulaApp {
             SidebarAction::ExportSites => self.export_sites(),
             SidebarAction::RemoveSite(id) => self.dialog = Some(Dialog::ConfirmRemoveSite(id)),
             SidebarAction::OpenUrl(url) => {
-                if !crate::win32::open_url(&url) {
+                if !crate::platform::open_url(&url) {
                     self.error(t!("{url} konnte nicht geöffnet werden.", url = url));
                 }
             }
@@ -1484,26 +1484,55 @@ impl NebulaApp {
             return;
         }
         // The cursor position from Windows also works outside the window.
-        let Some(p) = crate::win32::cursor_pos(ctx.pixels_per_point()) else { return };
+        let Some(p) = crate::platform::cursor_pos(ctx.pixels_per_point()) else { return };
         if ctx.viewport_rect().shrink(2.0).contains(p) {
             return;
         }
         egui::DragAndDrop::clear_payload(ctx);
-        let paths: Vec<PathBuf> = items
-            .0
-            .iter()
-            .filter_map(|i| match &i.file {
-                FileRef::Local(p) => Some(p.clone()),
-                FileRef::Remote { .. } => None,
-            })
-            .collect();
-        if paths.is_empty() {
+        let items: Vec<crate::ui::sidebar::Item> = items.0.clone();
+        let remote = items.iter().any(|i| matches!(i.file, FileRef::Remote { .. }));
+        if remote && !crate::platform::LAZY_DRAG_OUT {
             self.info(t!("Dateien vom Server lassen sich nicht direkt hinausziehen – nutze „Herunterladen nach…“."));
             return;
         }
-        if crate::win32::drag_files_out(&paths) {
-            self.sidebar.refresh_local(None);
+        let mut fetch = || self.files_for_drop(&items);
+        match crate::platform::drag_files_out_with(&mut fetch) {
+            Ok(true) if !remote => self.sidebar.refresh_local(None),
+            Ok(_) => {}
+            Err(e) => self.error(t!("Ablegen fehlgeschlagen: {e}", e = e)),
         }
+    }
+
+    /// Local paths to hand to another program for `items`. Server files are
+    /// downloaded into a temporary folder first (each item in a folder of its
+    /// own, so equal names don't collide); this blocks until they are there.
+    fn files_for_drop(&mut self, items: &[crate::ui::sidebar::Item]) -> Result<Vec<PathBuf>, String> {
+        let mut out = Vec::new();
+        let mut waits: Vec<(String, Vec<u64>)> = Vec::new();
+        let mut temp: Option<PathBuf> = None;
+        for (i, item) in items.iter().enumerate() {
+            match &item.file {
+                FileRef::Local(p) => out.push(p.clone()),
+                FileRef::Remote { site_id, path } => {
+                    let dir = temp.get_or_insert_with(drag_temp_dir);
+                    let name = path.trim_end_matches('/').rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("server");
+                    let local = dir.join(i.to_string()).join(name);
+                    let request = Request::Download { remote: path.clone(), local: local.clone(), is_dir: item.is_dir };
+                    let tag = self.send_remote(site_id, request).ok_or_else(|| t!("Server nicht gefunden").to_string())?;
+                    match waits.iter_mut().find(|(s, _)| s == site_id) {
+                        Some((_, tags)) => tags.push(tag),
+                        None => waits.push((site_id.clone(), vec![tag])),
+                    }
+                    out.push(local);
+                }
+            }
+        }
+        // GTK gives up on data that takes longer than 30 s.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+        for (site_id, tags) in &waits {
+            self.remote.wait_for(site_id, tags, deadline)?;
+        }
+        Ok(out)
     }
 
     fn open_project_search(&mut self) {
@@ -1854,7 +1883,7 @@ impl NebulaApp {
             });
             ui.menu_button(t!("Einstellungen"), |ui| {
                 let settings_key = self.shortcut_label(palette::Command::Settings);
-                for (label, page) in [(t!("Editor…"), Page::Editor), (t!("Design und Themes…"), Page::Design), (t!("Sprachen…"), Page::Languages), (t!("Tastenkürzel…"), Page::Keys), (t!("KI-Agenten…"), Page::Agents), (t!("Erweiterungen…"), Page::Extensions), (t!("Windows-Integration…"), Page::System)] {
+                for (label, page) in [(t!("Editor…"), Page::Editor), (t!("Design und Themes…"), Page::Design), (t!("Sprachen…"), Page::Languages), (t!("Tastenkürzel…"), Page::Keys), (t!("KI-Agenten…"), Page::Agents), (t!("Erweiterungen…"), Page::Extensions), (t!("System…"), Page::System)] {
                     if ui.add(egui::Button::new(label).shortcut_text(if page == Page::Editor { settings_key.as_str() } else { "" })).clicked() {
                         self.open_settings(page);
                         ui.close();
@@ -2769,7 +2798,7 @@ impl NebulaApp {
                         ui.label(RichText::new(t!("Hinweis: FTP überträgt Passwörter unverschlüsselt. Wenn möglich SFTP oder FTPS verwenden.")).small().color(self.theme.modified));
                     }
                     ui.add_space(4.0);
-                    ui.label(RichText::new(t!("Passwörter werden in der Windows-Anmeldeinformationsverwaltung gespeichert.")).small().color(self.theme.gutter_fg));
+                    ui.label(RichText::new(if cfg!(windows) { t!("Passwörter werden in der Windows-Anmeldeinformationsverwaltung gespeichert.") } else { t!("Passwörter werden im Schlüsselbund des Systems gespeichert.") }).small().color(self.theme.gutter_fg));
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         let valid = !form.site.host.trim().is_empty();
@@ -2846,7 +2875,7 @@ impl NebulaApp {
                 let remote = items.iter().any(|i| matches!(i.file, FileRef::Remote { .. }));
                 let what = if items.len() == 1 { format!("„{}“", items[0].name()) } else { t!("{items_count} Objekte", items_count = items.len()) };
                 let folders = if items.iter().any(|i| i.is_dir) { t!("\nOrdner werden mit allen Inhalten gelöscht.") } else { "" };
-                let recycle = items.iter().all(|i| matches!(&i.file, FileRef::Local(p) if crate::win32::has_recycle_bin(p)));
+                let recycle = items.iter().all(|i| matches!(&i.file, FileRef::Local(p) if crate::platform::has_recycle_bin(p)));
                 let text = if remote {
                     t!("{what} wirklich vom Server löschen?{folders}", what = what, folders = folders)
                 } else if recycle {
@@ -3420,16 +3449,35 @@ impl NebulaApp {
     }
 }
 
+/// A fresh temporary folder for files dragged out of the window. Folders of
+/// earlier drags are kept for a day: the target may still be copying.
+fn drag_temp_dir() -> PathBuf {
+    let root = std::env::temp_dir().join("nebula-drag");
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        let day = std::time::Duration::from_secs(24 * 3600);
+        for e in entries.flatten() {
+            let old = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > day);
+            if old {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+    }
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let dir = root.join(format!("{stamp:x}"));
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 impl eframe::App for NebulaApp {
     fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
         let _perf = crate::perf::frame();
         let ctx = root.ctx().clone();
         let ui = root;
-        crate::win32::init(frame, &ctx);
+        crate::platform::init(frame, &ctx);
         self.follow_system_theme(&ctx);
         let backdrop = (self.theme.dark, self.settings.mica);
         if self.backdrop_state != Some(backdrop) {
-            crate::win32::set_backdrop(backdrop.0, backdrop.1);
+            crate::platform::set_backdrop(backdrop.0, backdrop.1);
             self.backdrop_state = Some(backdrop);
         }
         let polls = crate::perf::section("Polls");
@@ -3467,7 +3515,7 @@ impl eframe::App for NebulaApp {
         let hovering = ctx.input(|i| !i.raw.hovered_files.is_empty());
         self.sidebar.external_hover = if hovering {
             ctx.request_repaint();
-            crate::win32::cursor_pos(ctx.pixels_per_point())
+            crate::platform::cursor_pos(ctx.pixels_per_point())
         } else {
             None
         };
@@ -3654,7 +3702,7 @@ impl eframe::App for NebulaApp {
         }
         self.poll_reinstall();
         // Files handed over by another start of Nebula.
-        for path in crate::win32::take_open_requests() {
+        for path in crate::platform::take_open_requests() {
             if path.is_dir() {
                 self.open_folder(path);
             } else {
@@ -3673,6 +3721,21 @@ impl eframe::App for NebulaApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         // Transparent so the Mica backdrop shows through translucent panels.
         [0.0, 0.0, 0.0, 0.0]
+    }
+
+    /// After a drag out of the window the OS drag took the button release;
+    /// egui gets it here so the pointer does not stay "pressed".
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if crate::platform::take_lost_release() {
+            let pos = ctx.input(|i| i.pointer.latest_pos()).unwrap_or_default();
+            raw_input.events.push(egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: ctx.input(|i| i.modifiers),
+            });
+            raw_input.events.push(egui::Event::PointerGone);
+        }
     }
 
     fn persist_egui_memory(&self) -> bool {

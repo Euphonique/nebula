@@ -1,4 +1,4 @@
-//! Windows integration for the current user, without an installer tool and
+//! Windows: integration for the current user, without an installer tool and
 //! without admin rights: install into `%LOCALAPPDATA%\Programs\Nebula` with a
 //! start menu entry and an entry under "Apps", "Open with Nebula" in
 //! Explorer's context menu, and Nebula for chosen file types (each with the
@@ -85,7 +85,7 @@ pub fn install() -> Result<PathBuf> {
     if let Some(parent) = link.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if !crate::win32::create_shortcut(&link, &exe, t!("Nebula – Code-Editor")) {
+    if !crate::platform::create_shortcut(&link, &exe, t!("Nebula – Code-Editor")) {
         anyhow::bail!(t!("Der Startmenü-Eintrag konnte nicht angelegt werden"));
     }
     let (key, _) = hkcu().create_subkey(UNINSTALL_KEY)?;
@@ -104,7 +104,7 @@ pub fn install() -> Result<PathBuf> {
         set_context_menu(true)?;
     }
     refresh_file_types()?;
-    crate::win32::notify_associations_changed();
+    crate::platform::notify_associations_changed();
     Ok(exe)
 }
 
@@ -126,11 +126,11 @@ pub fn uninstall() -> Result<()> {
     let _ = remove_file_types();
     let _ = std::fs::remove_file(start_menu_link());
     let _ = hkcu().delete_subkey_all(UNINSTALL_KEY);
-    crate::win32::notify_associations_changed();
+    crate::platform::notify_associations_changed();
     let dir = install_dir();
     if dir.is_dir() {
         // `cmd` is part of every Windows: waits a moment, then removes the folder.
-        use std::os::windows::process::CommandExt;
+        use crate::platform::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         std::process::Command::new("cmd")
             .args(["/C", "ping", "-n", "3", "127.0.0.1", ">nul", "&", "rmdir", "/S", "/Q"])
@@ -160,7 +160,7 @@ pub fn set_context_menu(on: bool) -> Result<()> {
             let _ = hkcu().delete_subkey_all(key);
         }
     }
-    crate::win32::notify_associations_changed();
+    crate::platform::notify_associations_changed();
     Ok(())
 }
 
@@ -192,7 +192,7 @@ pub enum Handler {
 
 /// Who opens `.ext` now, as Windows resolves a double-click.
 pub fn handler_of(ext: &str) -> Handler {
-    let Some(h) = crate::win32::file_type_handler(ext) else { return Handler::Ask };
+    let Some(h) = crate::platform::file_type_handler(ext) else { return Handler::Ask };
     let file = Path::new(&h.exe).file_name().map(|f| f.to_string_lossy().to_lowercase()).unwrap_or_default();
     match file.as_str() {
         "nebula.exe" if h.prog_id == LEGACY_PROG_ID => Handler::NebulaLegacy,
@@ -210,6 +210,11 @@ pub fn handler_of(ext: &str) -> Handler {
 }
 
 /// Nebula's page under Settings › Apps › Default apps, listing its types.
+/// `handler_of` for many types.
+pub fn handlers<'a>(exts: &[&'a str]) -> std::collections::HashMap<&'a str, Handler> {
+    exts.iter().map(|ext| (*ext, handler_of(ext))).collect()
+}
+
 pub const DEFAULT_APPS_PAGE: &str = "ms-settings:defaultapps?registeredAppUser=Nebula";
 
 /// Whether the user never chose a program for `.ext` in Windows (then the
@@ -323,7 +328,7 @@ fn register(wanted: &BTreeSet<String>, redraw: bool) -> Result<()> {
         let (reg, _) = hkcu().create_subkey(r"Software\RegisteredApplications")?;
         reg.set_value("Nebula", &CAPABILITIES_KEY)?;
     }
-    crate::win32::notify_associations_changed();
+    crate::platform::notify_associations_changed();
     Ok(())
 }
 

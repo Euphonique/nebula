@@ -19,7 +19,40 @@ pub struct LocalShell {
     pub args: Vec<String>,
 }
 
+/// Shells found on this computer, the user's login shell first.
+#[cfg(not(windows))]
+pub fn local_shells() -> Vec<LocalShell> {
+    let mut programs: Vec<String> = Vec::new();
+    if let Ok(login) = std::env::var("SHELL") {
+        programs.push(login);
+    }
+    // Further shells the system lists (/bin and /usr/bin twins once).
+    let listed = std::fs::read_to_string("/etc/shells").unwrap_or_default();
+    for line in listed.lines().map(str::trim).filter(|l| l.starts_with('/')) {
+        let name = line.rsplit('/').next().unwrap_or(line);
+        if matches!(name, "bash" | "zsh" | "fish" | "sh" | "dash")
+            && !programs.iter().any(|p| p.rsplit('/').next() == Some(name))
+            && std::path::Path::new(line).is_file()
+        {
+            programs.push(line.to_string());
+        }
+    }
+    if programs.is_empty() {
+        programs.push("/bin/sh".into());
+    }
+    programs
+        .into_iter()
+        .map(|program| {
+            let name = program.rsplit('/').next().unwrap_or(&program).to_string();
+            // An interactive login shell reads the user's profile, as a terminal app does.
+            let args = if name == "sh" || name == "dash" { vec!["-i".into()] } else { vec!["-l".into(), "-i".into()] };
+            LocalShell { name, program, args }
+        })
+        .collect()
+}
+
 /// Shells found on this computer, the usual default first.
+#[cfg(windows)]
 pub fn local_shells() -> Vec<LocalShell> {
     let shell = |name: &str, program: String, args: &[&str]| LocalShell {
         name: name.to_string(),

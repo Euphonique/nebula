@@ -24,18 +24,18 @@ impl NebulaApp {
                 ui.add_space(6.0);
                 ui.label(RichText::new(t!("Version {value}", value = env!("CARGO_PKG_VERSION"))).color(theme.text_muted));
                 ui.add_space(8.0);
-                ui.label(t!("Schneller Code-Editor für Windows mit FTP/SFTP"));
+                ui.label(if cfg!(windows) { t!("Schneller Code-Editor für Windows mit FTP/SFTP") } else { t!("Schneller Code-Editor für Linux mit FTP/SFTP") });
                 ui.add_space(4.0);
                 ui.label("Made with ♥ by Pascal Pagel");
                 ui.add_space(4.0);
                 let url = "https://pascalpagel.de";
                 if ui.link(url).on_hover_text(url).clicked() {
-                    crate::win32::open_url(url);
+                    crate::platform::open_url(url);
                 }
                 ui.add_space(4.0);
                 let url = format!("https://github.com/{REPO}");
                 if ui.link(format!("github.com/{REPO}")).on_hover_text(&url).clicked() {
-                    crate::win32::open_url(&url);
+                    crate::platform::open_url(&url);
                 }
             });
 
@@ -57,7 +57,7 @@ impl NebulaApp {
                 if let Some(r) = self.updates.available.clone()
                     && ui.button(t!("Version {version} herunterladen…", version = r.version)).on_hover_text(&r.url).clicked()
                 {
-                    crate::win32::open_url(&r.url);
+                    crate::platform::open_url(&r.url);
                 }
             });
             if let Some(status) = &self.updates.status {

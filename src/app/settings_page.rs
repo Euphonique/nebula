@@ -77,7 +77,7 @@ impl NebulaApp {
                 // Navigation.
                 ui.vertical(|ui| {
                     ui.set_width(150.0);
-                    for (page, label) in [(Page::Editor, t!("Editor")), (Page::Design, t!("Design")), (Page::Languages, t!("Sprachen")), (Page::Keys, t!("Tastenkürzel")), (Page::Agents, t!("KI-Agenten")), (Page::Extensions, t!("Erweiterungen")), (Page::System, t!("Windows"))] {
+                    for (page, label) in [(Page::Editor, t!("Editor")), (Page::Design, t!("Design")), (Page::Languages, t!("Sprachen")), (Page::Keys, t!("Tastenkürzel")), (Page::Agents, t!("KI-Agenten")), (Page::Extensions, t!("Erweiterungen")), (Page::System, t!("System"))] {
                         let sel = state.page == page;
                         if ui
                             .add_sized([140.0, 30.0], egui::Button::selectable(sel, RichText::new(label).size(14.0)))
@@ -309,7 +309,12 @@ impl NebulaApp {
         );
         let e = &mut self.settings.editor;
         section(ui, t!("Rechtschreibprüfung"));
-        ui.checkbox(&mut e.spell_check, t!("Kommentare, Markdown und Text prüfen (Windows-Rechtschreibprüfung)"));
+        let label = if cfg!(windows) {
+            t!("Kommentare, Markdown und Text prüfen (Windows-Rechtschreibprüfung)")
+        } else {
+            t!("Kommentare, Markdown und Text prüfen (Enchant/Hunspell)")
+        };
+        ui.checkbox(&mut e.spell_check, label);
         if e.spell_check {
             let (available, active) = crate::spell::languages();
             ui.horizontal_wrapped(|ui| {
@@ -331,10 +336,11 @@ impl NebulaApp {
                     }
                 }
             });
-            let note = if available.is_empty() {
-                t!("Keine Wörterbücher gefunden – Sprachen lassen sich unter Windows › Einstellungen › Zeit und Sprache hinzufügen.").to_string()
-            } else {
-                t!("Aktiv: {list}. Ein Wort gilt als falsch, wenn es in keiner der Sprachen vorkommt. Weitere Wörterbücher kommen mit den Sprachen von Windows.", list = active.join(", "))
+            let note = match (available.is_empty(), cfg!(windows)) {
+                (true, true) => t!("Keine Wörterbücher gefunden – Sprachen lassen sich unter Windows › Einstellungen › Zeit und Sprache hinzufügen.").to_string(),
+                (true, false) => t!("Keine Wörterbücher gefunden – sie kommen mit Paketen wie hunspell-de-de oder hunspell-en-us (dazu enchant-2).").to_string(),
+                (false, true) => t!("Aktiv: {list}. Ein Wort gilt als falsch, wenn es in keiner der Sprachen vorkommt. Weitere Wörterbücher kommen mit den Sprachen von Windows.", list = active.join(", ")),
+                (false, false) => t!("Aktiv: {list}. Ein Wort gilt als falsch, wenn es in keiner der Sprachen vorkommt. Weitere Wörterbücher kommen mit Paketen wie hunspell-fr oder hunspell-es.", list = active.join(", ")),
             };
             ui.label(RichText::new(note).small().color(self.theme.text_faint));
         }
@@ -372,7 +378,7 @@ impl NebulaApp {
     pub(super) fn set_appearance(&mut self, ctx: &egui::Context, appearance: Appearance) {
         self.settings.appearance = appearance;
         if appearance == Appearance::System {
-            crate::win32::refresh_system_dark();
+            crate::platform::refresh_system_dark();
         }
         self.apply_theme(ctx);
         let _ = self.settings.save();
@@ -392,8 +398,8 @@ impl NebulaApp {
         }
         self.system_theme_check = (now, reported);
         // Both are read again every time (no short-circuit).
-        let mode_changed = follow_mode && crate::win32::refresh_system_dark();
-        let contrast_changed = self.settings.follow_high_contrast && crate::win32::refresh_high_contrast();
+        let mode_changed = follow_mode && crate::platform::refresh_system_dark();
+        let contrast_changed = self.settings.follow_high_contrast && crate::platform::refresh_high_contrast();
         if mode_changed || contrast_changed {
             self.apply_theme(ctx);
         }
@@ -475,22 +481,22 @@ impl NebulaApp {
         let overrides_extension = selected.is_some_and(|t| t.overrides_extension);
         ui.add_space(4.0);
         let mut mica = self.settings.mica;
-        if ui.checkbox(&mut mica, t!("Mica-Hintergrund in der Seitenleiste (Windows 11)")).changed() {
+        if cfg!(windows) && ui.checkbox(&mut mica, t!("Mica-Hintergrund in der Seitenleiste (Windows 11)")).changed() {
             self.settings.mica = mica;
             self.apply_theme(&ctx);
         }
         let mut contrast = self.settings.follow_high_contrast;
         if ui
-            .checkbox(&mut contrast, t!("Kontrastdesign von Windows übernehmen"))
-            .on_hover_text(t!("Ist unter Windows ein Kontrastdesign aktiv, nutzt Nebula „Nebula Kontrast Dunkel“ bzw. „Hell“."))
+            .checkbox(&mut contrast, if cfg!(windows) { t!("Kontrastdesign von Windows übernehmen") } else { t!("Hohen Kontrast des Systems übernehmen") })
+            .on_hover_text(if cfg!(windows) { t!("Ist unter Windows ein Kontrastdesign aktiv, nutzt Nebula „Nebula Kontrast Dunkel“ bzw. „Hell“.") } else { t!("Ist im System „Hoher Kontrast“ aktiv, nutzt Nebula „Nebula Kontrast Dunkel“ bzw. „Hell“.") })
             .changed()
         {
             self.settings.follow_high_contrast = contrast;
-            crate::win32::refresh_high_contrast();
+            crate::platform::refresh_high_contrast();
             self.apply_theme(&ctx);
         }
-        if self.settings.follow_high_contrast && crate::win32::high_contrast().is_some() {
-            ui.label(RichText::new(t!("Windows-Kontrastdesign ist aktiv – die Theme-Auswahl gilt, sobald es aus ist.")).small().color(self.theme.modified));
+        if self.settings.follow_high_contrast && crate::platform::high_contrast().is_some() {
+            ui.label(RichText::new(if cfg!(windows) { t!("Windows-Kontrastdesign ist aktiv – die Theme-Auswahl gilt, sobald es aus ist.") } else { t!("Hoher Kontrast des Systems ist aktiv – die Theme-Auswahl gilt, sobald er aus ist.") }).small().color(self.theme.modified));
         }
 
         if builtin {
@@ -770,7 +776,7 @@ impl NebulaApp {
         ui.horizontal(|ui| {
             ui.label(t!("Oberfläche"));
             egui::ComboBox::from_id_salt("ui-language").selected_text(selected).width(240.0).height(480.0).show_ui(ui, |ui| {
-                if ui.selectable_label(self.settings.ui_language.is_empty(), &auto).on_hover_text(t!("Folgt der Windows-Anzeigesprache; ohne Übersetzung Englisch")).clicked() {
+                if ui.selectable_label(self.settings.ui_language.is_empty(), &auto).on_hover_text(if cfg!(windows) { t!("Folgt der Windows-Anzeigesprache; ohne Übersetzung Englisch") } else { t!("Folgt der Systemsprache; ohne Übersetzung Englisch") }).clicked() {
                     choice = Some(String::new());
                 }
                 for (code, name) in &languages {

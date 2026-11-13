@@ -200,7 +200,7 @@ impl NebulaApp {
             ui.add_space(8.0);
             if has_passwords {
                 ui.checkbox(&mut form.with_passwords, t!("Gespeicherte Passwörter übernehmen"))
-                    .on_hover_text(t!("Sie landen in der Windows-Anmeldeinformationsverwaltung"));
+                    .on_hover_text(if cfg!(windows) { t!("Sie landen in der Windows-Anmeldeinformationsverwaltung") } else { t!("Sie landen im Schlüsselbund des Systems") });
             }
             ui.add_space(8.0);
             let count = form.entries.iter().filter(|e| e.selected).count();

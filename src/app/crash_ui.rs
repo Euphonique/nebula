@@ -42,8 +42,8 @@ impl NebulaApp {
                 if ui.button(t!("Kopieren")).on_hover_text(t!("Bericht in die Zwischenablage")).clicked() {
                     ui.ctx().copy_text(report.text.clone());
                 }
-                if ui.button(t!("Im Explorer zeigen")).clicked() {
-                    let _ = std::process::Command::new("explorer").arg(format!("/select,{}", report.path.display())).spawn();
+                if ui.button(if cfg!(windows) { t!("Im Explorer zeigen") } else { t!("Im Dateimanager zeigen") }).clicked() {
+                    crate::platform::reveal_in_file_manager(&report.path);
                 }
                 if ui.button(t!("Schließen")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     keep = false;

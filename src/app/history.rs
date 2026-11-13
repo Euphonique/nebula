@@ -44,7 +44,7 @@ pub(super) fn when(ms: u64) -> String {
         60..3600 => t!("vor {value} Min.", value = ago / 60),
         3600..86_400 => t!("vor {value} Std.", value = ago / 3600),
         _ => {
-            let t = crate::win32::local_time(ms);
+            let t = crate::platform::local_time(ms);
             format!("{:02}.{:02}.{} {:02}:{:02}", t.day, t.month, t.year, t.hour, t.minute)
         }
     }

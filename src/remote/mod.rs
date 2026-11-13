@@ -332,6 +332,8 @@ pub struct RemoteManager {
     /// Keep the upload history (from the settings).
     pub record: bool,
     last_batch_id: u64,
+    /// Events taken out by `wait_for`, handed out by the next `poll`.
+    deferred: Vec<RemoteEvent>,
 }
 
 impl RemoteManager {
@@ -347,6 +349,7 @@ impl RemoteManager {
             cancels: HashMap::new(),
             record: true,
             last_batch_id: 0,
+            deferred: Vec::new(),
         }
     }
 
@@ -448,7 +451,8 @@ impl RemoteManager {
     pub fn poll(&mut self) -> Vec<RemoteEvent> {
         use transfers::TransferState as S;
         let mut out = Vec::new();
-        for ev in self.events_rx.try_iter() {
+        let events: Vec<RemoteEvent> = std::mem::take(&mut self.deferred).into_iter().chain(self.events_rx.try_iter()).collect();
+        for ev in events {
             if let Some(t) = self.transfers.get_mut(ev.tag) {
                 match &ev.reply {
                     Reply::Progress { done } => {
@@ -482,6 +486,46 @@ impl RemoteManager {
             }
         }
         out
+    }
+
+    /// Blocks until the requests `tags` (sent to `site_id`) have finished, for
+    /// work that must be done before returning (files dropped into another
+    /// program). Other events stay for the next `poll`. On an error or at
+    /// `deadline` the rest is cancelled.
+    pub fn wait_for(&mut self, site_id: &str, tags: &[u64], deadline: std::time::Instant) -> Result<(), String> {
+        let mut open: std::collections::HashSet<u64> = tags.iter().copied().collect();
+        let result = loop {
+            if open.is_empty() {
+                break Ok(());
+            }
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                break Err(t!("Der Download dauert zu lange – für große Dateien und Ordner „Herunterladen nach…“ nutzen.").to_string());
+            }
+            let Ok(ev) = self.events_rx.recv_timeout(left.min(std::time::Duration::from_millis(100))) else { continue };
+            let outcome = match &ev.reply {
+                _ if ev.site_id != site_id => None,
+                Reply::Transferred { .. } if open.contains(&ev.tag) => Some(Ok(ev.tag)),
+                Reply::Failed { message, .. } if open.contains(&ev.tag) => Some(Err(message.clone())),
+                Reply::ConnectFailed { message } => Some(Err(message.clone())),
+                Reply::HostKeyUnknown(_) => Some(Err(t!("Der Server muss erst bestätigt werden – einmal in Nebula verbinden.").to_string())),
+                _ => None,
+            };
+            self.deferred.push(ev);
+            match outcome {
+                Some(Ok(tag)) => {
+                    open.remove(&tag);
+                }
+                Some(Err(message)) => break Err(message),
+                None => {}
+            }
+        };
+        if result.is_err() {
+            for tag in open {
+                self.cancel(tag);
+            }
+        }
+        result
     }
 
     /// Removes connections whose worker has stopped.
@@ -872,9 +916,12 @@ fn upload_recursive(b: &mut dyn Backend, local: &std::path::Path, remote: &str, 
     if metadata.is_dir() {
         // The folder may already exist; a real failure shows up on the files.
         let _ = b.mkdir(remote);
+        // Files first, then folders, each by name: the same order on every
+        // file system, and a cancelled upload leaves no empty subfolders.
+        let mut entries = std::fs::read_dir(local)?.collect::<std::io::Result<Vec<_>>>()?;
+        entries.sort_by_cached_key(|e| (e.file_type().is_ok_and(|t| t.is_dir()), e.file_name().to_string_lossy().to_lowercase()));
         let mut n = 0;
-        for entry in std::fs::read_dir(local)? {
-            let entry = entry?;
+        for entry in entries {
             let name = entry.file_name().to_string_lossy().into_owned();
             n += upload_recursive(b, &entry.path(), &join(remote, &name), p)?;
         }

@@ -42,7 +42,7 @@ pub(super) struct WatchState {
 
 /// `01.11.2026 14:05` for seconds since 1970.
 fn date(secs: i64) -> String {
-    let t = crate::win32::local_time(secs.max(0) as u64 * 1000);
+    let t = crate::platform::local_time(secs.max(0) as u64 * 1000);
     format!("{:02}.{:02}.{} {:02}:{:02}", t.day, t.month, t.year, t.hour, t.minute)
 }
 

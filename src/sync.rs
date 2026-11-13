@@ -300,9 +300,13 @@ mod tests {
         std::fs::create_dir(&outside_dir).unwrap();
         let file_link = project.path().join("linked.txt");
         let dir_link = project.path().join("linked-folder");
-        if std::os::windows::fs::symlink_file(&outside_file, &file_link).is_err()
-            || std::os::windows::fs::symlink_dir(&outside_dir, &dir_link).is_err()
-        {
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_file(&outside_file, &file_link).is_ok()
+            && std::os::windows::fs::symlink_dir(&outside_dir, &dir_link).is_ok();
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(&outside_file, &file_link).is_ok()
+            && std::os::unix::fs::symlink(&outside_dir, &dir_link).is_ok();
+        if !linked {
             eprintln!("Skipping symlink scan test: Windows did not allow creating symlinks");
             return;
         }

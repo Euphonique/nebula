@@ -114,7 +114,21 @@ pub fn load() {
     state.current = current.and_then(|c| state.languages.iter().position(|l| l.code == c));
 }
 
+/// Display language from the locale environment, e.g. `de` (two letters, lower case).
+#[cfg(not(windows))]
+pub fn system_language() -> String {
+    // LANGUAGE is a priority list ("de:en"); the others look like "de_DE.UTF-8".
+    ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
+        .iter()
+        .filter_map(|k| std::env::var(k).ok())
+        .filter_map(|v| v.split(':').next().map(str::to_string))
+        .map(|v| v.split(['_', '.', '@', '-']).next().unwrap_or("").to_lowercase())
+        .find(|code| !code.is_empty() && code != "c" && code != "posix")
+        .unwrap_or_else(|| "en".into())
+}
+
 /// Windows display language, e.g. `de` (two letters, lower case).
+#[cfg(windows)]
 pub fn system_language() -> String {
     use windows_sys::Win32::Globalization::{GetUserDefaultUILanguage, LCIDToLocaleName};
     // SAFETY: plain value call and a buffer of the documented maximum size.

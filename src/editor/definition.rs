@@ -196,9 +196,10 @@ fn contains_token(selector: &str, token: &str) -> bool {
 /// The file a path in a string refers to: relative to the document's folder,
 /// or from the project root for paths starting with `/` (and as a fallback).
 pub fn resolve_path(path: &str, doc_dir: Option<&Path>, root: Option<&Path>) -> Option<PathBuf> {
-    let clean = path.split(['?', '#']).next().unwrap_or(path).replace('/', "\\");
-    let from_root = clean.starts_with('\\');
-    let rel = clean.trim_start_matches('\\');
+    let sep = std::path::MAIN_SEPARATOR;
+    let clean = path.split(['?', '#']).next().unwrap_or(path).replace('/', &sep.to_string());
+    let from_root = clean.starts_with(sep);
+    let rel = clean.trim_start_matches(sep);
     let mut candidates = Vec::new();
     if !from_root && let Some(d) = doc_dir {
         candidates.push(d.join(rel));

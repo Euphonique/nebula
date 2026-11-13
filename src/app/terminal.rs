@@ -668,7 +668,7 @@ fn terminal_view(ui: &mut egui::Ui, tab: &mut TermTab, body: Rect, theme: &crate
             ui.close();
         }
         if ui.add(egui::Button::new(t!("Einfügen")).shortcut_text(&crate::i18n::keys("Strg+V"))).clicked() {
-            if let Some(t) = crate::win32::clipboard_text() {
+            if let Some(t) = crate::platform::clipboard_text() {
                 tab.term.send(t.replace('\n', "\r").into_bytes());
             }
             ui.close();

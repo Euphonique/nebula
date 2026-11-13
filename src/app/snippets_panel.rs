@@ -270,7 +270,7 @@ impl NebulaApp {
             .add_filter(t!("Snippets"), &["json", "code-snippets"])
             .add_filter(t!("Alle Dateien"), &["*"]);
         // VS Code keeps the user's snippets here.
-        if let Some(dir) = std::env::var_os("APPDATA").map(|a| std::path::PathBuf::from(a).join("Code").join("User").join("snippets"))
+        if let Some(dir) = directories::BaseDirs::new().map(|d| d.config_dir().join("Code").join("User").join("snippets"))
             && dir.is_dir()
         {
             dialog = dialog.set_directory(dir);

@@ -10,7 +10,7 @@ use super::{Dialog, FollowUp, NebulaApp};
 use crate::editor::DocSource;
 use crate::remote::{self, Request};
 use crate::ui::sidebar::{DirRef, FileRef, Item, RemoteStatus};
-use crate::win32;
+use crate::platform;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ConflictPolicy {
@@ -37,10 +37,10 @@ impl NebulaApp {
             })
             .collect();
         if !locals.is_empty() && locals.len() == items.len() {
-            win32::set_clipboard_files(&locals);
+            platform::set_clipboard_files(&locals);
         }
         let n = items.len();
-        self.sidebar.clipboard = Some((items, cut, win32::clipboard_sequence()));
+        self.sidebar.clipboard = Some((items, cut, platform::clipboard_sequence()));
         self.info(format!(
             "{n} {} {}",
             if n == 1 { t!("Objekt") } else { t!("Objekte") },
@@ -50,8 +50,8 @@ impl NebulaApp {
 
     pub(super) fn paste(&mut self, target: DirRef) {
         // Files copied in Explorer after our own copy take precedence.
-        let seq = win32::clipboard_sequence();
-        let external = win32::clipboard_files();
+        let seq = platform::clipboard_sequence();
+        let external = platform::clipboard_files();
         let ours_current = self.sidebar.clipboard.as_ref().is_some_and(|(_, _, s)| *s == seq);
         if !external.is_empty() && !ours_current {
             let items = external.into_iter().map(|p| {
@@ -299,10 +299,10 @@ impl NebulaApp {
             match &item.file {
                 // Into the recycle bin, like Explorer (network drives have none).
                 FileRef::Local(p) => {
-                    if win32::move_to_recycle_bin(p) {
+                    if platform::move_to_recycle_bin(p) {
                         self.sidebar.refresh_local(p.parent());
                     } else {
-                        self.error(t!("{p} konnte nicht gelöscht werden: {e}", p = p.display(), e = t!("Windows hat das Löschen abgelehnt (Datei in Benutzung?)")));
+                        self.error(t!("{p} konnte nicht gelöscht werden: {e}", p = p.display(), e = (if cfg!(windows) { t!("Windows hat das Löschen abgelehnt (Datei in Benutzung?)") } else { t!("Das System hat das Löschen abgelehnt (keine Berechtigung?)") })));
                     }
                 }
                 FileRef::Remote { site_id, path } => {
@@ -326,7 +326,7 @@ impl NebulaApp {
 
     /// Handles files dropped from Explorer: into a sidebar folder, or open them.
     pub(super) fn handle_external_drop(&mut self, ctx: &egui::Context, paths: Vec<PathBuf>) {
-        let pos = win32::cursor_pos(ctx.pixels_per_point());
+        let pos = platform::cursor_pos(ctx.pixels_per_point());
         if self.show_sidebar
             && let Some(pos) = pos
             && self.sidebar.contains(pos)

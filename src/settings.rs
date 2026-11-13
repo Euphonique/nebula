@@ -8,9 +8,16 @@ use serde::{Deserialize, Serialize};
 pub const APP_NAME: &str = "Nebula";
 pub const KEYRING_SERVICE: &str = "Nebula Editor";
 
-/// Nebula's folder (`%APPDATA%\nebula`): `config` plus the agents' Node
-/// runtime and package cache next to it.
+/// Nebula's folder for the agents' Node runtime and package cache:
+/// `%APPDATA%\Nebula` next to `config` on Windows, `~/.local/share/nebula`
+/// on Linux (where `config` is `~/.config/nebula` and its parent is shared).
 pub fn data_dir() -> PathBuf {
+    #[cfg(not(windows))]
+    if std::env::var_os("NEBULA_CONFIG_DIR").is_none()
+        && let Some(dirs) = directories::ProjectDirs::from("", "", APP_NAME)
+    {
+        return dirs.data_dir().to_path_buf();
+    }
     let config = config_dir();
     config.parent().map(Path::to_path_buf).unwrap_or(config)
 }
@@ -221,7 +228,7 @@ impl Appearance {
         match self {
             Appearance::Light => t!("Hell"),
             Appearance::Dark => t!("Dunkel"),
-            Appearance::System => t!("Automatisch (wie Windows)"),
+            Appearance::System => if cfg!(windows) { t!("Automatisch (wie Windows)") } else { t!("Automatisch (wie das System)") },
         }
     }
 
@@ -393,7 +400,7 @@ impl AppSettings {
         match self.appearance {
             Appearance::Light => false,
             Appearance::Dark => true,
-            Appearance::System => crate::win32::system_dark(),
+            Appearance::System => crate::platform::system_dark(),
         }
     }
 
@@ -547,7 +554,7 @@ impl Site {
 
     fn keyring_entry(&self) -> Result<keyring::Entry> {
         keyring::Entry::new(KEYRING_SERVICE, &format!("{}:{}", self.id, self.user))
-            .context(t!("Zugriff auf die Windows-Anmeldeinformationsverwaltung fehlgeschlagen"))
+            .context(if cfg!(windows) { t!("Zugriff auf die Windows-Anmeldeinformationsverwaltung fehlgeschlagen") } else { t!("Zugriff auf den Schlüsselbund des Systems fehlgeschlagen") })
     }
 
     /// Password (or key passphrase) from the Windows Credential Manager.
@@ -578,7 +585,7 @@ impl Site {
 
     fn db_keyring_entry(&self) -> Result<keyring::Entry> {
         keyring::Entry::new(KEYRING_SERVICE, &format!("{}:db:{}", self.id, self.db.user))
-            .context(t!("Zugriff auf die Windows-Anmeldeinformationsverwaltung fehlgeschlagen"))
+            .context(if cfg!(windows) { t!("Zugriff auf die Windows-Anmeldeinformationsverwaltung fehlgeschlagen") } else { t!("Zugriff auf den Schlüsselbund des Systems fehlgeschlagen") })
     }
 
     /// Database password from the Windows Credential Manager.

@@ -94,7 +94,7 @@ pub fn load_home(site_id: &str) -> Option<(String, SystemTime)> {
 /// "23.10.2026 14:05" in local time.
 pub fn format_time(t: SystemTime) -> String {
     let ms = t.duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
-    let l = crate::win32::local_time(ms);
+    let l = crate::platform::local_time(ms);
     format!("{:02}.{:02}.{} {:02}:{:02}", l.day, l.month, l.year, l.hour, l.minute)
 }
 

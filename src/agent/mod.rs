@@ -281,10 +281,12 @@ fn prompt_text(blocks: &Value) -> String {
     parts.join("\n\n")
 }
 
-/// `file:///C:/a%20b.txt` → `C:\a b.txt` (other URIs unchanged).
+/// `file:///C:/a%20b.txt` → `C:\a b.txt`, `file:///home/a.txt` → `/home/a.txt`
+/// (other URIs unchanged).
 fn uri_path(uri: &str) -> String {
     match uri.strip_prefix("file:///") {
-        Some(p) => percent_decode(p).replace('/', "\\"),
+        Some(p) if cfg!(windows) => percent_decode(p).replace('/', "\\"),
+        Some(p) => format!("/{}", percent_decode(p)),
         None => percent_decode(uri),
     }
 }

@@ -168,7 +168,7 @@ impl NebulaApp {
                 if ui.button(t!("Ordner öffnen")).on_hover_text(crate::settings::data_dir().display().to_string()).clicked() {
                     let dir = crate::settings::data_dir();
                     let _ = std::fs::create_dir_all(&dir);
-                    let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                    crate::platform::open_folder(&dir);
                 }
             });
         });
@@ -580,7 +580,7 @@ fn builtin_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit) {
                 t!("meist nicht nötig")
             };
             ui.add(egui::TextEdit::singleline(&mut e.key).password(true).hint_text(hint).desired_width(380.0));
-            ui.label(RichText::new(t!("Wird in der Windows-Anmeldeinformationsverwaltung gespeichert.")).size(11.0).color(theme.text_faint));
+            ui.label(RichText::new(if cfg!(windows) { t!("Wird in der Windows-Anmeldeinformationsverwaltung gespeichert.") } else { t!("Wird im Schlüsselbund des Systems gespeichert.") }).size(11.0).color(theme.text_faint));
         });
         ui.end_row();
     });
@@ -616,7 +616,7 @@ fn process_form(ui: &mut Ui, theme: &crate::theme::Theme, e: &mut Edit) {
                     .hint_text(if e.has_key { t!("gespeichert – leer lassen zum Behalten") } else { "optional; sonst Anmeldung mit Konto" })
                     .desired_width(380.0),
             );
-            ui.label(RichText::new(t!("Wird in der Windows-Anmeldeinformationsverwaltung gespeichert.")).size(11.0).color(theme.text_faint));
+            ui.label(RichText::new(if cfg!(windows) { t!("Wird in der Windows-Anmeldeinformationsverwaltung gespeichert.") } else { t!("Wird im Schlüsselbund des Systems gespeichert.") }).size(11.0).color(theme.text_faint));
         });
         ui.end_row();
     });

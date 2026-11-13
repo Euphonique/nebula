@@ -154,7 +154,7 @@ fn native_path(p: &str) -> PathBuf {
     let p = p.strip_prefix("file://").unwrap_or(p);
     // file:///C:/x -> C:/x
     let p = if p.len() > 3 && p.starts_with('/') && p.as_bytes()[2] == b':' { &p[1..] } else { p };
-    PathBuf::from(p.replace('/', "\\"))
+    PathBuf::from(if cfg!(windows) { p.replace('/', "\\") } else { p.to_string() })
 }
 
 impl Host {
@@ -1036,7 +1036,7 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
         }
         "fs.reveal" => {
             let p = native_path(arg_str(args, "path")?);
-            let _ = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
+            crate::platform::reveal_in_file_manager(&p);
             Ok(Value::Null)
         }
         "env" => Ok(json!(std::env::vars().collect::<HashMap<_, _>>())),
@@ -1129,9 +1129,9 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
         }
 
         // ---- system ----------------------------------------------------------------------
-        "clipboard.read" => Ok(json!(crate::win32::clipboard_text().unwrap_or_default())),
+        "clipboard.read" => Ok(json!(crate::platform::clipboard_text().unwrap_or_default())),
         "clipboard.write" => {
-            crate::win32::set_clipboard_text(arg_str(args, "text")?);
+            crate::platform::set_clipboard_text(arg_str(args, "text")?);
             Ok(Value::Null)
         }
         "credentials.get" => {
@@ -1150,7 +1150,7 @@ fn native_call(shared: &Rc<RefCell<Shared>>, ext: usize, op: &str, args: &Value)
             Ok(Value::Null)
         }
         "beep" => {
-            crate::win32::beep();
+            crate::platform::beep();
             Ok(Value::Null)
         }
         _ => Err(t!("Unbekannte Operation: {op}", op = op)),

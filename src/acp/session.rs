@@ -72,20 +72,28 @@ pub struct Attachment {
     pub virtual_path: Option<PathBuf>,
 }
 
-/// Root of the paths that stand for server files (`\\nebula\<site id>\www\a.php`).
+/// Root of the paths that stand for server files (`\\nebula\<site id>\www\a.php`
+/// on Windows, a UNC share that never exists locally).
+#[cfg(windows)]
 const VIRTUAL_ROOT: &str = r"\\nebula\";
+/// On Linux an absolute path no real file lives under
+/// (`/nebula-server/<site id>/www/a.php`).
+#[cfg(not(windows))]
+const VIRTUAL_ROOT: &str = "/nebula-server/";
 
 /// The path an agent uses for a server file.
 pub fn virtual_path(site_id: &str, path: &str) -> PathBuf {
-    PathBuf::from(format!("{VIRTUAL_ROOT}{site_id}{}", path.replace('/', "\\")))
+    let sep = std::path::MAIN_SEPARATOR;
+    PathBuf::from(format!("{VIRTUAL_ROOT}{site_id}{}", path.replace('/', &sep.to_string())))
 }
 
 /// Server and path of a path made by [`virtual_path`].
 pub fn parse_virtual(path: &Path) -> Option<(String, String)> {
+    let sep = std::path::MAIN_SEPARATOR;
     let s = path.to_string_lossy();
     let rest = s.get(..VIRTUAL_ROOT.len()).filter(|p| p.eq_ignore_ascii_case(VIRTUAL_ROOT)).map(|_| &s[VIRTUAL_ROOT.len()..])?;
-    let (site, file) = rest.split_once('\\')?;
-    Some((site.to_string(), format!("/{}", file.replace('\\', "/"))))
+    let (site, file) = rest.split_once(sep)?;
+    Some((site.to_string(), format!("/{}", file.replace(sep, "/"))))
 }
 
 impl Attachment {
@@ -472,7 +480,7 @@ impl AgentSession {
             Pending::UsagePrompt => {
                 let now = super::usage::now();
                 let limits = if self.usage_command == Some("/status") {
-                    super::usage::parse_codex(&self.usage_text, now, crate::win32::utc_offset_minutes())
+                    super::usage::parse_codex(&self.usage_text, now, crate::platform::utc_offset_minutes())
                 } else {
                     super::usage::parse(&self.usage_text, now)
                 };
@@ -863,10 +871,14 @@ mod tests {
     #[test]
     fn virtual_paths_for_server_files() {
         let p = virtual_path("19a3f", "/www/html/a.php");
+        #[cfg(windows)]
         assert_eq!(p.to_string_lossy(), r"\\nebula\19a3f\www\html\a.php");
+        #[cfg(not(windows))]
+        assert_eq!(p.to_string_lossy(), "/nebula-server/19a3f/www/html/a.php");
         assert!(p.is_absolute());
         assert_eq!(parse_virtual(&p), Some(("19a3f".to_string(), "/www/html/a.php".to_string())));
         assert_eq!(parse_virtual(Path::new(r"C:\www\a.php")), None);
+        assert_eq!(parse_virtual(Path::new("/www/a.php")), None);
     }
 
     #[test]

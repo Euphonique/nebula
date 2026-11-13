@@ -248,7 +248,7 @@ impl NebulaApp {
         let local = self.settings.publish.iter().find_map(|(root, t)| {
             let base = remote::normalize(&t.remote_path);
             let rel = site_path.strip_prefix(&base)?.strip_prefix('/')?;
-            let file = std::path::Path::new(root).join(rel.replace('/', "\\"));
+            let file = std::path::Path::new(root).join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
             (t.site_id == site_id && file.is_file()).then_some(file)
         });
         let file = match local {

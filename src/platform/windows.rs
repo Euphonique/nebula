@@ -5,6 +5,19 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering};
 
 use eframe::egui::{self, Pos2, Rect};
+/// `creation_flags` (e.g. CREATE_NO_WINDOW) for child processes.
+pub use std::os::windows::process::CommandExt;
+
+/// Process groups are a Unix notion; on Windows `taskkill /T` ends the tree.
+pub trait ProcessGroupExt {
+    fn own_process_group(&mut self) -> &mut Self;
+}
+
+impl ProcessGroupExt for std::process::Command {
+    fn own_process_group(&mut self) -> &mut Self {
+        self
+    }
+}
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Dwm::{
     DWMSBT_MAINWINDOW, DWMSBT_NONE, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_IMMERSIVE_DARK_MODE,
@@ -540,6 +553,16 @@ pub fn open_url(url: &str) -> bool {
     shell_execute(url, None)
 }
 
+/// Shows `path` selected in Explorer.
+pub fn reveal_in_file_manager(path: &std::path::Path) {
+    let _ = std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
+}
+
+/// Opens a folder in Explorer.
+pub fn open_folder(dir: &std::path::Path) {
+    let _ = std::process::Command::new("explorer").arg(dir).spawn();
+}
+
 /// Releases a COM object.
 ///
 /// # Safety
@@ -609,6 +632,24 @@ pub fn drag_files_out(paths: &[std::path::PathBuf]) -> bool {
         );
         hr == 0x0004_0100 /* DRAGDROP_S_DROP */ && effect != 0
     }
+}
+
+/// Server files can't be dragged out yet: the files must exist when the drag
+/// starts (a delayed IDataObject would be needed).
+pub const LAZY_DRAG_OUT: bool = false;
+
+/// Paths for `drag_files_out_with`.
+pub type FetchFiles<'a> = &'a mut dyn FnMut() -> Result<Vec<std::path::PathBuf>, String>;
+
+/// `drag_files_out` with paths from `fetch` (called right away on Windows).
+pub fn drag_files_out_with(fetch: FetchFiles) -> Result<bool, String> {
+    let paths = fetch()?;
+    Ok(drag_files_out(&paths))
+}
+
+/// Windows posts the missed button release itself (see `drag_files_out`).
+pub fn take_lost_release() -> bool {
+    false
 }
 
 /// Calendar date and time in the local time zone.

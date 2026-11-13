@@ -219,7 +219,8 @@ fn percent_decode(s: &str) -> String {
 fn file_uri(path: &std::path::Path) -> String {
     let p = crate::ext::host::js_path(path);
     let mut out = String::from("file:///");
-    for b in p.bytes() {
+    // "C:/x" and "/home/x" both become file:///…
+    for b in p.trim_start_matches('/').bytes() {
         if b.is_ascii_alphanumeric() || b"/-_.~:!$&'()*+,;=@".contains(&b) {
             out.push(b as char);
         } else {
@@ -595,7 +596,7 @@ impl NebulaApp {
                 self.ext.reply(&ext, cb, json!(id));
             }
             FromHost::OpenUrl { url } => {
-                crate::win32::open_url(&url);
+                crate::platform::open_url(&url);
             }
             FromHost::OpenConfig { identifier } => {
                 self.settings_ui.selected_extension = identifier.or(Some(ext));
@@ -771,9 +772,10 @@ impl NebulaApp {
     fn goto_location(&mut self, uri: &str, line: usize, column: usize) -> Option<u64> {
         let path = if let Some(rest) = uri.strip_prefix("file://") {
             let p = percent_decode(rest);
-            PathBuf::from(p.trim_start_matches('/').replace('/', "\\"))
+            // file:///C:/x → C:\x on Windows; file:///home/x stays absolute elsewhere.
+            if cfg!(windows) { PathBuf::from(p.trim_start_matches('/').replace('/', "\\")) } else { PathBuf::from(p) }
         } else {
-            PathBuf::from(uri.replace('/', "\\"))
+            PathBuf::from(uri.replace('/', std::path::MAIN_SEPARATOR_STR))
         };
         if !path.is_file() {
             self.error(t!("{path} kann nicht geöffnet werden.", path = path.display()));

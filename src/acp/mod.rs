@@ -52,7 +52,7 @@ impl AgentConfig {
 
     /// Stores the API key (empty: removes it).
     pub fn set_api_key(&self, key: &str) -> Result<(), String> {
-        let entry = self.keyring_entry().ok_or(t!("Anmeldeinformationsverwaltung nicht verfügbar"))?;
+        let entry = self.keyring_entry().ok_or(if cfg!(windows) { t!("Anmeldeinformationsverwaltung nicht verfügbar") } else { t!("Schlüsselbund des Systems nicht verfügbar") })?;
         if key.is_empty() {
             let _ = entry.delete_credential();
             Ok(())
@@ -137,6 +137,28 @@ pub fn default_agents() -> Vec<AgentConfig> {
 
 /// Runs an interactive login (e.g. "claude auth login") in its own console
 /// window; the agent opens the browser for the account login from there.
+#[cfg(not(windows))]
+pub fn run_login_console(agent: &AgentConfig, login: &session::TerminalLogin, cwd: &Path) -> Result<(), String> {
+    use crate::platform::shell_quote;
+    let parts: Vec<String> = match &login.command {
+        Some(cmd) => std::iter::once(cmd.clone()).chain(login.args.iter().cloned()).collect(),
+        None => agent.args.iter().chain(&login.args).cloned().fold(vec![agent.command.clone()], |mut v, a| {
+            v.push(a);
+            v
+        }),
+    };
+    let line = parts.iter().map(|a| shell_quote(a)).collect::<Vec<_>>().join(" ");
+    // The window stays open so messages can be read.
+    let title = shell_quote(&t!("Anmeldung: {name}", name = agent.name));
+    let done = shell_quote(&t!("Fertig – Eingabetaste schließt das Fenster."));
+    let script = format!("printf '\\033]0;%s\\007' {title}; {line}; echo; printf '%s' {done}; read _");
+    // Same Node and package cache as the agent itself.
+    let (_, mut env) = node::prepare(&agent.command, agent.process_env())?;
+    env.extend(login.env.clone());
+    crate::platform::open_terminal(&script, &env, cwd).map_err(|e| t!("Anmeldung konnte nicht gestartet werden: {e}", e = e))
+}
+
+#[cfg(windows)]
 pub fn run_login_console(agent: &AgentConfig, login: &session::TerminalLogin, cwd: &Path) -> Result<(), String> {
     let line = match &login.command {
         Some(cmd) => std::iter::once(cmd.as_str()).chain(login.args.iter().map(String::as_str)).map(quote_arg).collect::<Vec<_>>().join(" "),
@@ -191,7 +213,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 impl Connection {
     /// Starts the agent in `cwd`; `wake` is called whenever something arrives.
     pub fn spawn(cfg: &AgentConfig, cwd: &Path, wake: impl Fn() + Send + Sync + 'static) -> Result<Self, String> {
-        use std::os::windows::process::CommandExt;
+        use crate::platform::{CommandExt, ProcessGroupExt};
         if crate::agent::is_builtin(cfg) {
             let (tx, rx) = crossbeam_channel::unbounded();
             let input = crate::agent::start(cfg.clone(), tx, Arc::new(wake));
@@ -206,6 +228,7 @@ impl Connection {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .creation_flags(CREATE_NO_WINDOW)
+            .own_process_group()
             .spawn()
             .map_err(|e| t!("{name} konnte nicht gestartet werden: {e}", name = cfg.name, e = e))?;
         let stdin = child.stdin.take().ok_or(t!("stdin fehlt"))?;
