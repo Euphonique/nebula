@@ -18,6 +18,14 @@ use anyhow::{Context, Result};
 
 const DESKTOP_ID: &str = "nebula.desktop";
 
+/// The installed program's name. Not "nebula": that is Slack's overlay
+/// network (Debian/Ubuntu package `nebula`, `/usr/bin/nebula`), which must
+/// stay installable next to the editor and must not be shadowed in PATH.
+const EXE_NAME: &str = "nebula-editor";
+
+/// What Nebula 1.2 and earlier installed itself as (`~/.local/bin/nebula`).
+const LEGACY_EXE_NAME: &str = "nebula";
+
 /// File types Nebula can be the default for, with their freedesktop MIME
 /// types. Endings without a type of their own (.ini, .conf, .env, .jsx,
 /// .less, .htaccess …) are plain text to the file manager: `txt` covers them.
@@ -126,12 +134,12 @@ fn system_entry_file() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// The program installed by the package: `<prefix>/bin/nebula` next to
+/// The program installed by the package: `<prefix>/bin/nebula-editor` next to
 /// `<prefix>/share/applications/nebula.desktop`.
 fn packaged_exe() -> Option<PathBuf> {
     let entry = system_entry_file()?;
     let prefix = entry.parent()?.parent()?.parent()?;
-    let exe = prefix.join("bin").join("nebula");
+    let exe = prefix.join("bin").join(EXE_NAME);
     exe.is_file().then_some(exe)
 }
 
@@ -152,7 +160,7 @@ pub fn install_dir() -> PathBuf {
 /// The installed copy, if Nebula has been installed.
 pub fn installed_exe() -> Option<PathBuf> {
     packaged_exe().or_else(|| {
-        let exe = home().join(".local").join("bin").join("nebula");
+        let exe = home().join(".local").join("bin").join(EXE_NAME);
         exe.is_file().then_some(exe)
     })
 }
@@ -243,7 +251,7 @@ fn render_entry(e: &Entry, exe: &Path) -> String {
          Icon=nebula\n\
          Terminal=false\n\
          StartupNotify=true\n\
-         StartupWMClass=nebula\n\
+         StartupWMClass=nebula-editor\n\
          Categories=Development;TextEditor;IDE;\n\
          Keywords=editor;code;ftp;sftp;html;css;php;\n\
          MimeType={mime}\n\
@@ -463,7 +471,7 @@ pub fn install() -> Result<PathBuf> {
     let current = std::env::current_exe().context(t!("Programmpfad nicht gefunden"))?;
     let dir = install_dir();
     std::fs::create_dir_all(&dir).with_context(|| t!("{dir} konnte nicht angelegt werden", dir = dir.display()))?;
-    let exe = dir.join("nebula");
+    let exe = dir.join(EXE_NAME);
     if !same_file(&current, &exe) {
         // Copy next to it, then rename: a running installed copy keeps its
         // (now unlinked) file and the new one is complete or absent.
@@ -565,8 +573,29 @@ pub fn set_file_types(wanted: &BTreeSet<String>) -> Result<()> {
     update_defaults(&keep, &drop)
 }
 
-/// Windows only (older registrations).
-pub fn migrate_file_types() {}
+/// Moves an installation of Nebula 1.2 and earlier off the name `nebula`
+/// (see [`EXE_NAME`]): renames the self-installed `~/.local/bin/nebula` and
+/// renews the user's desktop entry, which still names the old program (after
+/// an upgrade from the old package `/usr/bin/nebula`, which may now be the
+/// overlay network) and the old window class (no dock icon, no pinning).
+pub fn migrate_file_types() {
+    let bin = home().join(".local").join("bin");
+    let legacy = bin.join(LEGACY_EXE_NAME);
+    if !packaged() && is_nebula(&legacy) && !bin.join(EXE_NAME).exists() {
+        let _ = std::fs::rename(&legacy, bin.join(EXE_NAME));
+    }
+    let Ok(text) = std::fs::read_to_string(desktop_file()) else { return };
+    if !text.contains(&format!("Exec={} %F\n", exec_quote(&target_exe()))) || !text.contains("StartupWMClass=nebula-editor\n") {
+        let _ = write_entry(&parse_entry(&text));
+    }
+}
+
+/// Whether `path` is a copy of this program (not some other `nebula`): every
+/// version carries the key of its desktop entry.
+fn is_nebula(path: &Path) -> bool {
+    const MARKER: &[u8] = b"X-Nebula-FileTypes";
+    std::fs::read(path).is_ok_and(|data| data.windows(MARKER.len()).any(|w| w == MARKER))
+}
 
 #[cfg(test)]
 mod tests {
@@ -587,8 +616,8 @@ mod tests {
     #[test]
     fn entry_round_trips() {
         let e = Entry { menu: true, context_menu: true, types: ["css".to_string(), "html".to_string()].into() };
-        let text = render_entry(&e, Path::new("/home/u/.local/bin/nebula"));
-        assert!(text.contains("Exec=/home/u/.local/bin/nebula %F\n"));
+        let text = render_entry(&e, Path::new("/home/u/.local/bin/nebula-editor"));
+        assert!(text.contains("Exec=/home/u/.local/bin/nebula-editor %F\n"));
         assert!(text.contains("MimeType=text/plain;inode/directory;text/css;text/html;\n"));
         assert_eq!(parse_entry(&text), e);
     }
@@ -618,7 +647,7 @@ mod tests {
         std::fs::write(&list, "[Default Applications]\ntext/css=org.gnome.TextEditor.desktop;\n").unwrap();
 
         let exe = install().unwrap();
-        assert_eq!(exe, home.path().join(".local/bin/nebula"));
+        assert_eq!(exe, home.path().join(".local/bin/nebula-editor"));
         assert!(is_installed());
         assert!(icon_file().is_file());
         set_context_menu(true).unwrap();
@@ -653,7 +682,7 @@ mod tests {
         std::fs::create_dir_all(prefix.join("bin")).unwrap();
         let package_entry = include_str!("../../packaging/linux/nebula.desktop");
         std::fs::write(prefix.join("share/applications/nebula.desktop"), package_entry).unwrap();
-        std::fs::write(prefix.join("bin/nebula"), "").unwrap();
+        std::fs::write(prefix.join("bin/nebula-editor"), "").unwrap();
         // SAFETY: the test runs on its own (ignored by default).
         unsafe {
             std::env::set_var("HOME", home.path());
@@ -662,7 +691,7 @@ mod tests {
             std::env::remove_var("XDG_CONFIG_HOME");
         }
         assert!(packaged() && is_installed());
-        assert_eq!(installed_exe(), Some(prefix.join("bin/nebula")));
+        assert_eq!(installed_exe(), Some(prefix.join("bin/nebula-editor")));
         assert!(install().is_err());
         // The package's entry offers "Open With" for text and folders.
         assert!(context_menu_enabled());
@@ -670,7 +699,7 @@ mod tests {
 
         set_file_types(&["css".to_string()].into()).unwrap();
         let user = std::fs::read_to_string(desktop_file()).unwrap();
-        assert!(user.contains("NoDisplay=false") && user.contains(&format!("Exec={} %F", prefix.join("bin/nebula").display())), "{user}");
+        assert!(user.contains("NoDisplay=false") && user.contains(&format!("Exec={} %F", prefix.join("bin/nebula-editor").display())), "{user}");
         set_context_menu(false).unwrap();
         assert!(!context_menu_enabled());
         // Back to the package's state: the override goes away.

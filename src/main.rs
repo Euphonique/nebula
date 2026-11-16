@@ -139,8 +139,9 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(settings::APP_NAME)
-            // WM_CLASS on X11: matches StartupWMClass of nebula.desktop (dock icon).
-            .with_app_id("nebula")
+            // Wayland app id; on X11 winit takes WM_CLASS from the program's
+            // file name. Both match StartupWMClass of nebula.desktop (dock icon).
+            .with_app_id("nebula-editor")
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([720.0, 440.0])
             // Windows keeps its frame (shadow, snapping) and hides the caption

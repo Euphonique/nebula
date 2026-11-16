@@ -1,5 +1,9 @@
 # Changelog
 
+## Unveröffentlicht
+
+- Linux: Paket und Programm heißen jetzt `nebula-editor`. Unter dem Namen `nebula` hielten die automatischen Updates von Debian/Ubuntu Slacks gleichnamiges VPN für eine neuere Version und ersetzten den Editor damit (nach dem Neustart startete Nebula nicht mehr). Beide lassen sich jetzt nebeneinander installieren; ältere Installationen werden übernommen.
+
 ## 1.2.0
 
 - Nebula läuft unter Linux (getestet unter Zorin OS/GNOME), als .deb-Paket für Debian/Ubuntu.

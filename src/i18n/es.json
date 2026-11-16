@@ -65,7 +65,7 @@
     "Aktives Theme: {current}": "Tema activo: {current}",
     "Aktivieren": "Activar",
     "Aktualisieren": "Actualizar",
-    "Aktualisieren und Entfernen über die Paketverwaltung, z. B. „sudo apt remove nebula“.": "Se actualiza y se elimina con el gestor de paquetes, p. ej. «sudo apt remove nebula».",
+    "Aktualisieren und Entfernen über die Paketverwaltung, z. B. „sudo apt remove nebula-editor“.": "Se actualiza y se elimina con el gestor de paquetes, p. ej. «sudo apt remove nebula-editor».",
     "Aktuelle Datei: {n}": "Archivo actual: {n}",
     "Aktuelle Zeile": "Línea actual",
     "Aktuelle Zeile hervorheben": "Resaltar línea actual",

@@ -98,12 +98,20 @@ libc = "0.2"
 #   cargo deb --compress-debug-symbols=zlib
 # zlib keeps the separate debug symbols readable for Rust's backtraces.
 [package.metadata.deb]
+# Not "nebula": Debian/Ubuntu ship an unrelated "nebula" (Slack's overlay
+# network, /usr/bin/nebula) with a higher version, so unattended-upgrades
+# replaced the editor with it. Package and program are "nebula-editor" and
+# share no file with it; Breaks/Replaces take over only the old editor
+# packages (1.2 and earlier, below every overlay network version).
+name = "nebula-editor"
+breaks = "nebula (<< 1.3~)"
+replaces = "nebula (<< 1.3~)"
 maintainer = "Pascal Pagel"
 copyright = "2026 Euphonique"
 license-file = ["LICENSE", "0"]
 section = "editors"
 priority = "optional"
-# Line tables go into a separate nebula-dbgsym package; the program keeps
+# Line tables go into a separate nebula-editor-dbgsym package; the program keeps
 # its symbol table, so crash reports still name functions.
 dbgsym = true
 extended-description = """\
@@ -118,7 +126,7 @@ depends = "$auto, xdg-utils"
 recommends = "enchant-2, hunspell-en-us, libglib2.0-bin, libgtk-3-bin, desktop-file-utils, gnome-terminal | x-terminal-emulator"
 suggests = "hunspell-de-de, git, nodejs"
 assets = [
-    ["target/release/nebula", "usr/bin/", "755"],
+    ["target/release/nebula", "usr/bin/nebula-editor", "755"],
     ["packaging/linux/nebula.desktop", "usr/share/applications/", "644"],
     ["target/release/icons/16x16/nebula.png", "usr/share/icons/hicolor/16x16/apps/", "644"],
     ["target/release/icons/24x24/nebula.png", "usr/share/icons/hicolor/24x24/apps/", "644"],
@@ -128,8 +136,8 @@ assets = [
     ["target/release/icons/128x128/nebula.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
     ["target/release/icons/256x256/nebula.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
     ["target/release/icons/512x512/nebula.png", "usr/share/icons/hicolor/512x512/apps/", "644"],
-    ["README.md", "usr/share/doc/nebula/", "644"],
-    ["CHANGELOG.md", "usr/share/doc/nebula/", "644"],
+    ["README.md", "usr/share/doc/nebula-editor/", "644"],
+    ["CHANGELOG.md", "usr/share/doc/nebula-editor/", "644"],
 ]
 
 [profile.release]

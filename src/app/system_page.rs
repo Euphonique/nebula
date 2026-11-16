@@ -60,7 +60,7 @@ impl NebulaApp {
         };
         if integration::packaged() {
             ui.label(t!("Installiert über die Paketverwaltung ({install_dir})", install_dir = integration::install_dir().display()));
-            ui.label(faint(t!("Aktualisieren und Entfernen über die Paketverwaltung, z. B. „sudo apt remove nebula“.")));
+            ui.label(faint(t!("Aktualisieren und Entfernen über die Paketverwaltung, z. B. „sudo apt remove nebula-editor“.")));
         } else if integration::is_installed() {
             ui.label(t!("Installiert in {install_dir}", install_dir = integration::install_dir().display()));
             if cfg!(windows) {
